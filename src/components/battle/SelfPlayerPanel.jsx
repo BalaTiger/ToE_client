@@ -43,11 +43,12 @@ export function SelfPlayerPanel({
   return (
     <div
       ref={selfPanelRef}
+      className="toe-battle-panel toe-player-panel"
       data-pid={0}
       data-death-panel={0}
       onClick={phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? () => handleAIClick(0) : undefined}
       style={{
-        background: 'var(--toe-panel-active,#180f07)',
+        backgroundColor: 'var(--toe-panel-active,#180f07)',
         border: `1.5px solid ${
           hitIndices.includes(0)
             ? '#cc2222'
@@ -90,7 +91,7 @@ export function SelfPlayerPanel({
         expansionKey={expansionKey}
         corner="tr"
         size={206}
-        opacity={0.3}
+        opacity={0.14}
         inset={-6}
         useCssVars
         layerOpacity={{
@@ -129,7 +130,7 @@ export function SelfPlayerPanel({
           <div
             ref={roleTextRef}
             style={{
-              fontFamily: "'Cinzel',serif",
+              fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
               color: 'var(--toe-muted,#7a5a2a)',
               fontSize: fontSizes.small,
               letterSpacing: 2,
@@ -142,11 +143,11 @@ export function SelfPlayerPanel({
           <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
             <div
               style={{
-                fontFamily: "'Cinzel',serif",
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                 fontWeight: 700,
                 fontSize: fontSizes.body,
                 color: ri.col,
-                textShadow: `0 0 12px ${ri.col}66`,
+                textShadow: '0 1px 3px #000',
                 letterSpacing: 1,
               }}
             >
@@ -156,8 +157,8 @@ export function SelfPlayerPanel({
           </div>
           <div
             style={{
-              fontFamily: "'Microsoft YaHei','SimHei',sans-serif",
-              fontStyle: 'italic',
+              fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+              fontStyle: 'normal',
               color: 'var(--toe-muted,#a07838)',
               fontSize: fontSizes.small,
               marginTop: 4,
@@ -174,7 +175,7 @@ export function SelfPlayerPanel({
                 marginTop: 4,
                 fontSize: fontSizes.small,
                 color: '#4ade80',
-                fontFamily: "'Cinzel',serif",
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                 letterSpacing: 1,
                 filter: 'drop-shadow(0 0 4px #4ade80)',
               }}
@@ -193,7 +194,7 @@ export function SelfPlayerPanel({
                   style={{
                     fontSize: fontSizes.small,
                     color: GOD_DEFS[presentationPlayer.godName]?.col,
-                    fontFamily: "'Cinzel',serif",
+                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                     letterSpacing: 0.5,
                     fontWeight: 700,
                     textShadow: `0 0 6px ${GOD_DEFS[presentationPlayer.godName]?.col}66`,
@@ -201,10 +202,10 @@ export function SelfPlayerPanel({
                 >
                   {GOD_DEFS[presentationPlayer.godName]?.name}
                 </div>
-                <div style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "'IM Fell English',serif", fontStyle: 'italic' }}>
+                <div style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal' }}>
                   {GOD_DEFS[presentationPlayer.godName]?.power} Lv.{presentationPlayer.godLevel}
                 </div>
-                <div style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'italic', marginTop: 1, lineHeight: 1.4 }}>
+                <div style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'normal', marginTop: 1, lineHeight: 1.4 }}>
                   {GOD_DEFS[presentationPlayer.godName]?.levels[(presentationPlayer.godLevel || 1) - 1]?.desc}
                 </div>
               </LocalGodPowerTag>
@@ -222,7 +223,7 @@ export function SelfPlayerPanel({
           <StatBar
             label="HP"
             val={displayStats[0]?.hp ?? player.hp}
-            color="#7a1515"
+            color="#a54138"
             trackColor="#1a0808"
             scaleRatio={boardScaleRatio}
             viewportWidth={vw}
@@ -233,7 +234,7 @@ export function SelfPlayerPanel({
           <StatBar
             label="SAN"
             val={displayStats[0]?.san ?? player.san}
-            color="#3a1078"
+            color="#76609b"
             trackColor="#120820"
             scaleRatio={boardScaleRatio}
             viewportWidth={vw}
@@ -246,7 +247,7 @@ export function SelfPlayerPanel({
 
       {isMultiplayer && (
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 50 }}>
-          <button
+          <button className="toe-button" aria-label="发送表情"
             ref={emojiButtonRef}
             onClick={() => {
               const rect = _getZoomCompensatedRect(emojiButtonRef.current);
@@ -259,14 +260,10 @@ export function SelfPlayerPanel({
               setShowEmojiPicker(v => !v);
             }}
             style={{
-              background: 'var(--toe-panel,#1a1008)',
-              border: '1px solid var(--toe-line,#4a3010)',
-              borderRadius: 3,
               fontSize: 14,
               cursor: 'pointer',
               padding: '2px 5px',
               lineHeight: 1.2,
-              color: 'var(--toe-strong,#c8a96e)',
               opacity: showEmojiPicker ? 1 : 0.7,
             }}
           >

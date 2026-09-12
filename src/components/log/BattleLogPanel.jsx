@@ -64,7 +64,7 @@ export function BattleLogPanel({
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
 
   return (
-    <div ref={logRef} data-log-panel style={{
+    <div ref={logRef} className="toe-battle-panel" data-log-panel style={{
       width: isMobile ? '100%' : 218,
       flexBasis: isMobile ? '100%' : undefined,
       flexShrink: 0,
@@ -107,24 +107,24 @@ export function BattleLogPanel({
           ))}
         </div>
       </div>
-      <div style={{
-        fontFamily: "'Cinzel',serif",
+      <div className="toe-log-heading" style={{
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
         color: reliefConfig.logText.title,
-        fontSize: fontSizes.small,
+        fontSize: Math.max(12 * fontZoom, fontSizes.small),
         letterSpacing: 2,
         marginBottom: 5,
         textTransform: 'uppercase',
         position: 'relative',
-      }}>— 冒险日志 —</div>
+      }}>冒险日志</div>
       {displayLogLines.map(({ line, display }, i) => {
         return (
-          <div key={i} style={{
-            fontFamily: "'IM Fell English','Georgia',serif",
-            fontStyle: 'italic',
-            fontSize: fontSizes.body,
+          <div key={i} className="toe-log-line" data-turn-heading={line.includes('──')} style={{
+            fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+            fontStyle: 'normal',
+            fontSize: Math.max(12 * fontZoom, fontSizes.body),
             lineHeight: 1.7,
             color: line.includes('──') ? reliefConfig.logText.turn
-              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? '#882020'
+              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? '#cc8b7c'
                 : line.includes('获胜') || line.includes('集齐') ? 'var(--toe-strong,#c8a96e)'
                   : reliefConfig.logText.body,
             fontWeight: line.includes('──') ? 700 : 400,

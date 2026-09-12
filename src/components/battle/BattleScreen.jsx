@@ -1,4 +1,5 @@
-﻿import { createPortal } from 'react-dom';
+﻿import './battle.css';
+import { createPortal } from 'react-dom';
 import {
   RINFO,
   ROLE_TREASURE,
@@ -32,30 +33,17 @@ function getPhaseActionButtonStyle({
   mobileCssPx,
   interactionFontSizes,
   enabled = true,
-  tone = 'amber',
   marginLeft,
 }) {
-  const activeColors =
-    tone === 'danger'
-      ? { bg: '#3a1008', border: '#882020', color: '#dd6060', shadow: '#88202044' }
-      : { bg: '#1a0c04', border: '#d4832a', color: '#f0a855', shadow: '#d4832a66' };
-  const disabledColors = { bg: '#180e08', border: '#3a2510', color: '#3a2510', shadow: 'transparent' };
-  const c = enabled ? activeColors : disabledColors;
   return {
     marginLeft,
     padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 18px',
-    background: c.bg,
-    border: `1.5px solid ${c.border}`,
-    color: c.color,
-    fontFamily: "'Cinzel',serif",
+    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
     fontWeight: 700,
     fontSize: interactionFontSizes.body,
-    borderRadius: 2,
     cursor: enabled ? 'pointer' : 'not-allowed',
     letterSpacing: isMobile ? 0.5 : 1,
-    textTransform: 'uppercase',
     opacity: enabled ? 1 : 0.42,
-    boxShadow: enabled ? `0 0 12px ${c.shadow},inset 0 0 6px ${c.shadow}` : 'none',
     position: 'relative',
     zIndex: 200,
   };
@@ -311,7 +299,7 @@ export function BattleScreen(props) {
 
   return (
     <>
-    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
     animationPlayState:isSoloPaused?'paused':undefined,
     }}>
@@ -320,10 +308,10 @@ export function BattleScreen(props) {
       <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       {pendingRoleSelection&&(
         <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div style={{width:'min(480px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 60px #000c',padding:'28px 26px',textAlign:'center'}}>
-            <h2 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
-            <p style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'italic'}}>命运尚未落笔，由你决定扮演何人</p>
-            <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:14}}>
+          <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
+            <h2 className="toe-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
+            <p className="toe-subtitle" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'normal'}}>命运尚未落笔，由你决定扮演何人</p>
+            <div className="toe-role-options">
               {[
                 {key:ROLE_TREASURE,...RINFO[ROLE_TREASURE]},
                 {key:ROLE_HUNTER,...RINFO[ROLE_HUNTER]},
@@ -331,21 +319,20 @@ export function BattleScreen(props) {
                 {key:'random',icon:'?',col:'#a07838',dim:'#5a4020',goal:'听凭命运安排',skillName:'随机身份'},
               ].map(role=>(
                 <button
+                  className="toe-option toe-battle-role-choice"
                   key={role.key}
                   type="button"
                   onClick={()=>confirmRoleSelection(role.key)}
                   style={{
-                    background:'#1a1208',border:`1.5px solid ${role.dim}`,borderRadius:4,
-                    padding:'18px 12px',cursor:'pointer',color:'#c8a96e',
-                    fontFamily:"'Cinzel',serif",display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                    '--toe-role-accent':role.col,
+                    padding:'18px 12px',cursor:'pointer',
+                    fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',alignItems:'center',gap:6,
                     transition:'all 0.15s ease',
                   }}
-                  onMouseEnter={e=>{e.currentTarget.style.borderColor=role.col;e.currentTarget.style.boxShadow=`0 0 18px ${role.col}44`;}}
-                  onMouseLeave={e=>{e.currentTarget.style.borderColor=role.dim;e.currentTarget.style.boxShadow='none';}}
                 >
                   <span style={{fontSize:30,color:role.col,filter:`drop-shadow(0 0 8px ${role.col}66)`}}>{role.icon}</span>
                   <span style={{fontSize:14,letterSpacing:1,fontWeight:700}}>{role.key==='random'?'随机身份':role.key}</span>
-                  <span style={{fontSize:10,color:'#806040',letterSpacing:0.5}}>{role.goal}</span>
+                  <small style={{fontSize:12,lineHeight:1.6,letterSpacing:0.5}}>{role.goal}</small>
                 </button>
               ))}
             </div>
@@ -357,28 +344,28 @@ export function BattleScreen(props) {
         <div
           style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
             display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{textAlign:'center',color:'#c8a0e8',fontFamily:"'Cinzel Decorative','Cinzel',serif",
-            padding:'36px 48px',background:'#0e0a14',border:'2px solid #7a50b0',borderRadius:6,
-            boxShadow:'0 0 60px #5a3a8066',animation:'animPop 0.25s ease-out'}}>
+          <div className="toe-dialog" style={{textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+            padding:'36px 48px',
+            animation:'animPop 0.25s ease-out'}}>
             <div style={{fontSize:48,marginBottom:16,filter:'drop-shadow(0 0 20px #a080d0)'}}>📡</div>
             <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>正在恢复连接</div>
-            <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"'Cinzel',serif",fontStyle:'italic'}}>
+            <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal'}}>
               正在尝试返回当前对局，请稍候…
             </div>
-            <button onClick={resetDisconnectedToStart} style={{marginTop:20,padding:'8px 16px',background:'#1e0d36',border:'1px solid #6a4890',borderRadius:3,color:'#a888c8',fontFamily:"'Cinzel',serif",fontSize:11,letterSpacing:1,cursor:'pointer'}}>放弃重连并返回主界面</button>
+            <button className="toe-button" onClick={resetDisconnectedToStart} style={{marginTop:20,padding:'8px 16px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:11,letterSpacing:1,cursor:'pointer'}}>放弃重连并返回主界面</button>
           </div>
         </div>
       )}
       {exitMatchConfirm&&(
         <div style={{position:'fixed',inset:0,zIndex:10020,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div style={{width:'min(420px,92vw)',background:'#120b06',border:'2px solid #5a3010',borderRadius:4,boxShadow:'0 0 50px #000c',padding:'22px 24px',textAlign:'center'}}>
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:15,color:'#c8a96e',letterSpacing:2,marginBottom:14}}>退出对局</div>
-            <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:14,color:'#b89858',lineHeight:1.6,marginBottom:20}}>
+          <div className="toe-dialog" style={{width:'min(420px,92vw)',padding:'22px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:15,color:'#c8a96e',letterSpacing:2,marginBottom:14}}>退出对局</div>
+            <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:14,color:'#b89858',lineHeight:1.6,marginBottom:20}}>
               {exitMatchConfirm.message}
             </div>
             <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-              <button onClick={leaveMultiplayerMatchToStart} style={{padding:'8px 20px',background:'#2a0c08',border:'1.5px solid #8a3028',color:'#e08070',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>确认退出</button>
-              <button onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',background:'#1a1008',border:'1.5px solid #5a4020',color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:12,borderRadius:2,cursor:'pointer',letterSpacing:1}}>取消</button>
+              <button className="toe-button toe-button-danger" onClick={leaveMultiplayerMatchToStart} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>确认退出</button>
+              <button className="toe-button" onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>取消</button>
             </div>
           </div>
         </div>
@@ -386,12 +373,12 @@ export function BattleScreen(props) {
       {isSoloPaused&&(
         <div role="dialog" aria-modal="true" aria-labelledby="solo-pause-title"
           style={{position:'fixed',inset:0,zIndex:10030,background:'rgba(0,0,0,0.86)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div style={{width:'min(420px,92vw)',background:'#120b06',border:'2px solid #9a762f',borderRadius:5,boxShadow:'0 0 60px #000, 0 0 24px #9a762f33',padding:'28px 24px',textAlign:'center'}}>
-            <div id="solo-pause-title" style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,color:'#e8c87a',letterSpacing:3,marginBottom:8}}>游戏已暂停</div>
+          <div className="toe-dialog" style={{width:'min(420px,92vw)',padding:'28px 24px',textAlign:'center'}}>
+            <div className="toe-title" id="solo-pause-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:22,color:'#e8c87a',letterSpacing:3,marginBottom:8}}>游戏已暂停</div>
             <div style={{fontSize:13,color:'#9c7b43',marginBottom:24}}>对局进程已冻结</div>
             <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-              <button type="button" autoFocus onClick={()=>setIsSoloPaused(false)} style={{padding:'9px 24px',background:'#2a200c',border:'1.5px solid #c89b3c',color:'#f0d080',fontWeight:700,fontSize:13,borderRadius:3,cursor:'pointer'}}>继续游戏</button>
-              <button type="button" onClick={returnToMainMenu} style={{padding:'9px 24px',background:'#2a0c08',border:'1.5px solid #8a3028',color:'#e08070',fontWeight:700,fontSize:13,borderRadius:3,cursor:'pointer'}}>返回主界面</button>
+              <button className="toe-button toe-button-primary" type="button" autoFocus onClick={()=>setIsSoloPaused(false)} style={{padding:'9px 24px',fontWeight:700,fontSize:13,cursor:'pointer'}}>继续游戏</button>
+              <button className="toe-button toe-button-danger" type="button" onClick={returnToMainMenu} style={{padding:'9px 24px',fontWeight:700,fontSize:13,cursor:'pointer'}}>返回主界面</button>
             </div>
           </div>
         </div>
@@ -759,7 +746,7 @@ export function BattleScreen(props) {
     </div>
     {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
          so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
-    <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
+    <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
     {isLocalTestMode&&(
       <button
         type="button"
@@ -784,11 +771,11 @@ export function BattleScreen(props) {
     {isMultiplayer&&showEmojiPicker&&createPortal(
       <>
         <div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>
-        <div style={{
+        <div className="toe-emoji-picker" style={{
           position:'fixed',
           top:emojiButtonPos.top,
           right:emojiButtonPos.right,
-          background:'#140e04',border:'1.5px solid #4a3010',borderRadius:4,
+          backgroundColor:'#0a1111',border:'1.5px solid #6a5f46',borderRadius:4,
           padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
           boxShadow:'0 4px 20px #00000088',zIndex:50,
         }}>
@@ -823,7 +810,7 @@ export function BattleScreen(props) {
           color: '#ff8000',
           padding: '8px 20px',
           borderRadius: '4px',
-          fontFamily: "'Cinzel', serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           fontSize: '14px',
           whiteSpace: 'nowrap',
           animation: 'scrollLeft 30s linear infinite'

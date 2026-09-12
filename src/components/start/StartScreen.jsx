@@ -1,4 +1,5 @@
 import React from "react";
+import { OnlineOptionsDialog } from "./OnlineOptionsDialog";
 import { buildPublicUrl } from "../../utils/url";
 
 export function StartScreen({
@@ -30,7 +31,6 @@ export function StartScreen({
   playerUsernameSpecial,
 }) {
   const lerp = (a, b, t) => a + (b - a) * t;
-  const onlineOptionsBackdropMouseDownRef = React.useRef(false);
   const startRules = [
     '身份随机分配，HP / SAN 初始 10，上限 10',
     '每回合投 1 张牌，区域牌可选择收入手牌或弃置',
@@ -339,14 +339,14 @@ export function StartScreen({
           onClick={onDisconnectedReset}
           style={{ position: 'fixed', inset: 0, background: '#000000dd', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
-          <div
+          <div className="toe-dialog"
             style={{
               textAlign: 'center',
               color: '#c8a0e8',
               fontFamily: "'Cinzel Decorative','Cinzel',serif",
               padding: '36px 48px',
-              background: '#0e0a14',
-              border: '2px solid #7a50b0',
+
+
               borderRadius: 6,
               boxShadow: '0 0 60px #5a3a8066',
               animation: 'animPop 0.25s ease-out',
@@ -364,9 +364,10 @@ export function StartScreen({
         {toasts.map((t) => (
           <div
             key={t.id}
+            className="toe-panel"
             style={{
-              background: '#1a1028',
-              border: '1.5px solid #7a50b0',
+
+
               borderRadius: 4,
               color: '#c8a0e8',
               fontFamily: "'Cinzel',serif",
@@ -384,118 +385,8 @@ export function StartScreen({
         ))}
       </div>
 
-      {onlineOptionsModal && (
-        <div
-          style={{ position: 'fixed', inset: 0, background: '#000000cc', zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          onMouseDown={(e) => {
-            onlineOptionsBackdropMouseDownRef.current = e.target === e.currentTarget;
-          }}
-          onClick={(e) => {
-            if (e.target === e.currentTarget && onlineOptionsBackdropMouseDownRef.current) {
-              closeOnlineOptions();
-            }
-            onlineOptionsBackdropMouseDownRef.current = false;
-          }}
-        >
-          <div
-            onMouseDown={(e) => {
-              onlineOptionsBackdropMouseDownRef.current = false;
-              e.stopPropagation();
-            }}
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              background: '#0e0a14',
-              border: '2px solid #7a50b0',
-              borderRadius: 6,
-              padding: '28px 32px',
-              maxWidth: 400,
-              width: '90%',
-              boxShadow: '0 0 60px #5a3a8066',
-              animation: 'animPop 0.25s ease-out',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 16,
-            }}
-          >
-            <button onClick={closeOnlineOptions} style={{ position: 'absolute', top: 12, right: 14, background: 'none', border: 'none', color: '#5a4070', fontSize: 18, cursor: 'pointer', lineHeight: 1, padding: '2px 6px' }}>✕</button>
-
-            <div style={{ textAlign: 'center', marginBottom: 4 }}>
-              <div style={{ fontSize: 26, marginBottom: 8, filter: 'drop-shadow(0 0 12px #a080d088)' }}>🌐</div>
-              <div style={{ fontFamily: "'Cinzel Decorative','Cinzel',serif", fontSize: 15, color: '#c8a0e8', letterSpacing: 2, marginBottom: 6 }}>联机对战</div>
-              <div style={{ width: 100, height: 1, background: 'linear-gradient(90deg,transparent,#7a50b0,transparent)', margin: '0 auto' }} />
-            </div>
-
-            <div style={{ background: '#120920', border: '1px solid #4a3070', borderRadius: 4, padding: '16px 18px' }}>
-              <button onClick={handleCreateRoom} disabled={multiLoading} style={{ width: '100%', padding: '12px', background: '#1e0d36', border: '1.5px solid #7a50b0', borderRadius: 4, color: '#c8a0e8', fontFamily: "'Cinzel Decorative','Cinzel',serif", fontSize: 13, letterSpacing: 2, cursor: multiLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
-                {multiLoading && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #5a3a80', borderTopColor: '#a080d0', borderRadius: '50%', animation: 'spinLoader 0.7s linear infinite' }} />}
-                创建房间
-              </button>
-            </div>
-
-            <div style={{ background: '#120920', border: '1px solid #4a3070', borderRadius: 4, padding: '16px 18px' }}>
-              <button onClick={handleOpenLobby} disabled={multiLoading} style={{ width: '100%', padding: '12px', background: '#1e0d36', border: '1.5px solid #7a50b0', borderRadius: 4, color: '#c8a0e8', fontFamily: "'Cinzel Decorative','Cinzel',serif", fontSize: 13, letterSpacing: 2, cursor: multiLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
-                {multiLoading && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #5a3a80', borderTopColor: '#a080d0', borderRadius: '50%', animation: 'spinLoader 0.7s linear infinite' }} />}
-                游戏大厅
-              </button>
-            </div>
-
-            <div style={{ background: '#120920', border: '1px solid #4a3070', borderRadius: 4, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ fontFamily: "'Cinzel',serif", color: '#6a5080', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' }}>— 或者输入房间号加入房间 —</div>
-              <input
-                value={joinRoomInput}
-                onChange={(e) => setJoinRoomInput(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
-                placeholder="房间号"
-                maxLength={6}
-                style={{ background: '#160d22', border: '1px solid #5a3a80', borderRadius: 3, color: '#e0c0f8', fontFamily: "'Cinzel',serif", fontSize: 14, padding: '8px 12px', outline: 'none', letterSpacing: 3, textTransform: 'uppercase', width: '100%', boxSizing: 'border-box' }}
-              />
-              <button onClick={handleJoinRoom} disabled={multiLoading} style={{ width: '100%', padding: '12px', background: '#1a1030', border: '1.5px solid #5a3a80', borderRadius: 4, color: '#b090d8', fontFamily: "'Cinzel Decorative','Cinzel',serif", fontSize: 13, letterSpacing: 2, cursor: multiLoading ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, transition: 'all .2s' }}>
-                {multiLoading && <span style={{ display: 'inline-block', width: 12, height: 12, border: '2px solid #5a3a80', borderTopColor: '#a080d0', borderRadius: '50%', animation: 'spinLoader 0.7s linear infinite' }} />}
-                加入房间
-              </button>
-            </div>
-
-            <div style={{ background: '#120920', border: '1px solid #4a3070', borderRadius: 4, padding: '16px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontFamily: "'Cinzel',serif", color: '#6a5080', fontSize: 9, letterSpacing: 2, textTransform: 'uppercase' }}>— 你的联机用户名 —</div>
-              {renameInputVisible ? (
-                <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                  <div style={{ position: 'relative', flex: 1, display: 'flex', alignItems: 'center' }}>
-                    <input
-                      autoFocus
-                      value={renameInput}
-                      onChange={(e) => setRenameInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
-                          handleRename();
-                          setRenameInputVisible(false);
-                        } else if (e.key === 'Escape') {
-                          setRenameInputVisible(false);
-                        }
-                      }}
-                      maxLength={10}
-                      style={{ flex: 1, background: '#160d22', border: '1px solid #5a3a80', borderRadius: 3, color: '#e0c0f8', fontFamily: "'Cinzel',serif", fontSize: 13, padding: '6px 34px 6px 10px', outline: 'none', letterSpacing: 1 }}
-                    />
-                    <button onClick={handleRandomUsername} title="随机用户名" style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', width: 22, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', padding: 0, color: '#cda85a', fontSize: 14, cursor: 'pointer', lineHeight: 1 }}>
-                      🎲
-                    </button>
-                  </div>
-                  <button onClick={() => { handleRename(); setRenameInputVisible(false); }} disabled={renameCdActive} style={{ padding: '6px 12px', background: renameCdActive ? '#1e1430' : '#2e1450', border: `1px solid ${renameCdActive ? '#3a2560' : '#7a50b0'}`, borderRadius: 3, color: renameCdActive ? '#5a4070' : '#c8a0e8', fontFamily: "'Cinzel',serif", fontSize: 11, cursor: renameCdActive ? 'not-allowed' : 'pointer', whiteSpace: 'nowrap' }}>
-                    {renameCdActive ? '冷却中…' : '确认'}
-                  </button>
-                </div>
-              ) : (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ fontFamily: "'Cinzel',serif", fontSize: 14, color: playerUsernameSpecial ? '#d8b35c' : '#e0c0f8', letterSpacing: 1, flex: 1, textShadow: playerUsernameSpecial ? '0 0 10px rgba(216,179,92,.22)' : 'none' }}>{playerUsername || '—'}</span>
-                  <button onClick={() => { setRenameInput(playerUsername); setRenameInputVisible(true); }} style={{ padding: '4px 10px', background: 'none', border: '1px solid #5a3a80', borderRadius: 3, color: '#a080c8', fontFamily: "'Cinzel',serif", fontSize: 10, cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                    修改
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      <OnlineOptionsDialog open={onlineOptionsModal} onClose={closeOnlineOptions}
+        multiLoading={multiLoading} handleCreateRoom={handleCreateRoom} handleOpenLobby={handleOpenLobby} joinRoomInput={joinRoomInput} setJoinRoomInput={setJoinRoomInput} handleJoinRoom={handleJoinRoom} renameInputVisible={renameInputVisible} renameInput={renameInput} setRenameInput={setRenameInput} handleRename={handleRename} handleRandomUsername={handleRandomUsername} setRenameInputVisible={setRenameInputVisible} renameCdActive={renameCdActive} playerUsername={playerUsername} playerUsernameSpecial={playerUsernameSpecial} />
     </div>
   );
 }

@@ -507,7 +507,7 @@ function CardFaceImage({
     inspection: CARD_FACE_BACKGROUND_FILES[2],
     token: CARD_FACE_BACKGROUND_FILES[3],
   }[kind];
-  const height = Math.round(width * CARD_FACE_RATIO);
+  const height = width * CARD_FACE_RATIO;
   const scale = width / CARD_FACE_WIDTH;
   // The token frame already defines its silhouette with transparent pixels.
   // Do not fill or clip those pixels with the generic rectangular card shell.
@@ -515,9 +515,8 @@ function CardFaceImage({
   return (
     <div
       className={className}
+      data-card-face
       style={{
-        width,
-        height,
         position: 'relative',
         overflow: hasTransparentFrame ? 'visible' : 'hidden',
         borderRadius: hasTransparentFrame ? 0 : 12 * scale,
@@ -526,6 +525,10 @@ function CardFaceImage({
         transformOrigin: 'top left',
         userSelect: 'none',
         ...style,
+        width,
+        height,
+        minWidth: width,
+        flexShrink: 0,
       }}
     >
       <div

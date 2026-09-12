@@ -1,0 +1,19 @@
+.toe-visual-gallery { min-height: 100dvh; }
+.gallery-lobby-background { position: fixed; inset: 0; background: linear-gradient(#07060670,#080603cc), url('/img/bg/battle/earth_shadow.webp') center / cover; }
+.gallery-toolbar { position: fixed; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 2147483646; display: flex; align-items: center; gap: 12px; max-width: calc(100vw - 24px); padding: 10px 14px; border: 1px solid #a3844a; background: #0b0a08f5; color: #dbc595; box-shadow: 0 8px 32px #000a; font: 12px/1.4 'Microsoft YaHei',sans-serif; }
+.gallery-toolbar select { max-width: 310px; color: #ead8ae; background: #17130c; border: 1px solid #675337; padding: 7px; }
+.gallery-toolbar a { color: #dac493; white-space: nowrap; }
+.gallery-toolbar strong { white-space: nowrap; }
+.gallery-toolbar span { color: #a59982; white-space: nowrap; }
+.gallery-toast { position: fixed; left: 50%; bottom: 76px; transform: translateX(-50%); z-index: 2147483647; background: #17130cf5; color: #f2ddb1; border: 1px solid #917443; padding: 12px 20px; max-width: 80vw; overflow-wrap: anywhere; }
+.gallery-card-clarity { min-height: 100dvh; box-sizing: border-box; padding: 36px max(20px, calc((100vw - 1180px) / 2)) 110px; color: #e4d5b8; background: linear-gradient(#0b0905ec, #0b0905f5), url('/img/bg/battle/earth_shadow.webp') center / cover fixed; }
+.gallery-card-clarity h1 { margin: 10px 0; font-size: clamp(24px, 3vw, 34px); }
+.gallery-card-clarity header p { font-size: 14px; line-height: 1.7; color: #bca989; max-width: 740px; }
+.gallery-clarity-panel { margin-top: 26px; padding: 20px; border: 1px solid #695333; background: #151008cc; }
+.gallery-clarity-panel h2 { margin: 0 0 20px; font-size: 16px; font-weight: 500; color: #d1b980; }
+.gallery-clarity-row { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 26px; overflow-x: auto; padding: 6px 4px 12px; }
+.gallery-clarity-row figure { flex: 0 0 auto; margin: 0; }
+.gallery-clarity-row figcaption { margin-bottom: 12px; font-size: 12px; line-height: 1.5; color: #bdaa85; }
+.gallery-clarity-description { border-top: 1px solid #47361f; padding-top: 16px; margin: 12px 0 0; max-width: 850px; font-size: 14px; line-height: 1.8; color: #c3b18e; }
+@media (max-width: 540px) { .gallery-card-clarity { padding: 24px 14px 140px; } .gallery-clarity-panel { padding: 14px 10px; } .gallery-clarity-row { gap: 20px; } }
+@media (max-width: 760px) { .gallery-toolbar { flex-wrap: wrap; width: calc(100vw - 40px); gap: 6px; bottom: 6px; } .gallery-toolbar select { max-width: 60vw; } .gallery-toolbar span { display: none; } }

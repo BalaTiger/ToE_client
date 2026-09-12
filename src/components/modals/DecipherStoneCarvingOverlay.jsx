@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DDCard, DDCardBack } from '../cards';
+import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 
 const CARD_W = 82;
-const CARD_H = 108;
+const CARD_H = CARD_W * CARD_FACE_RATIO;
 const STACK_GAP = 48;
 
 function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
@@ -37,10 +38,10 @@ function StackedCardRow({ cards, zoneKey, dragging, readOnly, onDragStart }) {
 
 function DeckStackImage({ expansionKey }) {
   return (
-    <div style={{ position: 'relative', width: 122, height: 132 }}>
+    <div style={{ position: 'relative', width: 104, height: CARD_H + 24 }}>
       {Array.from({ length: 7 }).map((_, i) => (
-        <div key={i} style={{ position: 'absolute', left: i * 6, top: i * 4, zIndex: i }}>
-          <DDCardBack expansionKey={expansionKey} frameStyle={{ width: 82, height: 108 }} />
+        <div key={i} style={{ position: 'absolute', left: i * 3, top: i * 4, zIndex: i }}>
+          <DDCardBack expansionKey={expansionKey} frameStyle={{ width: CARD_W, height: CARD_H }} />
         </div>
       ))}
     </div>
@@ -59,9 +60,9 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
   const dragCardRef = useRef(null);
 
   const zonePositions = [
-    { key: 'bottom', label: '牌堆底', style: { left: '4%', top: '24%', width: '34%', height: 158 } },
-    { key: 'top', label: '牌堆顶', style: { right: '4%', top: '24%', width: '34%', height: 158 } },
-    { key: 'hand', label: '收入手牌', style: { left: '50%', bottom: '5%', transform: 'translateX(-50%)', width: '62%', height: 166 } },
+    { key: 'bottom', label: '牌堆底', style: { gridColumn: 1, gridRow: 1 } },
+    { key: 'top', label: '牌堆顶', style: { gridColumn: 3, gridRow: 1 } },
+    { key: 'hand', label: '收入手牌 · 选择 1 张', style: { gridColumn: '1 / -1', gridRow: 2 } },
   ];
 
   function handleDragStart(card, sourceZone, idx, e) {
@@ -145,46 +146,43 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
 
   return (
     <div
+      className="toe-dialog-backdrop"
       ref={containerRef}
       style={{
         position: 'fixed', inset: 0, zIndex: 900,
-        background: 'rgba(4,2,0,0.70)',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         userSelect: 'none',
       }}
       onMouseMove={e => dragging && setDragPos({ x: e.clientX, y: e.clientY })}
     >
-      <div style={{
-        fontFamily: "'Cinzel',serif", color: '#e8cc88', fontSize: 16, letterSpacing: 3, marginBottom: 16,
+      <div className="toe-dialog" data-ui-dialog="decipher" role="dialog" aria-label="解读石刻" style={{ width: 'min(94vw, 980px)', maxHeight: '94dvh', overflowY: 'auto', padding: '24px clamp(14px, 3vw, 32px)', textAlign: 'center' }}>
+      <div className="toe-title" style={{
+        fontSize: 24, letterSpacing: 3, marginBottom: 12,
       }}>
         {actorName} 解读石刻
       </div>
-      <div style={{
-        fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, marginBottom: 24,
+      <div className="toe-subtitle" style={{
+        fontSize: 14, lineHeight: 1.7, marginBottom: 24,
       }}>
         {readOnly ? '正在解读石刻。你可以观察其安排。' : '将 1 张牌拖入“收入手牌”，其余牌拖入“牌堆顶”或“牌堆底”'}
       </div>
 
-      <div style={{ position: 'relative', width: '94vw', maxWidth: 980, height: '72vh', maxHeight: 560, minHeight: 470 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto minmax(0, 1fr)', gap: '20px 12px', width: '100%' }}>
         {zonePositions.map(({ key, label, style }) => (
           <div
+            className="toe-panel toe-decipher-zone"
             key={key}
             data-zone={key}
             style={{
-              position: 'absolute',
               ...style,
-              border: `2px dashed ${key === 'hand' ? '#c8a96e88' : '#5a4a3a88'}`,
-              borderRadius: 6,
-              background: 'rgba(20,14,8,0.36)',
+              borderStyle: 'dashed', minWidth: 0,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-start',
-              paddingTop: 10,
+              paddingTop: 14,
               transition: 'background 0.15s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = 'rgba(40,28,16,0.52)'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = 'rgba(20,14,8,0.36)'; }}
           >
-            <div style={{
-              fontFamily: "'Cinzel',serif", color: '#8a7a5a', fontSize: 11, letterSpacing: 2, marginBottom: 10,
+            <div className="toe-subtitle" style={{
+              fontSize: 13, letterSpacing: 2, marginBottom: 12,
             }}>
               {label}
             </div>
@@ -197,25 +195,25 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
         ))}
 
         <div style={{
-          position: 'absolute', left: '50%', top: '17%', transform: 'translateX(-50%)',
+          gridColumn: 2, gridRow: 1, alignSelf: 'center',
           display: 'flex', flexDirection: 'column', alignItems: 'center',
         }}>
           <DeckStackImage expansionKey={expansionKey} />
-          <span style={{ fontFamily: "'Cinzel',serif", color: '#6f5b3a', fontSize: 10, letterSpacing: 2, marginTop: 4 }}>牌堆</span>
+          <span className="toe-subtitle" style={{ fontSize: 12, letterSpacing: 2, marginTop: 8 }}>牌堆</span>
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
+      <div style={{ display: 'flex', justifyContent: 'center', gap: 16, marginTop: 24 }}>
         <button
+          className="toe-button toe-button-primary"
+          type="button"
           onClick={handleConfirm}
           disabled={!canConfirm || readOnly}
           style={{
-            padding: '8px 22px', background: canConfirm && !readOnly ? '#1a1208' : '#0e0904',
-            border: `2px solid ${canConfirm && !readOnly ? '#c8a96e' : '#5a4a3a'}`,
-            color: canConfirm && !readOnly ? '#c8a96e' : '#5a4a3a',
-            fontFamily: "'Cinzel',serif", fontSize: 12, letterSpacing: 1, borderRadius: 3, cursor: canConfirm && !readOnly ? 'pointer' : 'not-allowed',
+            minWidth: 220, padding: '12px 28px', fontSize: 16, letterSpacing: 2,
           }}
         >{readOnly ? '等待确认' : '确认'}</button>
+      </div>
       </div>
 
       {dragging && (

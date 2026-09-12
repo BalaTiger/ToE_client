@@ -7,24 +7,20 @@ import { FullscreenLightLayer } from './FullscreenLightLayer';
 
 function GodResurrectionAnim({onDone}){
   const [textPhase, setTextPhase] = useState(0); // 0: black, 1: transitioning, 2: red with blood
-  
   useEffect(()=>{
     // 文字动画时序：0.5秒后开始从黑变红，2秒后显示滴血效果
     const textTimer1 = setTimeout(() => setTextPhase(1), 500);
     const textTimer2 = setTimeout(() => setTextPhase(2), 2000);
-    
     // 视频播放完成后自动调用onDone
     const videoElement=document.getElementById('god-resurrection-video');
     if(videoElement){
       videoElement.onended=()=>{
         onDone&&onDone();
       };
-      
       // 8秒后如果视频还没结束，强制调用onDone（给视频足够播放时间）
       const timeoutId=setTimeout(()=>{
         onDone&&onDone();
       },8000);
-      
       return()=>{
         clearTimeout(timeoutId);
         clearTimeout(textTimer1);
@@ -32,32 +28,29 @@ function GodResurrectionAnim({onDone}){
       };
     }
   },[onDone]);
-  
   // 文字颜色根据阶段变化
   const getTitleColor = () => {
     if (textPhase === 0) return '#1a0a0a';
     if (textPhase === 1) return '#5a1a1a';
     return '#c01030';
   };
-  
   const getSubtitleColor = () => {
     if (textPhase === 0) return '#0a0505';
     if (textPhase === 1) return '#3a1010';
     return '#e03050';
   };
-  
   return(
-    <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
+    <div className="toe-win-scene" style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
       alignItems:'center',justifyContent:'center',
       background:'rgba(0,0,0,0.95)',
       backdropFilter:'blur(2px)',
       animation:'animFadeIn 0.35s ease-out'}}>
       {/* 视频背景 */}
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-        <video 
+        <video
           id="god-resurrection-video"
-          src={buildPublicUrl('/videos/ancient_god_tentacles.mp4')} 
-          autoPlay 
+          src={buildPublicUrl('/videos/ancient_god_tentacles.mp4')}
+          autoPlay
           muted
           playsInline
           style={{
@@ -68,13 +61,12 @@ function GodResurrectionAnim({onDone}){
           }}
         />
       </div>
-      
       {/* 文字叠加 */}
       <div style={{position:'relative',zIndex:1,textAlign:'center',animation:'animFadeIn 0.5s 0.1s both'}}>
-        <div 
+        <div
           className={textPhase === 2 ? 'blood-drip-text' : ''}
           style={{
-            fontFamily:"'Cinzel Decorative','Cinzel',serif",
+            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
             fontSize:48,
             fontWeight:700,
             letterSpacing:4,
@@ -96,8 +88,8 @@ function GodResurrectionAnim({onDone}){
           )}
         </div>
         <div style={{
-          fontFamily:"'IM Fell English','Georgia',serif",
-          fontStyle:'italic',
+          fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+          fontStyle:'normal',
           color:getSubtitleColor(),
           fontSize:20,
           letterSpacing:1,
@@ -218,24 +210,24 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   return(
     <>
       {flashing&&(
-        <FullscreenLightLayer style={{background:'rgba(255,240,200,0.92)'}} />
+        <FullscreenLightLayer style={{background:'rgba(210,195,155,0.38)'}} />
       )}
-      <div style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
+      <div className="toe-win-scene" style={{position:'fixed',inset:0,zIndex:4000,display:'flex',flexDirection:'column',
         alignItems:'center',justifyContent:'center',
-        background:flashing?'rgba(255,240,200,0.92)':'rgba(4,3,1,0.92)',
+        backgroundColor:flashing?'rgba(210,195,155,0.38)':'rgba(4,3,1,0.94)',
         backdropFilter:'blur(2px)',transition:'background 0.35s ease',
         animation:'animFadeIn 0.35s ease-out'}}>
       <div style={{textAlign:'center',marginBottom:22,animation:'animFadeIn 0.5s 0.1s both'}}>
-        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:22,fontWeight:700,
-          letterSpacing:4,color:'#c8a96e',textShadow:'0 0 40px #c8a96e88',marginBottom:6}}>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,fontWeight:700,
+          letterSpacing:4,color:'#d8c8a5',textShadow:'0 2px 8px #000',marginBottom:6}}>
           ✦ 藏宝图已完整 ✦
         </div>
-        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal',
           color:'#b89858',fontSize:13,letterSpacing:1}}>
           遗迹的秘密，尽在掌中
         </div>
         {subtitle&&(
-          <div style={{fontFamily:"'Cinzel',serif",color:'#e8c87a',fontSize:14,letterSpacing:2,
+          <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",color:'#e8c87a',fontSize:14,letterSpacing:2,
             marginTop:10,textShadow:'0 0 20px #c8a96e66',animation:'animFadeIn 0.6s 0.3s both'}}>
             {subtitle}
           </div>
@@ -273,7 +265,7 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
         })}
         {/* Treasure map revealed */}
         {mapRevealed&&(
-          <div style={{
+          <div className="toe-treasure-map" style={{
             position:'absolute',inset:0,borderRadius:8,
             background:'linear-gradient(135deg,#3a2508 0%,#6b4010 35%,#8b5a18 55%,#5a3808 80%,#2a1804 100%)',
             border:'2px solid #c8a96e',
@@ -289,11 +281,11 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
               border:'1px solid #c8a96e44',borderRadius:4,pointerEvents:'none'}}/>
             <div style={{fontSize:48,opacity:0.6,color:'#c8a96e',
               filter:'drop-shadow(0 0 10px #c8a96eaa)',marginBottom:6}}>✦</div>
-            <div style={{fontFamily:"'Cinzel',serif",fontSize:11,color:'#c8a96e',
+            <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:11,color:'#c8a96e',
               letterSpacing:3,opacity:0.8}}>TREASURE MAP</div>
             <div style={{marginTop:10,display:'flex',gap:5,flexWrap:'wrap',justifyContent:'center'}}>
               {['A1','B2','C3','D4'].map(k=>(
-                <div key={k} style={{fontFamily:"'Cinzel',serif",fontSize:9,color:'#8a6020',
+                <div key={k} style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:9,color:'#8a6020',
                   border:'1px solid #6a4010',borderRadius:2,padding:'1px 5px',background:'#1a0e04'}}>
                   {k}
                 </div>
@@ -304,21 +296,19 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
       </div>
       {btnVisible&&waitingLabel&&(
         <div style={{padding:'12px 44px',background:'#140d06',border:'2px solid #6a5230',
-          color:'#b89858',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
+          color:'#b89858',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:14,
           borderRadius:2,letterSpacing:3,
           boxShadow:'0 0 24px #c8a96e33',animation:'animPop 0.35s ease-out'}}>
           {waitingLabel}
         </div>
       )}
       {btnVisible&&!waitingLabel&&autoConfirmMs==null&&(
-        <button onClick={onConfirm}
-          style={{padding:'12px 44px',background:'#1c1008',border:'2px solid #c8a96e',
-            color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:14,
-            borderRadius:2,cursor:'pointer',letterSpacing:3,textTransform:'uppercase',
-            boxShadow:'0 0 30px #c8a96e55',animation:'animPop 0.35s ease-out',
+        <button className="toe-button toe-button-primary" onClick={onConfirm}
+          style={{padding:'12px 44px',
+            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:14,
+            cursor:'pointer',letterSpacing:3,
+            animation:'animPop 0.35s ease-out',
             transition:'all .2s'}}
-          onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 50px #c8a96e88';}}
-          onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 30px #c8a96e55';}}
         >✦ 宣布胜利{confirmCountdownSec!=null&&countdown!=null?`（${countdown}）`:''}</button>
       )}
       </div>
@@ -343,17 +333,17 @@ function RoleRevealAnim({role,onDone}){
     return()=>{clearTimeout(t1);clearTimeout(t2);};
   },[]);
   return(
-    <div style={{position:'fixed',inset:0,zIndex:3000,background:'linear-gradient(160deg,#060402 0%,#0e0804 100%)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',animation:'animFadeIn 0.3s ease-out'}}>
+    <div className="toe-win-scene" style={{position:'fixed',inset:0,zIndex:3000,backgroundColor:'#060b0a',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',animation:'animFadeIn 0.3s ease-out'}}>
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at center,transparent 35%,#000000bb 100%)',pointerEvents:'none'}}/>
-      <div style={{position:'relative',zIndex:1,textAlign:'center'}}>
+      <div className="toe-role-reveal" style={{position:'relative',zIndex:1,textAlign:'center'}}>
         {/* Line 1 */}
-        <div style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:26,fontWeight:700,letterSpacing:6,color:'#c8a96e',marginBottom:22,textShadow:'0 0 40px #c8a96e55',animation:'animFadeIn 0.5s 0.15s both'}}>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,fontWeight:700,letterSpacing:6,color:'#c8a96e',marginBottom:22,textShadow:'0 0 40px #c8a96e55',animation:'animFadeIn 0.5s 0.15s both'}}>
           探索开始
         </div>
         <div style={{width:180,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 26px',animation:'animFadeIn 0.5s 0.3s both'}}/>
         {/* Line 2: label + slot */}
         <div style={{display:'flex',alignItems:'center',justifyContent:'center',gap:10,animation:'animFadeIn 0.5s 0.4s both'}}>
-          <span style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:'#b89858',fontSize:14,whiteSpace:'nowrap'}}>
+          <span style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal',color:'#b89858',fontSize:14,whiteSpace:'nowrap'}}>
             你本局的身份：
           </span>
           {/* Slot window */}
@@ -367,7 +357,7 @@ function RoleRevealAnim({role,onDone}){
                 const rr=RINFO[r];
                 const isTarget=i===BEFORE;
                 return(
-                  <div key={i} style={{height:ITEM_H,display:'flex',alignItems:'center',justifyContent:'center',gap:5,fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:15,letterSpacing:1,color:isTarget?ri.col:'#3a2810',textShadow:isTarget?`0 0 18px ${ri.col}99`:'none'}}>
+                  <div key={i} style={{height:ITEM_H,display:'flex',alignItems:'center',justifyContent:'center',gap:5,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:15,letterSpacing:1,color:isTarget?ri.col:'#3a2810',textShadow:isTarget?`0 0 18px ${ri.col}99`:'none'}}>
                     <span>{rr.icon}</span><span>{r}</span>
                   </div>
                 );

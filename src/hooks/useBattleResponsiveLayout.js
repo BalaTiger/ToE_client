@@ -44,7 +44,10 @@ export function buildBattleResponsiveLayout(vw, vh) {
   });
   const fontSizes = scaleFontSet(baseFontSizes);
   const interactionFontSizes = scaleFontSet(interactionBaseFontSizes);
-  const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : 282;
+  // Reserve room for the player row, action bar, and full-ratio hand cards with
+  // their captions. The central piles can shrink without shrinking hand text.
+  const desktopMiddleRowHeight = Math.max(166, Math.min(282, vh / scaleRatio - 550));
+  const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : desktopMiddleRowHeight;
   const desktopBoardScaleRatio = scaleRatio < 1 ? Math.sqrt(scaleRatio) : scaleRatio;
 
   return {

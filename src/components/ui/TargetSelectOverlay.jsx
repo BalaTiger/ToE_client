@@ -52,11 +52,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 102, pointerEvents: 'none',
       }}>
-        <div style={{
-          background: 'rgba(10,6,2,0.93)',
-          border: `1.5px solid ${s ? s.borderBright : '#5a3010'}`,
+        <div className="toe-dialog" data-ui-dialog="target-select" style={{
           borderRadius: 4, padding: '18px 28px',
-          boxShadow: `0 0 40px ${s ? s.glow + '66' : '#3a201044'}, 0 0 80px #000a`,
           textAlign: 'center', minWidth: 260, maxWidth: 340,
         }}>
           {card && (

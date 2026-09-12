@@ -1,4 +1,5 @@
 import { buildPublicUrl } from '../utils/url';
+import { INTERFACE_STYLES } from './ui/interfaceStyles';
 import { DAMAGE_LINK_ANIMATION_STYLES } from './anim/damageLinkStyles';
 import { EARTHQUAKE_ANIMATION_STYLES } from './anim/earthquakeStyles';
 import { MOVE_ANIMATION_STYLES } from './anim/moveStyles';
@@ -13,6 +14,7 @@ import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './anim/endlessCorridorStyles'
 
 export const GLOBAL_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap');
+  ${INTERFACE_STYLES}
   * { box-sizing:border-box; scrollbar-width:thin; scrollbar-color:var(--toe-line,#3a2510) var(--toe-bg,#0a0705); }
   ::-webkit-scrollbar{width:5px;height:5px;}
   ::-webkit-scrollbar-track{background:var(--toe-bg,#0a0705);}

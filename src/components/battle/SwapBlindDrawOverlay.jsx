@@ -12,15 +12,15 @@ export function SwapBlindDrawOverlay({
   if (!swapBlindDraw) return null;
 
   return (
-    <div style={{
+    <div className="toe-blind-draw" style={{
       position: 'fixed', inset: 0, zIndex: 550,
-      background: 'rgba(5,3,1,0.88)',
+      backgroundColor: 'rgba(5,3,1,0.88)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: Math.max(18, swapBlindCardLayout.gap * 2),
       animation: 'animFadeIn 0.25s ease both',
     }}>
-      <div style={{
-        fontFamily: "'Cinzel',serif", color: '#c8a96e', fontSize: swapBlindCardLayout.titleFontSize, letterSpacing: 2, textAlign: 'center',
-        textShadow: '0 0 20px rgba(200,169,110,0.3)',
+      <div className="toe-blind-draw-title" style={{
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#c8a96e', fontSize: swapBlindCardLayout.titleFontSize, letterSpacing: 2, textAlign: 'center',
+        textShadow: '0 2px 4px #000',
         maxWidth: '92vw',
       }}>
         从 {targetName} 的手牌中暗抽一张
@@ -84,6 +84,7 @@ export function SwapBlindDrawOverlay({
                   card={card}
                   holderId={swapBlindDraw.targetPi}
                   frameStyle={{
+                    height: '100%',
                     transform: `scale(${swapBlindCardLayout.scale})`,
                     transformOrigin: 'top left',
                   }}
@@ -104,21 +105,21 @@ export function SwapBlindDrawOverlay({
               </div>
               {isSelecting && isFaceUp && <div style={{
                 position: 'absolute', bottom: -Math.max(20, Math.round(swapBlindCardLayout.height * 0.22)), left: '50%', transform: 'translateX(-50%)',
-                fontSize: swapBlindCardLayout.nameFontSize, color: '#c8a96e', fontFamily: "'Cinzel',serif",
+                fontSize: swapBlindCardLayout.nameFontSize, color: '#c8a96e', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                 whiteSpace: 'nowrap', pointerEvents: 'none', opacity: 0.8,
               }}>{card.name}</div>}
             </div>
           );
         })}
       </div>
-      {swapBlindDraw.phase === 'selecting' && <div style={{
-        fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic',
-        color: '#7a5a2a', fontSize: swapBlindCardLayout.hintFontSize, letterSpacing: 1,
+      {swapBlindDraw.phase === 'selecting' && <div className="toe-blind-draw-title" style={{
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal',
+        color: '#b8aa8d', fontSize: swapBlindCardLayout.hintFontSize, letterSpacing: 1,
         animation: 'animFadeIn 0.4s ease 0.6s both',
       }}>点击一张牌进行暗抽</div>}
-      {swapBlindDraw.phase === 'shuffling' && <div style={{
-        fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic',
-        color: '#5a4020', fontSize: swapBlindCardLayout.hintFontSize, letterSpacing: 1,
+      {swapBlindDraw.phase === 'shuffling' && <div className="toe-blind-draw-title" style={{
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal',
+        color: '#a99b80', fontSize: swapBlindCardLayout.hintFontSize, letterSpacing: 1,
       }}>洗牌中…</div>}
     </div>
   );

@@ -910,19 +910,19 @@ function CaveDuelAnim({anim,exiting}){
       background:'radial-gradient(circle at 50% 45%, rgba(40,24,8,0.25), rgba(0,0,0,0.78))',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
     }}>
-      <div style={{position:'absolute',left:'50%',top:'14%',transform:'translateX(-50%)',textAlign:'center'}}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:16,letterSpacing:3,color:'#d8b66a',textShadow:'0 0 12px #d8b66a88'}}>── 穴居人战争 ──</div>
-        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:13,color:'#c8a96e',marginTop:8,opacity:.92}}>{winnerLabel}</div>
+      <div className="toe-dialog" style={{position:'absolute',left:'50%',top:'14%',transform:'translateX(-50%)',textAlign:'center',padding:'14px 24px'}}>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:16,letterSpacing:3,color:'#d8b66a',textShadow:'0 1px 3px #000'}}>穴居人战争</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal',fontSize:13,color:'#c8a96e',marginTop:8,opacity:.92}}>{winnerLabel}</div>
       </div>
       <div style={{position:'absolute',left:pts.centerX-70,top:pts.centerY-10,width:140,height:56,borderRadius:'50%',background:'radial-gradient(circle, #2c1a0acc 0%, #12090400 72%)',filter:'blur(4px)',opacity:.85}}/>
       <div style={makeStyle(srcFromX,srcFromY,-56,-10,srcToX,srcToY,0)}>
-        <DDCard card={sourceCard} compact/>
+        <DDCard card={sourceCard} compact frameStyle={{height:'100%'}}/>
       </div>
       <div style={makeStyle(tgtFromX,tgtFromY,56,-10,tgtToX,tgtToY,0.04)}>
-        <DDCard card={targetCard} compact/>
+        <DDCard card={targetCard} compact frameStyle={{height:'100%'}}/>
       </div>
-      <div style={{position:'absolute',left:pts.centerX-118,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"'Cinzel',serif",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .9s forwards'}}>{srcNum}</div>
-      <div style={{position:'absolute',left:pts.centerX+26,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"'Cinzel',serif",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .95s forwards'}}>{tgtNum}</div>
+      <div style={{position:'absolute',left:pts.centerX-118,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .9s forwards'}}>{srcNum}</div>
+      <div style={{position:'absolute',left:pts.centerX+26,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .95s forwards'}}>{tgtNum}</div>
       <div style={{position:'absolute',left:'50%',top:`${pts.centerY+48}px`,transform:'translateX(-50%)',fontSize:34,opacity:0,animation:'caveDuelVsPop 1s ease-out .82s forwards'}}>⚔</div>
       {winnerIdx!=null&&(
         <div style={{
@@ -932,8 +932,9 @@ function CaveDuelAnim({anim,exiting}){
           fontSize:28,
           opacity:0,
           animation:'caveDuelDancePop 1.1s ease-out 1.38s forwards',
-          filter:'drop-shadow(0 0 10px #f0d080aa)',
-        }}>🕺</div>
+          color:'#d8c392',
+          filter:'drop-shadow(0 0 6px #c0a26d66)',
+        }}>✦</div>
       )}
     </div>
   );

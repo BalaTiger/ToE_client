@@ -3,8 +3,8 @@ import { getFontZoomCompensate } from '../../utils/scale';
 
 function TimerText({ label, seconds, color }) {
   return (
-    <div style={{
-      fontFamily: "'Cinzel',serif",
+    <div className="toe-phase-timer" style={{
+      fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
       fontSize: 11,
       color,
       letterSpacing: 1,
@@ -47,8 +47,8 @@ export function BattlePhaseBar({
   const fontZoom = getFontZoomCompensate(scaleRatio);
 
   return (
-    <div style={{
-      background: 'var(--toe-panel,#120900)',
+    <div className="toe-battle-panel toe-phase-bar" style={{
+      backgroundColor: 'var(--toe-panel,#120900)',
       border: `1px solid ${myTurn && !['AI_TURN'].includes(phase) ? 'var(--toe-line,#5a3010)' : 'var(--toe-line-dim,#2a1a08)'}`,
       borderRadius: 3,
       padding: isMobile ? `${5 * fontZoom}px ${10 * fontZoom}px` : '7px 14px',
@@ -60,7 +60,7 @@ export function BattlePhaseBar({
     }}>
       <div style={{
         flex: 1,
-        fontFamily: "'Cinzel',serif",
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
         color: isPhaseWarningText && !isSpectating ? warning : displayPhaseLabel ? active : muted,
         fontSize: baseFontSizes.body,
         letterSpacing: isMobile ? 0.5 : 1,

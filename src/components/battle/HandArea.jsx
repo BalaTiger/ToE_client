@@ -68,9 +68,10 @@ export function HandArea({
   return (
     <div
       ref={handAreaRef}
+      className="toe-battle-panel toe-hand-area"
       data-hand-area
       style={{
-        background: 'var(--toe-panel,#120900)',
+        backgroundColor: 'var(--toe-panel,#120900)',
         border: `1.5px solid ${myTurn ? 'var(--toe-line,#3a2010)' : 'var(--toe-line-dim,#2a1a08)'}`,
         borderRadius: 3,
         padding: isMobile
@@ -82,7 +83,7 @@ export function HandArea({
         overflow: 'visible',
       }}
     >
-      <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.26} style={{ height: '100%' }} />
+      <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.12} style={{ height: '100%' }} />
       <div
         style={{
           display: 'flex',
@@ -93,7 +94,7 @@ export function HandArea({
       >
         <span
           style={{
-            fontFamily: "'Cinzel',serif",
+            fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
             color:
               !isSpectating && (isDiscardPhasePromptActive || phase === 'PLAYER_REVEAL_FOR_HUNT' || isLocalHuntRevealPrompt)
                 ? promptWarningTextColor
@@ -135,22 +136,16 @@ export function HandArea({
                 return (
                   <>
                     {hasBgy && showTutorialMultiplyButton && (
-                      <button
+                      <button className="toe-button"
                         onClick={() => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
                         disabled={multiplyLimited}
                         style={{
                           padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 14px',
-                          background: multiplyLimited ? '#130a04' : '#0e1a0e',
-                          border: `1.5px solid ${multiplyLimited ? 'var(--toe-line-dim,#2a1a08)' : '#2a5a2a'}`,
-                          color: multiplyLimited ? 'var(--toe-line,#3a2510)' : '#4ade80',
-                          fontFamily: "'Cinzel',serif",
+                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                           fontWeight: 700,
                           fontSize: interactionFontSizes.body,
-                          borderRadius: 2,
                           cursor: multiplyLimited ? 'not-allowed' : 'pointer',
                           letterSpacing: isMobile ? 0.5 : 1,
-                          boxShadow: multiplyLimited ? 'none' : '0 0 10px #4ade8044',
-                          textTransform: 'uppercase',
                           opacity: multiplyLimited ? 0.4 : 1,
                         }}
                       >
@@ -159,23 +154,17 @@ export function HandArea({
                       </button>
                     )}
                     {showTutorialSkillButton && (
-                      <button
+                      <button className="toe-button toe-button-primary"
                         ref={skillButtonRef}
                         onClick={useAbility}
                         disabled={skillRestLimited}
                         style={{
                           padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 16px',
-                          background: '#1c1208',
-                          border: `1.5px solid ${skillRestLimited ? 'var(--toe-line,#3a2510)' : skillRi.col}`,
-                          color: skillRestLimited ? 'var(--toe-line,#3a2510)' : skillRi.col,
-                          fontFamily: "'Cinzel',serif",
+                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                           fontWeight: 700,
                           fontSize: interactionFontSizes.body,
-                          borderRadius: 2,
                           cursor: skillRestLimited ? 'not-allowed' : 'pointer',
                           letterSpacing: isMobile ? 0.5 : 1,
-                          boxShadow: skillRestLimited ? 'none' : `0 0 10px ${skillRi.col}44`,
-                          textTransform: 'uppercase',
                           opacity: skillRestLimited ? 0.4 : 1,
                           position: 'relative',
                         }}
@@ -189,23 +178,17 @@ export function HandArea({
                       </button>
                     )}
                     {showTutorialRestButton && (
-                      <button
+                      <button className="toe-button toe-button-primary"
                         ref={restButtonRef}
                         onClick={doRest}
                         disabled={restLimited}
                         style={{
                           padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 14px',
-                          background: restLimited ? '#130a04' : '#0e1a0e',
-                          border: `1.5px solid ${restLimited ? 'var(--toe-line-dim,#2a1a08)' : '#2a5a2a'}`,
-                          color: restLimited ? 'var(--toe-line,#3a2510)' : '#4ade80',
-                          fontFamily: "'Cinzel',serif",
+                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                           fontWeight: 700,
                           fontSize: interactionFontSizes.body,
-                          borderRadius: 2,
                           cursor: restLimited ? 'not-allowed' : 'pointer',
                           letterSpacing: isMobile ? 0.5 : 1,
-                          boxShadow: restLimited ? 'none' : '0 0 10px #4ade8044',
-                          textTransform: 'uppercase',
                           opacity: restLimited ? 0.4 : 1,
                         }}
                       >
@@ -218,20 +201,15 @@ export function HandArea({
                       </button>
                     )}
                     {canShowEndTurnButton && (
-                      <button
+                      <button className="toe-button"
                         onClick={endTurn}
                         style={{
                           padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 16px',
-                          background: 'var(--toe-panel,#180e08)',
-                          border: '1.5px solid var(--toe-line,#3a2510)',
-                          color: 'var(--toe-muted,#a07838)',
-                          fontFamily: "'Cinzel',serif",
+                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                           fontWeight: 700,
                           fontSize: interactionFontSizes.body,
-                          borderRadius: 2,
                           cursor: 'pointer',
                           letterSpacing: isMobile ? 0.5 : 1,
-                          textTransform: 'uppercase',
                         }}
                       >
                         结束回合
@@ -241,19 +219,19 @@ export function HandArea({
                 );
               })()}
             {showCancelBtn && (
-              <button onClick={cancelAction} style={getButtonStyle({ enabled: true })}>
+              <button className="toe-button" onClick={cancelAction} style={getButtonStyle({ enabled: true })}>
                 ✕ 取消
               </button>
             )}
             {phase === 'HUNT_CONFIRM' && !isScriptedTutorial && decisionContext?.localCanAct && !anim && (
-              <button onClick={() => huntConfirm(-1)} style={getButtonStyle({ enabled: true })}>
+              <button className="toe-button" onClick={() => huntConfirm(-1)} style={getButtonStyle({ enabled: true })}>
                 ✕ 放弃追捕
               </button>
             )}
           </div>
         )}
         {phase === 'DISCARD_PHASE' && !isDiscardPhaseResolving && isLocalCurrentTurn(gs) && !isBlocked && (
-          <button
+          <button className="toe-button toe-button-danger"
             onClick={confirmDiscard}
             disabled={!(gs.abilityData.discardSelected || []).length}
             style={getButtonStyle({ enabled: !!(gs.abilityData.discardSelected || []).length, tone: 'danger', marginLeft: 'auto' })}
@@ -262,7 +240,7 @@ export function HandArea({
           </button>
         )}
         {phase === 'BURY_ALIVE_SELECT' && canPlayerRespondWithAnyHandCard() && (
-          <button
+          <button className="toe-button"
             onClick={confirmBuryAliveSelection}
             disabled={gs.abilityData?.buryAliveSelectedIndex == null}
             style={getButtonStyle({ enabled: gs.abilityData?.buryAliveSelectedIndex != null, marginLeft: 'auto' })}
@@ -271,7 +249,7 @@ export function HandArea({
           </button>
         )}
         {phase === 'IGNITE_TORCH_DISCARD' && canPlayerRespondWithAnyHandCard() && (
-          <button
+          <button className="toe-button toe-button-danger"
             onClick={confirmIgniteTorchDiscard}
             disabled={gs.abilityData?.igniteTorchSelectedIndex == null}
             style={getButtonStyle({ enabled: gs.abilityData?.igniteTorchSelectedIndex != null, tone: 'danger', marginLeft: 'auto' })}
@@ -335,7 +313,7 @@ export function HandArea({
                     top: -7,
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    fontFamily: "'Cinzel',serif",
+                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                     fontSize: 8,
                     color: '#c8a96e',
                     background: '#0a0705',
@@ -357,7 +335,7 @@ export function HandArea({
                     top: -7,
                     left: '50%',
                     transform: 'translateX(-50%)',
-                    fontFamily: "'Cinzel',serif",
+                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                     fontSize: 8,
                     color: '#b080e0',
                     background: '#0a0412',
@@ -376,7 +354,7 @@ export function HandArea({
           );
         })}
         {visualMe.hand.length === 0 && (
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#7a5a2a', fontSize: 13, padding: '22px 10px' }}>
+          <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#7a5a2a', fontSize: 13, padding: '22px 10px' }}>
             手中空空如也
           </div>
         )}

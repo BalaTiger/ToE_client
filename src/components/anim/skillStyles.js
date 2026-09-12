@@ -40,13 +40,13 @@ export const SKILL_ANIMATION_STYLES = `
   }
   @keyframes bewitchEyePulse {
     0%  {transform:scale(1);opacity:1}
-    50% {transform:scale(1.45);opacity:0.9;filter:drop-shadow(0 0 22px rgba(220,110,255,1)) drop-shadow(0 0 40px rgba(180,60,255,0.8))}
+    50% {transform:scale(1.18);opacity:0.9;filter:drop-shadow(0 0 22px rgba(195,172,215,0.7)) drop-shadow(0 0 40px rgba(150,121,173,0.45))}
     100%{transform:scale(1);opacity:1}
   }
   @keyframes bewitchEyeGhost {
     0%  {transform:scale(1);   opacity:0}
     8%  {transform:scale(1.05);opacity:0.80}
     30% {transform:scale(1.8); opacity:0.55}
-    100%{transform:scale(4.5); opacity:0}
+    100%{transform:scale(3.2); opacity:0}
   }
 `;

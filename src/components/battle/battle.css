@@ -1,0 +1,75 @@
+.toe-battle-panel {
+  position: relative;
+  background-image: linear-gradient(145deg, rgba(7, 13, 13, .88), rgba(7, 9, 9, .95)), var(--toe-ui-surface-image, none);
+  background-size: auto, 520px auto;
+  box-shadow: inset 0 0 0 1px rgba(192, 166, 115, .07), 0 5px 16px rgba(0, 0, 0, .22);
+}
+
+.toe-battle-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-image: var(--toe-ui-frame-image, none) 48 / 10px stretch;
+  opacity: .48;
+  pointer-events: none;
+}
+
+.toe-player-panel {
+  background-color: var(--toe-panel, #0b100f) !important;
+  border-radius: 2px !important;
+}
+
+.toe-player-panel[data-current-turn="true"] {
+  background-image: linear-gradient(145deg, rgba(20, 27, 24, .88), rgba(7, 12, 12, .94)), var(--toe-ui-surface-image, none);
+}
+
+.toe-battle-header { min-width: 0; }
+.toe-battle-header button, .toe-hand-area button { text-shadow: 0 1px 2px #000; }
+.toe-hand-area { background-position: center; }
+.toe-hand-area > [data-self-hand-strip] { padding-top: 4px; }
+.toe-phase-bar { box-shadow: inset 3px 0 0 var(--toe-line, #796749), inset 0 1px 0 rgba(192, 166, 115, .08); }
+.toe-phase-timer { border: 1px solid currentColor; padding: 3px 8px; font-variant-numeric: tabular-nums; }
+.toe-log-heading { border-bottom: 1px solid var(--toe-line-dim, #3a3527); padding-bottom: 6px; }
+.toe-log-line { text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
+.toe-log-line[data-turn-heading="true"] { margin-top: 7px; padding-top: 5px; border-top: 1px solid rgba(173, 152, 109, .16); }
+.toe-stat-track { box-shadow: inset 0 1px 4px #000; }
+.toe-stat-track::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 1px), rgba(3, 5, 5, .24) calc(10% - 1px), rgba(3, 5, 5, .24) 10%);
+  pointer-events: none;
+}
+.toe-stat-fill { background-image: linear-gradient(180deg, rgba(240, 222, 190, .12), transparent 45%, rgba(0, 0, 0, .18)) !important; }
+.toe-stat-value { font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+.toe-role-selection { width: min(540px,92vw); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 28px 26px; }
+.toe-role-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.toe-battle-role-choice { --toe-option-accent: var(--toe-role-accent); }
+.toe-battle-role-choice:hover, .toe-battle-role-choice:focus-visible { border-color: var(--toe-role-accent) !important; }
+.toe-battle-role-choice:focus-visible { outline: 2px solid var(--toe-role-accent); outline-offset: 3px; }
+.toe-battle-role-choice small { color: #c2b494; }
+.toe-discard-gallery { border: 1px solid var(--toe-line, #796749); padding: 22px; box-sizing: border-box; }
+.toe-emoji-picker { background-image: linear-gradient(rgba(8, 14, 13, .88), rgba(8, 14, 13, .94)), var(--toe-ui-surface-image, none); }
+.toe-blind-draw { background-image: radial-gradient(ellipse at center, rgba(8, 22, 21, .45), rgba(2, 6, 6, .6)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-blind-draw-title { border-top: 1px solid #6d614a; border-bottom: 1px solid #6d614a; padding: 14px 24px; }
+.toe-dice-scene { background-image: radial-gradient(ellipse at center, rgba(31, 35, 27, .36), rgba(2, 6, 6, .84)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-dice-label { color: #d3c39f !important; font-size: 14px !important; border-bottom: 1px solid #62573f; padding: 0 20px 14px; text-align: center; }
+.toe-dice-tray { padding: 24px 36px; border: 1px solid #655c45; background: radial-gradient(ellipse at center, rgba(39, 46, 39, .5), rgba(3, 10, 10, .8)); box-shadow: inset 0 0 0 5px #090e0d, inset 0 0 0 6px #403e2f, 0 12px 40px #0009; }
+.toe-dice-result { min-width: min(380px, 84vw); padding: 14px 18px; border-top: 1px solid #655c45; }
+.toe-turn-title { border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; padding: .24em 1.2em .3em; }
+.toe-win-scene { background-image: radial-gradient(ellipse at center, transparent 10%, rgba(2, 6, 6, .6)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-treasure-map { background-image: linear-gradient(145deg, rgba(83, 75, 47, .8), rgba(25, 28, 21, .9)), var(--toe-ui-surface-image, none) !important; }
+.toe-role-reveal { padding: 32px 44px; border-top: 1px solid #75674c; border-bottom: 1px solid #75674c; background: rgba(6, 12, 11, .82); }
+
+@media (min-width: 580px) and (max-height: 580px) {
+  .toe-role-selection { width: min(840px,92vw); padding: 20px; }
+  .toe-role-options { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+}
+
+@media (max-width: 580px) {
+  .toe-battle-header > div:nth-child(2) { display: none; }
+  .toe-dice-tray { padding: 18px 28px; }
+  .toe-discard-gallery { padding: 16px 10px; }
+  .toe-role-reveal { padding: 24px 18px; }
+}

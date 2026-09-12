@@ -1,5 +1,6 @@
 import React from 'react';
-import { ANIM_CFG, DICE_FACES } from './data';
+import { ANIM_CFG } from './data';
+import { DiceFace } from './DiceFace';
 import { EarthquakeOverlay } from './EarthquakeOverlay';
 import { CardFaceImage } from '../cards';
 
@@ -134,18 +135,14 @@ export function VritraImmortalRevealOverlay({ anim, exiting }) {
         inset: 0,
         boxShadow: `inset 0 0 150px ${success ? '#c0402055' : '#80180866'}`,
       }} />
-      <div style={{
+      <div className="toe-dialog" style={{
         position: 'relative',
         width: 'min(880px, 92vw)',
         padding: '26px 28px 24px',
-        border: '1.5px solid rgba(192,64,32,0.62)',
-        borderRadius: 6,
-        background: 'linear-gradient(180deg, rgba(28,8,5,0.94), rgba(10,4,2,0.92))',
-        boxShadow: '0 0 34px rgba(192,64,32,0.35), inset 0 0 26px rgba(192,64,32,0.12)',
         textAlign: 'center',
       }}>
         <div style={{
-          fontFamily: "'Cinzel',serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           fontWeight: 800,
           color: titleColor,
           fontSize: 19,
@@ -155,10 +152,10 @@ export function VritraImmortalRevealOverlay({ anim, exiting }) {
           marginBottom: 7,
         }}>弗栗多翻牌公示</div>
         <div style={{
-          fontFamily: "'IM Fell English','Georgia',serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           color: '#d9b06f',
           fontSize: 13,
-          fontStyle: 'italic',
+          fontStyle: 'normal',
           letterSpacing: 1,
           marginBottom: 18,
         }}>
@@ -187,7 +184,7 @@ export function VritraImmortalRevealOverlay({ anim, exiting }) {
               />
             </div>
           )) : (
-            <div style={{ color: '#8a6040', fontFamily: "'Cinzel',serif", fontSize: 13, alignSelf: 'center' }}>牌堆没有可翻开的牌</div>
+            <div style={{ color: '#8a6040', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, alignSelf: 'center' }}>牌堆没有可翻开的牌</div>
           )}
         </div>
         <div style={{
@@ -197,7 +194,7 @@ export function VritraImmortalRevealOverlay({ anim, exiting }) {
           border: `1px solid ${success ? '#c8a96e66' : '#d05a4066'}`,
           background: success ? 'rgba(64,38,12,0.5)' : 'rgba(62,12,8,0.54)',
           color: success ? '#f0d28a' : '#ff9a82',
-          fontFamily: "'Cinzel',serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           fontWeight: 700,
           fontSize: 13,
           letterSpacing: 2,
@@ -229,25 +226,24 @@ export function GenericAnimOverlay({ anim, exiting }) {
       {cfg.vig && <div style={{ position: 'absolute', inset: 0, boxShadow: `inset 0 0 120px ${cfg.accent}55`, animation: 'animVig 0.6s ease-in-out', pointerEvents: 'none' }} />}
 
       <div style={{
-        fontSize: 80, lineHeight: 1, marginBottom: 12,
-        textShadow: `0 0 40px ${cfg.accent}, 0 0 80px ${cfg.accent}66`,
+        fontSize: 64, lineHeight: 1, marginBottom: 16,
+        textShadow: `0 2px 6px #000, 0 0 18px ${cfg.accent}66`,
         animation: cfg.shake ? 'animShake 0.45s ease-in-out' : 'animPop 0.4s ease-out',
-        filter: `drop-shadow(0 0 20px ${cfg.accent})`,
+        filter: `drop-shadow(0 0 8px ${cfg.accent}66)`,
       }}>{cfg.icon}</div>
       <div style={{
-        fontFamily: "'Cinzel',serif", fontWeight: 700, letterSpacing: 5, fontSize: 20,
-        color: cfg.accent, textShadow: `0 0 24px ${cfg.accent}`,
+        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontWeight: 700, letterSpacing: 5, fontSize: 20,
+        color: cfg.accent, textShadow: '0 2px 5px #000',
         marginBottom: 18, textTransform: 'uppercase',
       }}>{cfg.title}</div>
       {msgs.length > 0 && (
-        <div style={{
-          background: 'rgba(0,0,0,0.6)', border: `1px solid ${cfg.accent}44`, borderRadius: 4,
-          padding: '10px 24px', maxWidth: 380, textAlign: 'center',
+        <div className="toe-dialog" style={{
+          padding: '18px 24px', maxWidth: 380, textAlign: 'center',
         }}>
           {msgs.map((m, i) => (
             <div key={i} style={{
-              fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic',
-              color: '#c8a96e', fontSize: 12.5, lineHeight: 1.8, opacity: 0.9,
+              fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal',
+              color: '#c8a96e', fontSize: 14, lineHeight: 1.8, opacity: 0.95,
             }}>{m}</div>
           ))}
         </div>
@@ -287,8 +283,8 @@ export function DiceRollAnim({ anim, exiting }) {
     if (settled && anim.onSettled) anim.onSettled();
   }, [settled, anim]);
   const signatureSeed = Array.from(rollSignature).reduce((sum, char) => (sum + char.charCodeAt(0)) % 6, 0);
-  const face1 = settled ? DICE_FACES[d1 - 1] : DICE_FACES[(signatureSeed + frame * 5) % 6];
-  const face2 = settled ? DICE_FACES[d2 - 1] : DICE_FACES[(signatureSeed + frame * 3 + 2) % 6];
+  const face1 = settled ? d1 : (signatureSeed + frame * 5) % 6 + 1;
+  const face2 = settled ? d2 : (signatureSeed + frame * 3 + 2) % 6 + 1;
   const winner = Math.max(d1, d2);
   const isDodgeRoll = d2 === 0;
   const isApophisRoll = anim.diceMode === 'apophisNight';
@@ -298,86 +294,86 @@ export function DiceRollAnim({ anim, exiting }) {
   const moldyEven = isMoldyFoodRoll && (d1 % 2 === 0);
   const moldyNegativeAvoided = isMoldyFoodRoll && !moldyEven && !!anim.negativeAvoided;
   return (
-    <div style={{
-      position: 'fixed', inset: 0, zIndex: 999, background: 'rgba(4,2,0,0.94)',
+    <div className="toe-dice-scene" style={{
+      position: 'fixed', inset: 0, zIndex: 999, backgroundColor: 'rgba(4,2,0,0.94)',
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
       animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : 'animFadeIn 0.12s ease-out forwards',
     }}>
       <div style={{ position: 'absolute', inset: 0, boxShadow: 'inset 0 0 120px #c8a96e22', pointerEvents: 'none' }} />
-      <div style={{ fontFamily: "'Cinzel',serif", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
+      <div className="toe-dice-label" style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#b89858', fontSize: 11, letterSpacing: 4, marginBottom: 18, textTransform: 'uppercase' }}>
         {rollerName || '？'} {isApophisRoll ? '在黑夜中掷骰' : isThrowStoneRoll ? '投掷石块' : isMoldyFoodRoll ? '品尝霉变食物' : isDodgeRoll ? '掷骰子' : '选择休息'}
       </div>
-      <div style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
-        {[{ face: face1, val: d1 }, ...(!isDodgeRoll ? [{ face: face2, val: d2 }] : [])].map(({ face }, i) => (
+      <div className="toe-dice-tray" style={{ display: 'flex', gap: 36, marginBottom: 20 }}>
+        {[face1, ...(!isDodgeRoll ? [face2] : [])].map((face, i) => (
           <div key={i} style={{
             fontSize: 88, lineHeight: 1,
             color: '#c8a96e',
             textShadow: settled ? '0 0 30px #c8a96e88, 0 0 60px #8a6030' : '0 0 10px #c8a96e44',
-            filter: settled ? 'drop-shadow(0 0 12px #c8a96e88)' : 'none',
+            filter: settled ? 'drop-shadow(0 4px 10px #c8a96e55)' : 'drop-shadow(0 6px 8px #000)',
             animation: settled ? 'animPop 0.3s ease-out' : '',
             transition: 'text-shadow 0.3s, filter 0.3s',
-          }}>{face}</div>
+          }}><DiceFace value={face} /></div>
         ))}
       </div>
       {settled && (
-        <div style={{ animation: 'animFadeIn 0.3s ease-out' }}>
+        <div className="toe-dice-result" style={{ animation: 'animFadeIn 0.3s ease-out' }}>
           {isApophisRoll ? (
             <>
               <div style={{
-                fontFamily: "'Cinzel',serif", fontSize: 13, color: apophisSuccess ? '#c8a96e' : '#e08888', letterSpacing: 3,
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: apophisSuccess ? '#c8a96e' : '#e08888', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
                 {apophisSuccess ? '成功命中目标' : `${rollerName || '你'}在一片黑暗中丢失了目标……`}
               </div>
-              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#8a6a9a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#8a6a9a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 掷出 {d1} 点，{apophisSuccess ? '目标未偏移' : '目标偏移'}
               </div>
             </>
           ) : isThrowStoneRoll ? (
             <>
               <div style={{
-                fontFamily: "'Cinzel',serif", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
                 掷出 <span style={{ color: '#e8c87a', fontSize: 18, fontWeight: 700 }}>{d1}</span> 点
               </div>
-              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 石块飞向未知方向…
               </div>
             </>
           ) : isMoldyFoodRoll ? (
             <>
               <div style={{
-                fontFamily: "'Cinzel',serif", fontSize: 13, color: moldyEven ? '#4ade80' : '#e08888', letterSpacing: 3,
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: moldyEven ? '#4ade80' : '#e08888', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
                 {moldyEven ? '双数！食物尚可食用' : moldyNegativeAvoided ? '单数！负面效果已规避' : '单数！食物已经腐坏'}
               </div>
-              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b89858', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 掷出 {d1} 点，{moldyEven ? '恢复 2 HP' : moldyNegativeAvoided ? '没有负面效果发生' : '失去 1 HP 且下回合不能摸牌'}
               </div>
             </>
           ) : isDodgeRoll ? (
             <>
               <div style={{
-                fontFamily: "'Cinzel',serif", fontSize: 13, color: dodgeSuccess ? '#4ade80' : '#e08888', letterSpacing: 3,
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: dodgeSuccess ? '#4ade80' : '#e08888', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
                 {dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}
               </div>
-              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#6a9a6a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#6a9a6a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 掷出 {d1} 点，{d1 >= 4 ? '规避成功' : '规避失败'}
               </div>
             </>
           ) : (
             <>
               <div style={{
-                fontFamily: "'Cinzel',serif", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
+                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: '#c8a96e', letterSpacing: 3,
                 textAlign: 'center', marginBottom: 6,
               }}>
                 取最大值 <span style={{ color: '#4ade80', fontSize: 18, fontWeight: 700 }}>{winner}</span>
               </div>
-              <div style={{ fontFamily: "'IM Fell English',serif", fontStyle: 'italic', color: '#6a9a6a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#6a9a6a', fontSize: 12, textAlign: 'center', letterSpacing: 1 }}>
                 回复 {winner} HP，翻面休息中…
               </div>
             </>
@@ -416,15 +412,15 @@ export function YourTurnAnim({ name, local = false }) {
         justifyContent: 'center',
         animation: 'yourTurnFade 2.0s ease-in-out forwards',
       }}>
-        <span style={{
+        <span className="toe-turn-title" style={{
           display: 'block',
-          fontFamily: "'Cinzel Decorative','Cinzel',serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           fontSize: 'clamp(32px, min(4.6vh, 11vw), 72px)',
           fontWeight: 700,
           letterSpacing: 'clamp(1px, 0.12em, 7px)',
           color: col,
           textShadow: '0 2px 10px rgba(0,0,0,0.86)',
-          filter: `drop-shadow(0 0 18px ${glow}) drop-shadow(0 0 44px ${glow2})`,
+          filter: `drop-shadow(0 0 8px ${glow}) drop-shadow(0 0 16px ${glow2})`,
           whiteSpace: 'nowrap',
         }}>{text}</span>
       </div>

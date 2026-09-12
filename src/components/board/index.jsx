@@ -4,9 +4,10 @@ import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game/coreUtils';
 import { AnimatedCardBack, AreaTooltip, CardFaceImage, DDCard, DDCardBack, GodTooltip } from '../cards';
-import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
+import { CARD_FACE_RATIO, CARD_FACE_WIDTH, CARD_FACE_HEIGHT } from '../cards/CardFaceAssets';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { DiceFace } from '../anim/DiceFace';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 import { getFontZoomCompensate } from '../../utils/scale';
@@ -25,15 +26,15 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor
     : isNarrowViewport
       ? 'clamp(16px, 3vw, 22px)'
       : 'clamp(14px, 2.8vw, 20px)';
-  const statFont=`clamp(${8*fontZoom}px, 1.7vw, ${10*fontZoom}px)`;
+  const statFont=`clamp(${10*fontZoom}px, 1.7vw, ${12*fontZoom}px)`;
   const barHeight=`clamp(${8*fontZoom}px, 1.6vw, ${10*fontZoom}px)`;
   const columnGap=isNarrowViewport?'clamp(5px, 1.2vw, 7px)':'clamp(4px, 1vw, 6px)';
   const labelPaddingRight=isNarrowViewport?Math.ceil(2*fontZoom):0;
   return(
     <div data-stat-label={label} style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
-      <span style={{fontFamily:"'Cinzel',serif",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
-      <div style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
-        <div style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
+      <span className="toe-stat-value" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
+      <div className="toe-stat-track" style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
+        <div className="toe-stat-fill" style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
         {label === 'SAN' && (
           <div style={{
             position: 'absolute',
@@ -69,7 +70,7 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor
           </div>
         )}
       </div>
-      <span style={{fontFamily:"'Cinzel',serif",color:val<=3?'#cc3333':valueColor,fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
+      <span className="toe-stat-value" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",color:val<=3?'#e09b87':valueColor,fontVariantNumeric:'tabular-nums',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
     </div>
   );
 }
@@ -86,13 +87,13 @@ function HoundsTimerBadge({secondsLeft,active}){
       color:'#f0d0c8'
     }}>
       <div style={{fontSize:22,lineHeight:1,filter:'drop-shadow(0 0 8px #ff8a6a)'}}>🐺</div>
-      <div style={{fontFamily:"'Cinzel',serif",fontSize:10,letterSpacing:1,color:'#f2a28e'}}>猎犬</div>
-      <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:20,color:secondsLeft<=5?'#ff7056':'#ffd7b0',textShadow:'0 0 12px currentColor'}}>{secondsLeft}</div>
+      <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:10,letterSpacing:1,color:'#f2a28e'}}>猎犬</div>
+      <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:20,color:secondsLeft<=5?'#ff7056':'#ffd7b0',textShadow:'0 0 12px currentColor'}}>{secondsLeft}</div>
     </div>
   );
 }
 
-const CARD_W=36,CARD_H=50;
+const CARD_W=36,CARD_H=CARD_W*CARD_FACE_RATIO;
 const CARD_BACK_STYLE={
   width:CARD_W,height:CARD_H,borderRadius:3,
   background:'#100c08',
@@ -171,7 +172,7 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
   const vis=Math.min(count,7);
   const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
-  const cardH=Math.round(CARD_H*scale);
+  const cardH=cardW*CARD_FACE_RATIO;
   const outerW=Math.round((CARD_W+30)*scale);
   const outerH=Math.round((CARD_H+20)*scale);
   if(vis===0) return(
@@ -220,7 +221,7 @@ const CROSS_POSITIONS=[
   [18,65],[32,50],[50,72],[65,42],[80,60],[22,38],[70,28],[45,82],[55,18],[35,78],
   [75,52],[12,55],[88,35],[42,25],[60,68],
 ];
-const CROSS_SIZES=CROSS_POSITIONS.map(()=>6+(Math.random()*5|0));
+const CROSS_SIZES=CROSS_POSITIONS.map((_,index)=>6+(index*3)%5);
 function HealCrossEffect({color='#4ade80'}){
   return(
     <div style={{position:'absolute',inset:0,overflow:'hidden',pointerEvents:'none',zIndex:50}}>
@@ -252,7 +253,7 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
   const vis=Math.min(count,7);
   const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
-  const cardH=Math.round(CARD_H*scale);
+  const cardH=cardW*CARD_FACE_RATIO;
   const outerW=Math.round((CARD_W+12)*scale);
   const outerH=Math.round((CARD_H+12)*scale);
   const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
@@ -303,7 +304,7 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
 function InspectionPile({count,scale=1}){
   const vis=Math.min(Math.max(count,0),5);
   const cardW=Math.round(CARD_W*scale);
-  const cardH=Math.round(CARD_H*scale);
+  const cardH=cardW*CARD_FACE_RATIO;
   const outerW=Math.round((CARD_W+10)*scale);
   const outerH=Math.round((CARD_H+10)*scale);
   return(
@@ -335,11 +336,11 @@ function DiscardOverlay({cards,onClose}){
       display:'flex',alignItems:'center',justifyContent:'center',
       padding:'40px 20px',
     }}>
-      <div style={{
+      <div className="toe-dialog toe-discard-gallery" role="dialog" aria-modal="true" aria-label="弃牌堆" onClick={event=>event.stopPropagation()} style={{
         maxWidth:900,width:'100%',maxHeight:'85vh',
         display:'flex',flexDirection:'column',alignItems:'center',gap:16,
       }}>
-        <div onClick={e=>e.stopPropagation()} style={{fontFamily:"'Cinzel',serif",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 ({cards.length}张)</div>
+        <div onClick={e=>e.stopPropagation()} style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:18,color:'#c8a96e',letterSpacing:2,textShadow:'0 0 12px #000'}}>弃牌堆 · {cards.length} 张</div>
         <div style={{
           display:'flex',flexWrap:'wrap',justifyContent:'center',gap:10,
           overflowY:'auto',padding:'10px 6px',width:'100%',
@@ -354,7 +355,8 @@ function DiscardOverlay({cards,onClose}){
             </div>
           ))}
         </div>
-        <div style={{fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:12,color:'#7a5a2a',marginTop:4}}>点击空白区域关闭</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:12,color:'#b8aa8c',marginTop:4}}>点击空白区域关闭</div>
+        <button className="toe-button" onClick={onClose} style={{padding:'8px 24px'}}>返回对局</button>
       </div>
     </div>
   );
@@ -363,71 +365,10 @@ function DiscardOverlay({cards,onClose}){
 function PetrifyingFormulaDie({ state, fontSize }) {
   if (!state?.active || !Number.isFinite(state.progress)) return null;
   const dots = Math.max(1, Math.min(6, state.progress));
-  const pipLayouts = {
-    1: [[50, 50]],
-    2: [[32, 32], [68, 68]],
-    3: [[30, 30], [50, 50], [70, 70]],
-    4: [[30, 30], [70, 30], [30, 70], [70, 70]],
-    5: [[30, 30], [70, 30], [50, 50], [30, 70], [70, 70]],
-    6: [[30, 26], [70, 26], [30, 50], [70, 50], [30, 74], [70, 74]],
-  };
-  const dieSize = 42;
-  const faceRadius = 7;
   return (
-    <div
-      title={`石化配方进度：${dots}`}
-      style={{
-        position: 'absolute',
-        left: 16,
-        bottom: 12,
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: 5,
-        pointerEvents: 'none',
-        zIndex: 2,
-      }}
-    >
-      <div style={{
-        position: 'relative',
-        width: dieSize,
-        height: dieSize,
-        filter: 'drop-shadow(0 4px 8px #00000088) drop-shadow(0 0 10px #9fb6a855)',
-      }}>
-        <div style={{
-          position: 'absolute',
-          left: 0,
-          top: 0,
-          width: dieSize,
-          height: dieSize,
-          borderRadius: faceRadius,
-          background: 'linear-gradient(145deg,#eef4e8 0%,#c2d0c2 58%,#8fa197 100%)',
-          border: '1.5px solid #dce7db',
-          boxShadow: 'inset -5px -5px 10px #64766b88,inset 4px 4px 9px #ffffffaa',
-        }}>
-          {(pipLayouts[dots] || pipLayouts[1]).map(([x, y], idx) => (
-            <span key={idx} style={{
-              position: 'absolute',
-              left: `${x}%`,
-              top: `${y}%`,
-              width: 8.5,
-              height: 8.5,
-              borderRadius: '50%',
-              background: 'radial-gradient(circle at 35% 35%,#3b4b42,#111b17 72%)',
-              boxShadow: 'inset 1px 1px 2px #000000cc,0 0 2px #ffffff55',
-              transform: 'translate(-50%,-50%)',
-            }}/>
-          ))}
-        </div>
-      </div>
-      <div style={{
-        fontFamily: "'Microsoft YaHei','SimHei',sans-serif",
-        fontSize: fontSize(10),
-        color: '#b9c8bc',
-        fontWeight: 700,
-        textShadow: '0 0 8px #000',
-        whiteSpace: 'nowrap',
-      }}>石化配方进度</div>
+    <div title={`石化配方进度：${dots}`} style={{ position: 'absolute', left: 16, bottom: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, pointerEvents: 'none', zIndex: 2 }}>
+      <DiceFace value={dots} size={42} />
+      <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: fontSize(10), color: '#c8c5ab', fontWeight: 700, textShadow: '0 1px 3px #000', whiteSpace: 'nowrap' }}>石化配方进度</div>
     </div>
   );
 }
@@ -452,7 +393,11 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   },[]);
   const effectiveCompact=compact&&pileWrapWidth<320;
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
-  const pileScale=((effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
+  const widthFitPileScale=((effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
+  // Include the discard stack offsets and its caption in the row's height
+  // budget; otherwise the pile's intrinsic height defeats the compact layout.
+  const heightFitPileScale=baseHeight ? Math.max(1,(baseHeight-40)*fontZoom/(CARD_H+20)) : widthFitPileScale;
+  const pileScale=Math.min(widthFitPileScale,heightFitPileScale);
   const pileMinHeight=baseHeight ? Math.round(baseHeight * fontZoom) : (effectiveCompact ? 140 : 220);
   return(
     <div ref={pileWrapRef} style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
@@ -461,12 +406,12 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
       {/* Inspection deck — top-left corner */}
       <div data-inspection-pile style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <InspectionPile count={inspectionCount} scale={pileScale}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>
       </div>
       {/* Deck — top-right corner */}
       <div ref={deckRef} data-deck-pile style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(11),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`}}>牌堆:{deckCount}</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`}}>牌堆:{deckCount}</div>
       </div>
       <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
@@ -487,11 +432,11 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
         }}
       >
         <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:_(12),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 10px #000000`}}>弃牌堆:{discardCount}</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(12),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 10px #000000`}}>弃牌堆:{discardCount}</div>
         {discardHover&&discardCards&&discardCards.length>0&&(
           <div style={{
             position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
-            fontFamily:"'Microsoft YaHei','SimHei',sans-serif",fontSize:10,color:theme.text,
+            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:10,color:theme.text,
             whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
           }}>点击查看</div>
         )}
@@ -521,7 +466,7 @@ function GodPowerBadge({player,playerIndex}){
           '--god-power-chevron-scale':'8.5',
           fontSize:8,color:def.col||'#c06020',
           background:'#100808',border:`1px solid ${def.col||'#c06020'}44`,
-          borderRadius:2,padding:'1px 4px',fontFamily:"'Cinzel',serif",letterSpacing:0.5,
+          borderRadius:2,padding:'1px 4px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:0.5,
         }}
       >
         {def.power} Lv.{player.godLevel}
@@ -553,7 +498,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isSelectable?selectableColor:isCurrentTurn?theme.glow:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
-  const HAND_CARD_HEIGHT=showFaceUp?58:50;
+  const HAND_CARD_HEIGHT=HAND_CARD_WIDTH*CARD_FACE_RATIO;
   const HAND_CARD_GAP=3;
   const shouldFillFlatHand=handCards.length===4;
   const stretchedHandSlotWidth=`calc((100% - ${HAND_CARD_GAP*3}px) / 4)`;
@@ -603,7 +548,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const revealCardZoom=computedCardWidth>0
     ? computedCardWidth/(useFullRevealCards?FULL_NATURAL_W:COMPACT_NATURAL_W)
     : 1;
-  const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${HAND_CARD_WIDTH}/${HAND_CARD_HEIGHT}`};
+  const filledHandFrameStyle={width:'100%',minWidth:'100%',height:'auto',aspectRatio:`${CARD_FACE_WIDTH}/${CARD_FACE_HEIGHT}`};
   const sharedHandFrameStyle=filledHandFrameStyle;
   const handOverlap=handCards.length>4
     ? Math.min(
@@ -612,9 +557,9 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     )
     : 0;
   return(
-    <div data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
+    <div className="toe-battle-panel toe-player-panel" data-current-turn={isCurrentTurn} data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
-      background:isCurrentTurn?theme.panelActive:theme.panel,
+      backgroundColor:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
       boxShadow:isSelectable?`0 0 14px ${selectableColor}88,inset 0 0 12px ${selectableColor}22`:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:'none',
       borderRadius:3,padding:'8px 9px',
@@ -629,7 +574,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         expansionKey={expansionKey}
         corner="tr"
         size={154}
-        opacity={0.36}
+        opacity={0.16}
         style={{top:-8,right:-8}}
       />
       {godHighlightBurst?.godKey&&(
@@ -650,14 +595,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
         borderBottom:`1px solid ${theme.lineDim}`,paddingBottom:5,
       }}>
-        <span style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:_(11),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
-        {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"'Cinzel',serif",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
+        <span style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:_(12),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
+        {(player.roleRevealed||player.isDead)&&<span style={{fontSize:_(10),color:ri.col,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
         {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
-      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#8b1515" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
-      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#4a1080" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+      <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#a54138" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+      <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#76609b" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       <PlayerStatusTags
         player={player}
         playerIndex={playerIndex}
@@ -723,5 +668,5 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   );
 }
 
-export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel };
+export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel, DiscardOverlay };
 

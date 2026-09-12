@@ -25,6 +25,7 @@ import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import SoftGuideOverlay from './components/tutorial/SoftGuideOverlay';
 import { BattleScreen } from './components/battle';
 import { StartScreen } from './components/start/StartScreen';
+import { GameResultScreen } from './components/result/GameResultScreen';
 import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
 import { buildPublicUrl } from './utils/url';
 // socket.io-client is loaded at runtime via CDN (only outside Claude Artifacts)
@@ -1076,7 +1077,7 @@ export default function Game(){
       : landscapeMobile
         ? clamp((vh||390)*0.16,56,66)
         : Math.round(76+largeBoost*42);
-    const height=Math.round(width*(108/82));
+    const height = width * (590 / 392);
     const scale=width/82;
     const gap=Math.round(portraitMobile?8:landscapeMobile?9:12+largeBoost*4);
     const spacing=Math.round(width*(portraitMobile?0.92:0.86));
@@ -3896,7 +3897,7 @@ export default function Game(){
   const terminalPresentationPending=!!anim||!!animExiting
     ||animQueueRef.current.length>0||!!pendingGsRef.current;
   if(gs.gameOver&&!terminalPresentationPending){
-    const{winner,reason,winnerIdx}=gs.gameOver;
+    const{winner,winnerIdx}=gs.gameOver;
     const gameOverFullLog=normalizeLogForViewer(
       buildCompleteGameOverLog(gs,visibleLogRef.current),
       {isMultiplayer:!!gs._isMP,myName:gs.players?.[0]?.name},
@@ -3905,7 +3906,6 @@ export default function Game(){
     const iWon=winner==='LOSE'||winner==='LOSE_ALL'?false
       :winner===ROLE_TREASURE?isLocalWinnerSeat(gs.gameOver)
       :(winner===myRole);
-    const isLose=winner==='LOSE'||winner==='LOSE_ALL';
 
     // 邪祀者获胜：先全屏播放邪神复活特效，onConfirm 后再显示结算
     if(shouldPlayGodResurrection(gs.gameOver)&&!showGodResurrection){
@@ -3933,34 +3933,10 @@ export default function Game(){
         />
       );
     }
-    return(
-      <div onClickCapture={handleUiSfxCapture} style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative'}}>
-        <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at center,transparent 20%,#000000cc 100%)',pointerEvents:'none'}}/>
-        <div style={{position:'relative',zIndex:1}}>
-          <div style={{fontSize:72,marginBottom:14,filter:`drop-shadow(0 0 30px ${iWon?'#c8a96e':isLose?'#882020':'#9060cc'})`,animation:'animPop 0.4s ease-out'}}>{isLose?'☠':iWon?'✦':'⚔'}</div>
-          <h2 style={{fontFamily:"'Cinzel Decorative','Cinzel',serif",fontSize:26,fontWeight:700,marginBottom:10,color:iWon?'#e8c87a':isLose?'#882020':'#a07090',textShadow:`0 0 30px ${iWon?'#c8a96e44':'#88202044'}`}}>
-{isLose?(winner==='LOSE_ALL'?'——  全员覆灭  ——':'英魂殒落'):iWon?'胜利归你':winner===ROLE_TREASURE?`——  ${gs.players[winnerIdx]?.name??''}获胜  ——`:'——  '+winner+'获胜  ——'}
-          </h2>
-          <div style={{width:180,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 12px'}}/>
-          <p style={{color:'#b89858',marginBottom:28,fontSize:13,fontStyle:'italic',maxWidth:340}}>{reason}</p>
-          {/* Player results */}
-          <div style={{display:'flex',gap:10,marginBottom:36,flexWrap:'wrap',justifyContent:'center'}}>
-            {gs.players.map((p,pIdx)=>{
-              const r=RINFO[p.role];
-              const isWinner=!isLose&&winner!=='LOSE_ALL'&&(winner==='寻宝者'?(pIdx===winnerIdx||pIdx===(gs.gameOver.winnerIdx2??-1)):p.role===winner);
-              return(
-                <div key={p.id} style={{background:isWinner?'#1a1208':'#140f08',border:`1.5px solid ${isWinner?r.col:r.dim}`,borderRadius:3,padding:'10px 14px',textAlign:'center',minWidth:76,boxShadow:isWinner?`0 0 14px ${r.col}55`:'none'}}>
-                  <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,color:isWinner?r.col:'#c8a96e',letterSpacing:1}}>{p.name}</div>
-                  <div style={{fontSize:11,color:r.col,margin:'4px 0',fontFamily:"'Cinzel',serif",letterSpacing:1}}>{r.icon} {p.role}</div>
-                  <div style={{fontSize:10,color:'#a07838'}}>HP:{p.hp} SAN:{p.san}</div>
-                  {p.isDead&&<div style={{fontSize:12,color:'#882020',marginTop:3}}>☠</div>}
-                  {isWinner&&!p.isDead&&<div style={{fontSize:10,color:r.col,marginTop:3,letterSpacing:1}}>✦ 胜者</div>}
-                </div>
-              );
-            })}
-          </div>
-          {isMultiplayer?(
-            <button onClick={()=>{
+    return (
+      <GameResultScreen players={gs.players} gameOver={gs.gameOver} iWon={iWon} isMultiplayer={isMultiplayer}
+        onClickCapture={handleUiSfxCapture}
+        onReturnRoom={() => {
               // 先直接发送 gameEnd（在 state 重置前），避免 useEffect 因 isMultiplayer=false 跳过发送
               if(!gameEndSentRef.current&&socketRef.current?.connected){
                 gameEndSentRef.current=true;
@@ -3980,62 +3956,16 @@ export default function Game(){
               setShowGodResurrection(false);
               setShowFullLog(false);
               setGs(null);
-            }} style={{
-              padding:'11px 40px',background:'#1c1208',border:'2px solid #3a6a3a',
-              color:'#80e080',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
-              borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-            }}>返回房间</button>
-          ):(
-            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-              <button onClick={()=>startNewGame({skipTutorialPrompt:true})} style={{
-                padding:'11px 40px',background:'#1c1008',border:'2px solid #5a3010',
-                color:'#c8a96e',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
-                borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-              }}>再次降临</button>
-              <button onClick={()=>{
-                setModal(null);
-                setShowGodResurrection(false);
-                setShowFullLog(false);
-                setGs(null);
-              }} style={{
-                padding:'11px 32px',background:'transparent',border:'2px solid #3a2510',
-                color:'#a07838',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,
-                borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',
-              }}>返回主页</button>
-            </div>
-          )}
-          <div style={{marginTop:18}}>
-            <button
-              onClick={()=>setShowFullLog(true)}
-              style={{
-                background:'none',border:'none',padding:0,cursor:'pointer',
-                color:'#9fb8d8',fontSize:12,textDecoration:'underline',
-                fontFamily:"'IM Fell English','Georgia',serif",
-              }}
-            >显示游戏日志</button>
-          </div>
-        </div>
-        <button
-          type="button"
-          className="surveyMascot"
-          onClick={()=>window.open('https://v.wjx.cn/vm/mGJYO4f.aspx','_blank','noopener,noreferrer')}
-          aria-label="点我填写问卷"
-        >
-          <span className="surveyMascotBubble">喜欢这个游戏吗？点我填写问卷吧</span>
-          <span className="surveyMascotBody" aria-hidden="true">
-            <span className="surveyMascotFace">
-              <span className="surveyMascotEye surveyMascotEyeLeft"/>
-              <span className="surveyMascotEye surveyMascotEyeRight"/>
-              <span className="surveyMascotSmile"/>
-            </span>
-            <span className="surveyMascotBook"/>
-          </span>
-        </button>
+
+        }}
+        onRestart={() => startNewGame({skipTutorialPrompt:true})}
+        onHome={() => {setModal(null);setShowGodResurrection(false);setShowFullLog(false);setGs(null);}}
+        onShowLog={() => setShowFullLog(true)}>
         {showFullLog&&<FullLogModal log={gameOverFullLog} onClose={()=>setShowFullLog(false)}/>}
         <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
-      </div>
+      </GameResultScreen>
     );
   }
 

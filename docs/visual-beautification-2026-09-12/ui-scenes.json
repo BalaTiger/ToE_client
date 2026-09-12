@@ -1,0 +1,944 @@
+[
+  {
+    "id": "battle",
+    "title": "行动阶段",
+    "group": "对局"
+  },
+  {
+    "id": "role",
+    "title": "选择本局身份",
+    "group": "对局"
+  },
+  {
+    "id": "battle-mp",
+    "title": "联机行动与倒计时",
+    "group": "对局"
+  },
+  {
+    "id": "battle-spectate",
+    "title": "死亡旁观",
+    "group": "对局"
+  },
+  {
+    "id": "battle-status",
+    "title": "信仰、翻面与状态标记",
+    "group": "对局"
+  },
+  {
+    "id": "battle-ai",
+    "title": "等待其他旅者行动",
+    "group": "对局",
+    "phase": "AI_TURN"
+  },
+  {
+    "id": "battle-empty",
+    "title": "空手牌",
+    "group": "对局"
+  },
+  {
+    "id": "discard",
+    "title": "超出手牌上限 · 选择弃牌",
+    "group": "对局",
+    "phase": "DISCARD_PHASE"
+  },
+  {
+    "id": "hunt-reveal",
+    "title": "追捕 · 亮出手牌",
+    "group": "对局",
+    "phase": "PLAYER_REVEAL_FOR_HUNT"
+  },
+  {
+    "id": "hunt-wait",
+    "title": "追捕 · 等待亮牌",
+    "group": "对局",
+    "phase": "HUNT_WAIT_REVEAL"
+  },
+  {
+    "id": "hunt-confirm",
+    "title": "追捕 · 匹配与放弃",
+    "group": "对局",
+    "phase": "HUNT_CONFIRM"
+  },
+  {
+    "id": "bury-alive",
+    "title": "活埋 · 手牌选择",
+    "group": "对局",
+    "phase": "BURY_ALIVE_SELECT"
+  },
+  {
+    "id": "ignite-torch",
+    "title": "引燃火炬 · 手牌选择",
+    "group": "对局",
+    "phase": "IGNITE_TORCH_DISCARD"
+  },
+  {
+    "id": "albino-creature",
+    "title": "白化生物 · 火焰牌响应",
+    "group": "对局",
+    "phase": "ALBINO_CREATURE_SELECT_CARD"
+  },
+  {
+    "id": "cave-duel-card",
+    "title": "穴居人战争 · 手牌选择",
+    "group": "对局",
+    "phase": "CAVE_DUEL_SELECT_CARD"
+  },
+  {
+    "id": "cave-duel-wait",
+    "title": "穴居人战争 · 等待亮牌",
+    "group": "对局",
+    "phase": "CAVE_DUEL_WAIT_REVEAL"
+  },
+  {
+    "id": "swap-give",
+    "title": "掉包 · 交回一张牌",
+    "group": "对局",
+    "phase": "SWAP_GIVE_CARD"
+  },
+  {
+    "id": "bewitch-card",
+    "title": "蛊惑 · 选择手牌",
+    "group": "对局",
+    "phase": "BEWITCH_SELECT_CARD"
+  },
+  {
+    "id": "pause",
+    "title": "单人暂停",
+    "group": "系统"
+  },
+  {
+    "id": "exit",
+    "title": "退出对局确认",
+    "group": "系统"
+  },
+  {
+    "id": "reconnect",
+    "title": "恢复当前对局连接",
+    "group": "系统"
+  },
+  {
+    "id": "connection-error",
+    "title": "连接失败",
+    "group": "系统"
+  },
+  {
+    "id": "settings",
+    "title": "视听设置",
+    "group": "系统"
+  },
+  {
+    "id": "emoji",
+    "title": "联机表情选择",
+    "group": "系统"
+  },
+  {
+    "id": "announcement",
+    "title": "服务器公告",
+    "group": "系统"
+  },
+  {
+    "id": "online",
+    "title": "联机入口 · 创建与加入",
+    "group": "联机"
+  },
+  {
+    "id": "online-loading",
+    "title": "联机入口 · 连接中",
+    "group": "联机"
+  },
+  {
+    "id": "online-rename",
+    "title": "联机用户名编辑",
+    "group": "联机"
+  },
+  {
+    "id": "online-rename-cooldown",
+    "title": "联机改名 · 冷却中",
+    "group": "联机"
+  },
+  {
+    "id": "online-special-name",
+    "title": "联机用户名 · 特殊名字",
+    "group": "联机"
+  },
+  {
+    "id": "lobby",
+    "title": "游戏大厅 · 房间列表",
+    "group": "联机"
+  },
+  {
+    "id": "lobby-empty",
+    "title": "游戏大厅 · 暂无房间",
+    "group": "联机"
+  },
+  {
+    "id": "lobby-loading",
+    "title": "游戏大厅 · 加载中",
+    "group": "联机"
+  },
+  {
+    "id": "room",
+    "title": "联机房间 · 房主未准备",
+    "group": "联机"
+  },
+  {
+    "id": "room-ready",
+    "title": "联机房间 · 已准备",
+    "group": "联机"
+  },
+  {
+    "id": "room-member",
+    "title": "联机房间 · 成员视角",
+    "group": "联机"
+  },
+  {
+    "id": "room-private",
+    "title": "联机房间 · 私密",
+    "group": "联机"
+  },
+  {
+    "id": "room-start",
+    "title": "联机房间 · 开始倒计时",
+    "group": "联机"
+  },
+  {
+    "id": "room-kick",
+    "title": "联机房间 · 准备截止倒计时",
+    "group": "联机"
+  },
+  {
+    "id": "privacy",
+    "title": "公开房间确认",
+    "group": "联机"
+  },
+  {
+    "id": "draw",
+    "title": "区域探寻 · 取舍",
+    "group": "决策",
+    "phase": "DRAW_REVEAL"
+  },
+  {
+    "id": "draw-wait",
+    "title": "区域探寻 · 等待他人",
+    "group": "决策",
+    "phase": "DRAW_REVEAL"
+  },
+  {
+    "id": "draw-error",
+    "title": "区域探寻 · 可重试错误",
+    "group": "决策",
+    "phase": "DRAW_REVEAL"
+  },
+  {
+    "id": "god",
+    "title": "邪神降临 · 信仰",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "god-keep",
+    "title": "邪祀者 · 邪神收入手牌",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "god-upgrade",
+    "title": "邪神之力升级",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "god-convert",
+    "title": "改信新神",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "god-forced",
+    "title": "被迫改信",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "god-wait",
+    "title": "邪神降临 · 等待他人",
+    "group": "决策",
+    "phase": "GOD_CHOICE"
+  },
+  {
+    "id": "dodge",
+    "title": "寻宝者闪避选择",
+    "group": "决策",
+    "phase": "TREASURE_DODGE_DECISION"
+  },
+  {
+    "id": "dodge-aoe",
+    "title": "群体效果闪避",
+    "group": "决策",
+    "phase": "TREASURE_AOE_DODGE_DECISION"
+  },
+  {
+    "id": "dodge-wait",
+    "title": "群体效果 · 等待闪避",
+    "group": "决策",
+    "phase": "TREASURE_AOE_DODGE_DECISION"
+  },
+  {
+    "id": "nya-borrow",
+    "title": "千人千貌 · 借用身份",
+    "group": "决策",
+    "phase": "NYA_BORROW"
+  },
+  {
+    "id": "zhu-hide",
+    "title": "衔烛照幽 · 藏到牌底",
+    "group": "决策"
+  },
+  {
+    "id": "zhu-wait",
+    "title": "衔烛照幽 · 等待他人",
+    "group": "决策"
+  },
+  {
+    "id": "slime",
+    "title": "赐福黏液 · HP/SAN 平分",
+    "group": "决策",
+    "phase": "TSG_SLIME_BALANCE"
+  },
+  {
+    "id": "slime-wait",
+    "title": "赐福黏液 · 等待他人",
+    "group": "决策",
+    "phase": "TSG_SLIME_BALANCE"
+  },
+  {
+    "id": "etherealize",
+    "title": "半物质化 · 转移伤害",
+    "group": "决策",
+    "phase": "ETHEREALIZE_DECISION"
+  },
+  {
+    "id": "etherealize-chain",
+    "title": "半物质化 · 连续转移",
+    "group": "决策",
+    "phase": "ETHEREALIZE_DECISION"
+  },
+  {
+    "id": "etherealize-wait",
+    "title": "半物质化 · 等待他人",
+    "group": "决策",
+    "phase": "ETHEREALIZE_DECISION"
+  },
+  {
+    "id": "tortoise",
+    "title": "灵龟卜祝 · 选择编号",
+    "group": "决策",
+    "phase": "TORTOISE_ORACLE_SELECT"
+  },
+  {
+    "id": "tortoise-wait",
+    "title": "灵龟卜祝 · 等待他人",
+    "group": "决策",
+    "phase": "TORTOISE_ORACLE_SELECT"
+  },
+  {
+    "id": "peek",
+    "title": "血之窥探",
+    "group": "决策"
+  },
+  {
+    "id": "first-come",
+    "title": "先到先得 · 选牌",
+    "group": "决策",
+    "phase": "FIRST_COME_PICK_SELECT"
+  },
+  {
+    "id": "first-come-wait",
+    "title": "先到先得 · 等待他人",
+    "group": "决策",
+    "phase": "FIRST_COME_PICK_SELECT"
+  },
+  {
+    "id": "grave-dig",
+    "title": "掘墓 · 选邪神牌",
+    "group": "决策",
+    "phase": "GRAVE_DIG_SELECT"
+  },
+  {
+    "id": "grave-dig-wait",
+    "title": "掘墓 · 等待他人",
+    "group": "决策",
+    "phase": "GRAVE_DIG_SELECT"
+  },
+  {
+    "id": "same-abyss",
+    "title": "同归深渊 · 手牌或 HP",
+    "group": "决策",
+    "phase": "SAME_ABYSS_SELECT"
+  },
+  {
+    "id": "same-abyss-wait",
+    "title": "同归深渊 · 等待他人",
+    "group": "决策",
+    "phase": "SAME_ABYSS_SELECT"
+  },
+  {
+    "id": "sphinx",
+    "title": "斯芬克斯 · 猜测牌堆",
+    "group": "决策",
+    "phase": "SPHINX_GUESS"
+  },
+  {
+    "id": "sphinx-wait",
+    "title": "斯芬克斯 · 等待他人",
+    "group": "决策",
+    "phase": "SPHINX_GUESS"
+  },
+  {
+    "id": "decipher",
+    "title": "解读石刻 · 卡牌分配",
+    "group": "决策",
+    "phase": "DECIPHER_STONE_CARVING"
+  },
+  {
+    "id": "decipher-wait",
+    "title": "解读石刻 · 等待他人",
+    "group": "决策",
+    "phase": "DECIPHER_STONE_CARVING"
+  },
+  {
+    "id": "swap-blind",
+    "title": "掉包 · 暗抽选择",
+    "group": "目标"
+  },
+  {
+    "id": "swap-shuffle",
+    "title": "掉包 · 洗牌",
+    "group": "目标"
+  },
+  {
+    "id": "swap-public",
+    "title": "掉包 · 公开手牌选择",
+    "group": "目标",
+    "phase": "SWAP_SELECT_TARGET_CARD"
+  },
+  {
+    "id": "hunt-public",
+    "title": "追捕 · 死者手牌选择",
+    "group": "目标",
+    "phase": "HUNT_SELECT_CARD_FROM_PUBLIC"
+  },
+  {
+    "id": "target-swap",
+    "title": "掉包 · 目标选择",
+    "group": "目标",
+    "phase": "SWAP_SELECT_TARGET"
+  },
+  {
+    "id": "target-hunt",
+    "title": "追捕 · 目标选择",
+    "group": "目标",
+    "phase": "HUNT_SELECT_TARGET"
+  },
+  {
+    "id": "target-bewitch",
+    "title": "蛊惑 · 目标选择",
+    "group": "目标",
+    "phase": "BEWITCH_SELECT_TARGET"
+  },
+  {
+    "id": "target-zone-swap",
+    "title": "交换手牌 · 目标选择",
+    "group": "目标",
+    "phase": "ZONE_SWAP_SELECT_TARGET"
+  },
+  {
+    "id": "target-peek",
+    "title": "血之窥探 · 目标选择",
+    "group": "目标",
+    "phase": "PEEK_HAND_SELECT_TARGET"
+  },
+  {
+    "id": "target-cave-duel",
+    "title": "穴居人战争 · 目标选择",
+    "group": "目标",
+    "phase": "CAVE_DUEL_SELECT_TARGET"
+  },
+  {
+    "id": "target-damage-link",
+    "title": "两人一绳 · 目标选择",
+    "group": "目标",
+    "phase": "DAMAGE_LINK_SELECT_TARGET"
+  },
+  {
+    "id": "target-rose-thorn",
+    "title": "玫瑰倒刺 · 目标选择",
+    "group": "目标",
+    "phase": "ROSE_THORN_SELECT_TARGET"
+  },
+  {
+    "id": "target-multiply",
+    "title": "繁衍 · 目标选择",
+    "group": "目标",
+    "phase": "MULTIPLY_SELECT_TARGET"
+  },
+  {
+    "id": "target-shu",
+    "title": "黑山羊幼仔 · 目标选择",
+    "group": "目标",
+    "phase": "SHU_SELECT_TARGET"
+  },
+  {
+    "id": "target-etherealize",
+    "title": "半物质化 · 目标选择",
+    "group": "目标",
+    "phase": "ETHEREALIZE_SELECT_TARGET"
+  },
+  {
+    "id": "about",
+    "title": "关于游戏与规则",
+    "group": "信息"
+  },
+  {
+    "id": "roadmap",
+    "title": "版本更新计划",
+    "group": "信息"
+  },
+  {
+    "id": "full-log",
+    "title": "完整游戏日志",
+    "group": "信息"
+  },
+  {
+    "id": "full-log-empty",
+    "title": "完整游戏日志 · 空状态",
+    "group": "信息"
+  },
+  {
+    "id": "discard-pile",
+    "title": "弃牌堆浏览",
+    "group": "信息"
+  },
+  {
+    "id": "card-zone-detail",
+    "title": "区域牌详情",
+    "group": "信息"
+  },
+  {
+    "id": "card-god-detail",
+    "title": "邪神牌详情与等级",
+    "group": "信息"
+  },
+  {
+    "id": "card-clarity",
+    "title": "卡牌清晰度 · 82 / 124 / 196 / 300 px",
+    "group": "信息"
+  },
+  {
+    "id": "tutorial-welcome",
+    "title": "教学欢迎",
+    "group": "教学"
+  },
+  {
+    "id": "soft-rest",
+    "title": "休息提示",
+    "group": "教学"
+  },
+  {
+    "id": "soft-flip",
+    "title": "翻面提示",
+    "group": "教学"
+  },
+  {
+    "id": "tutorial-intro",
+    "title": "遗迹入口",
+    "group": "教学",
+    "tutorialStep": "intro"
+  },
+  {
+    "id": "tutorial-boardSelf",
+    "title": "心智",
+    "group": "教学",
+    "tutorialStep": "boardSelf"
+  },
+  {
+    "id": "tutorial-boardStats",
+    "title": "丧失心智",
+    "group": "教学",
+    "tutorialStep": "boardStats"
+  },
+  {
+    "id": "tutorial-boardRole",
+    "title": "身份",
+    "group": "教学",
+    "tutorialStep": "boardRole"
+  },
+  {
+    "id": "tutorial-boardHand",
+    "title": "寻宝者",
+    "group": "教学",
+    "tutorialStep": "boardHand"
+  },
+  {
+    "id": "tutorial-boardDecks",
+    "title": "宝藏",
+    "group": "教学",
+    "tutorialStep": "boardDecks"
+  },
+  {
+    "id": "tutorial-cardTypes",
+    "title": "追猎者",
+    "group": "教学",
+    "tutorialStep": "cardTypes"
+  },
+  {
+    "id": "tutorial-hunterGoal",
+    "title": "肃清",
+    "group": "教学",
+    "tutorialStep": "hunterGoal"
+  },
+  {
+    "id": "tutorial-cultistIntroRules",
+    "title": "邪祀者",
+    "group": "教学",
+    "tutorialStep": "cultistIntroRules"
+  },
+  {
+    "id": "tutorial-cultistGoalRules",
+    "title": "复苏",
+    "group": "教学",
+    "tutorialStep": "cultistGoalRules"
+  },
+  {
+    "id": "tutorial-drawZoneCard",
+    "title": "探索",
+    "group": "教学",
+    "tutorialStep": "drawZoneCard"
+  },
+  {
+    "id": "tutorial-drawGodCard",
+    "title": "邪神化身",
+    "group": "教学",
+    "tutorialStep": "drawGodCard"
+  },
+  {
+    "id": "tutorial-bagLimit",
+    "title": "行囊有限",
+    "group": "教学",
+    "tutorialStep": "bagLimit"
+  },
+  {
+    "id": "tutorial-treasureIntro",
+    "title": "寻宝者：只差一步",
+    "group": "教学",
+    "tutorialStep": "treasureIntro"
+  },
+  {
+    "id": "tutorial-treasureStartTurn",
+    "title": "回合开始",
+    "group": "教学",
+    "tutorialStep": "treasureStartTurn"
+  },
+  {
+    "id": "tutorial-treasureDrawReveal",
+    "title": "收入手牌",
+    "group": "教学",
+    "tutorialStep": "treasureDrawReveal"
+  },
+  {
+    "id": "tutorial-treasureDodgePrompt",
+    "title": "求生技能",
+    "group": "教学",
+    "tutorialStep": "treasureDodgePrompt"
+  },
+  {
+    "id": "tutorial-treasureDodgeResult",
+    "title": "求生成功",
+    "group": "教学",
+    "tutorialStep": "treasureDodgeResult"
+  },
+  {
+    "id": "tutorial-treasureUseSkill",
+    "title": "发动掉包",
+    "group": "教学",
+    "tutorialStep": "treasureUseSkill"
+  },
+  {
+    "id": "tutorial-treasureSelectTarget",
+    "title": "选择目标",
+    "group": "教学",
+    "tutorialStep": "treasureSelectTarget"
+  },
+  {
+    "id": "tutorial-treasureStealCard",
+    "title": "抽取对手手牌",
+    "group": "教学",
+    "tutorialStep": "treasureStealCard"
+  },
+  {
+    "id": "tutorial-treasureGiveCard",
+    "title": "交还一张牌",
+    "group": "教学",
+    "tutorialStep": "treasureGiveCard"
+  },
+  {
+    "id": "tutorial-treasureResult",
+    "title": "宝藏完成",
+    "group": "教学",
+    "tutorialStep": "treasureResult"
+  },
+  {
+    "id": "tutorial-hunterIntro",
+    "title": "追猎者：连续进攻",
+    "group": "教学",
+    "tutorialStep": "hunterIntro"
+  },
+  {
+    "id": "tutorial-hunterUseSkill",
+    "title": "发动追捕",
+    "group": "教学",
+    "tutorialStep": "hunterUseSkill"
+  },
+  {
+    "id": "tutorial-hunterSelectTarget",
+    "title": "选择猎物",
+    "group": "教学",
+    "tutorialStep": "hunterSelectTarget"
+  },
+  {
+    "id": "tutorial-hunterReveal",
+    "title": "对手亮牌",
+    "group": "教学",
+    "tutorialStep": "hunterReveal"
+  },
+  {
+    "id": "tutorial-hunterConfirmCard",
+    "title": "弃牌造成伤害",
+    "group": "教学",
+    "tutorialStep": "hunterConfirmCard"
+  },
+  {
+    "id": "tutorial-hunterSecondHuntIntro",
+    "title": "继续追捕",
+    "group": "教学",
+    "tutorialStep": "hunterSecondHuntIntro"
+  },
+  {
+    "id": "tutorial-hunterUseSkill2",
+    "title": "再次发动追捕",
+    "group": "教学",
+    "tutorialStep": "hunterUseSkill2"
+  },
+  {
+    "id": "tutorial-hunterSelectTarget2",
+    "title": "选择猎物",
+    "group": "教学",
+    "tutorialStep": "hunterSelectTarget2"
+  },
+  {
+    "id": "tutorial-hunterReveal2",
+    "title": "对手亮牌",
+    "group": "教学",
+    "tutorialStep": "hunterReveal2"
+  },
+  {
+    "id": "tutorial-hunterConfirmCard2",
+    "title": "完成击杀",
+    "group": "教学",
+    "tutorialStep": "hunterConfirmCard2"
+  },
+  {
+    "id": "tutorial-hunterResult",
+    "title": "猎物倒下",
+    "group": "教学",
+    "tutorialStep": "hunterResult"
+  },
+  {
+    "id": "tutorial-cultistZoneIntro",
+    "title": "邪祀者：蛊惑区域牌",
+    "group": "教学",
+    "tutorialStep": "cultistZoneIntro"
+  },
+  {
+    "id": "tutorial-cultistZoneUseSkill",
+    "title": "发动蛊惑",
+    "group": "教学",
+    "tutorialStep": "cultistZoneUseSkill"
+  },
+  {
+    "id": "tutorial-cultistZoneSelectCard",
+    "title": "选择蛊惑牌",
+    "group": "教学",
+    "tutorialStep": "cultistZoneSelectCard"
+  },
+  {
+    "id": "tutorial-cultistZoneSelectTarget",
+    "title": "选择目标",
+    "group": "教学",
+    "tutorialStep": "cultistZoneSelectTarget"
+  },
+  {
+    "id": "tutorial-cultistZoneResult",
+    "title": "SAN 归零",
+    "group": "教学",
+    "tutorialStep": "cultistZoneResult"
+  },
+  {
+    "id": "tutorial-cultistGodIntro",
+    "title": "邪神牌、骷髅头与改信",
+    "group": "教学",
+    "tutorialStep": "cultistGodIntro"
+  },
+  {
+    "id": "tutorial-cultistGodStatusMarkers",
+    "title": "骷髅与邪神之力",
+    "group": "教学",
+    "tutorialStep": "cultistGodStatusMarkers"
+  },
+  {
+    "id": "tutorial-cultistGodOpponentDraw",
+    "title": "遭遇邪神",
+    "group": "教学",
+    "tutorialStep": "cultistGodOpponentDraw"
+  },
+  {
+    "id": "tutorial-cultistGodCheckIntro",
+    "title": "检定牌",
+    "group": "教学",
+    "tutorialStep": "cultistGodCheckIntro"
+  },
+  {
+    "id": "tutorial-cultistGodConvertCheck",
+    "title": "改信代价",
+    "group": "教学",
+    "tutorialStep": "cultistGodConvertCheck"
+  },
+  {
+    "id": "tutorial-cultistGodPlayerDraw",
+    "title": "轮到你",
+    "group": "教学",
+    "tutorialStep": "cultistGodPlayerDraw"
+  },
+  {
+    "id": "tutorial-cultistGodKeepHand",
+    "title": "收入邪神牌",
+    "group": "教学",
+    "tutorialStep": "cultistGodKeepHand"
+  },
+  {
+    "id": "tutorial-cultistGodSelectCard",
+    "title": "蛊惑邪神牌",
+    "group": "教学",
+    "tutorialStep": "cultistGodSelectCard"
+  },
+  {
+    "id": "tutorial-cultistGodChooseCard",
+    "title": "选择邪神牌",
+    "group": "教学",
+    "tutorialStep": "cultistGodChooseCard"
+  },
+  {
+    "id": "tutorial-cultistGodSelectTarget",
+    "title": "强迫改信",
+    "group": "教学",
+    "tutorialStep": "cultistGodSelectTarget"
+  },
+  {
+    "id": "tutorial-cultistGodResult",
+    "title": "邪神复苏",
+    "group": "教学",
+    "tutorialStep": "cultistGodResult"
+  },
+  {
+    "id": "tutorial-finalAdvice",
+    "title": "最后忠告",
+    "group": "教学",
+    "tutorialStep": "finalAdvice"
+  },
+  {
+    "id": "tutorial-complete",
+    "title": "开始探索",
+    "group": "教学",
+    "tutorialStep": "complete"
+  },
+  {
+    "id": "treasure-win",
+    "title": "寻宝者 · 藏宝图揭示",
+    "group": "演出"
+  },
+  {
+    "id": "treasure-wait",
+    "title": "藏宝图 · 等待获胜者",
+    "group": "演出"
+  },
+  {
+    "id": "resurrection",
+    "title": "邪神复活",
+    "group": "演出"
+  },
+  {
+    "id": "role-reveal-0",
+    "title": "身份揭示 · 寻宝者",
+    "group": "演出"
+  },
+  {
+    "id": "role-reveal-1",
+    "title": "身份揭示 · 追猎者",
+    "group": "演出"
+  },
+  {
+    "id": "role-reveal-2",
+    "title": "身份揭示 · 邪祀者",
+    "group": "演出"
+  },
+  {
+    "id": "result-treasure",
+    "title": "结算 · 寻宝者获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-treasure-other",
+    "title": "结算 · 其他寻宝者获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-treasure-joint",
+    "title": "结算 · 两名寻宝者共同获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-hunter",
+    "title": "结算 · 追猎者获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-cultist",
+    "title": "结算 · 邪祀者获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-other-team",
+    "title": "结算 · 其他阵营获胜",
+    "group": "结算"
+  },
+  {
+    "id": "result-defeat",
+    "title": "结算 · 英魂殒落",
+    "group": "结算"
+  },
+  {
+    "id": "result-all-dead",
+    "title": "结算 · 全员覆灭",
+    "group": "结算"
+  },
+  {
+    "id": "result-mp",
+    "title": "结算 · 返回联机房间",
+    "group": "结算"
+  },
+  {
+    "id": "debug-settings",
+    "title": "本地调试设置",
+    "group": "开发"
+  }
+]

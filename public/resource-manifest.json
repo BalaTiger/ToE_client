@@ -1,6 +1,6 @@
 {
-  "version": "f1a00f3903c4819d",
-  "generatedAt": "2026-08-31T05:47:12.712Z",
+  "version": "a78d12e8ffae4e3c",
+  "generatedAt": "2026-09-12T10:17:59.706Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1351,6 +1351,18 @@
       "type": "image",
       "size": 19544,
       "revision": "48b93d6978379bb9"
+    },
+    {
+      "path": "/img/ui/interface/panel-frame.webp",
+      "type": "image",
+      "size": 12118,
+      "revision": "7da094ea039788ee"
+    },
+    {
+      "path": "/img/ui/interface/panel-surface.webp",
+      "type": "image",
+      "size": 1132,
+      "revision": "66e872ac1aef4dcb"
     },
     {
       "path": "/img/ui/theme_relief/hand_edge_earth.webp",

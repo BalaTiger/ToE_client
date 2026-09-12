@@ -293,7 +293,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
           zIndex:1000,
         }}>
           <div style={{
-            fontFamily:"'Cinzel Decorative','Cinzel',serif",
+            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",
             fontSize:32,
             fontWeight:700,
             letterSpacing:2,
@@ -313,7 +313,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       {displayTriggerName&&(
         <div style={{
           position:'absolute',bottom:'12%',left:'50%',transform:'translateX(-50%)',
-          fontFamily:"'Cinzel',serif",fontWeight:700,letterSpacing:3,fontSize:13,
+          fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,letterSpacing:3,fontSize:13,
           color:isInspection?(inspectionTone==='positive'?'#7ef2aa':inspectionTone==='neutral'?'#c7d3e8':'#e28cff'):(cardPolarity==='negative'?'#c060dd':cardPolarity==='neutral'?'#c7d3e8':'#c8a96e'),
           textShadow:isInspection?(inspectionTone==='positive'?'0 0 16px #2dbf6688':inspectionTone==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #9020cc88'):(cardPolarity==='negative'?'0 0 16px #9020cc88':cardPolarity==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #c8a96e88'),
           textTransform:'uppercase',whiteSpace:'nowrap',

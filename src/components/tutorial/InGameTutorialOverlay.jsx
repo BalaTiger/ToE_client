@@ -76,7 +76,7 @@ function renderTutorialLine(line) {
   return parts.map((part, idx) => {
     const style = TERM_STYLES[part];
     if (style) return <span key={idx} style={style}>{part}</span>;
-    return <>{part}</>;
+    return part;
   });
 }
 
@@ -259,17 +259,13 @@ function ScriptTutorialOverlay({
       ) : (
         <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.72)', pointerEvents: 'none' }} />
       ))}
-      <div style={{
+      <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
         position: 'absolute',
         left: tooltipLeft,
         top: tooltipTop,
         width: tooltipW,
         pointerEvents: 'auto',
-        background: '#120d06',
-        border: '1.5px solid #7a5020',
-        borderRadius: 4,
         padding: `${tm.paddingY}px ${tm.paddingX}px`,
-        boxShadow: '0 0 40px #7a502066',
         animation: 'animPop 0.25s ease-out',
         zIndex: 901,
       }}>
@@ -283,9 +279,7 @@ function ScriptTutorialOverlay({
                   color: idx === step?.emphasisLineIndex ? '#e8c87a' : '#c8a96e',
                   fontSize: idx === step?.emphasisLineIndex ? tm.emphasisFont : tm.bodyFont,
                   lineHeight: idx === step?.emphasisLineIndex ? 1.9 : 1.85,
-                  fontStyle: 'italic',
                   marginBottom: idx === bodyLines.length - 1 ? (hasButton ? 16 : 4) : 10,
-                  fontFamily: "'IM Fell English','Georgia',serif",
                   fontWeight: idx === step?.emphasisLineIndex ? 700 : undefined,
                   textShadow: idx === step?.emphasisLineIndex ? '0 0 16px #c8a96e66' : undefined,
                   opacity: idx === step?.emphasisLineIndex ? 1 : 0.92,
@@ -295,22 +289,20 @@ function ScriptTutorialOverlay({
               </p>
             ))}
             {actionStep && (
-              <div style={{ color: '#8a6a38', fontSize: tm.helperFont, lineHeight: 1.7, fontFamily: "'Cinzel',serif", letterSpacing: 0.7 }}>
+              <div style={{ color: '#8a6a38', fontSize: tm.helperFont, lineHeight: 1.7,  letterSpacing: 0.7 }}>
                 按高亮区域完成操作
               </div>
             )}
             {hasButton && (
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={onPrimary}
-                style={{ width: '100%', padding: `${tm.buttonPadY}px`, background: '#1c1008', border: '1.5px solid #c8a96e', color: '#e8c87a', fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: tm.buttonFont, borderRadius: 2, cursor: 'pointer', letterSpacing: 1.5, textTransform: 'uppercase', boxShadow: '0 0 12px #c8a96e33', transition: 'all .2s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#2a1a08'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = '#1c1008'; }}
+                style={{ width: '100%', padding: `${tm.buttonPadY}px`,     fontWeight: 700, fontSize: tm.buttonFont,  cursor: 'pointer', letterSpacing: 1.5, textTransform: 'uppercase',  transition: 'all .2s' }}
               >
                 {step.complete ? '开始正式对局' : '下一步 →'}
               </button>
             )}
             {step.complete && isArtifact && !isH5Package && (
-              <div style={{ marginTop: 12, fontSize: tm.noteFont, color: '#7a5a2a', fontFamily: "'Cinzel',serif", letterSpacing: 0.5 }}>
+              <div style={{ marginTop: 12, fontSize: tm.noteFont, color: '#7a5a2a',  letterSpacing: 0.5 }}>
                 （当前为预览环境，引导完成状态不会被保存）
               </div>
             )}
@@ -417,31 +409,27 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
             {/* Tooltip popup */}
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'absolute',
               left:px,
               top:Math.max(8,py-90),
               width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
               {/* Arrow pointing left */}
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 这么说吧，你此行的目标是一个危险的遗迹，遗迹里有着…很可怕的东西。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 这里会显示你的当前状态，当<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>归零，你就会倒下。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(3)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -468,27 +456,23 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'absolute',
               left:px,
               top:Math.max(8,py-90),
               width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 <span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>下方是你的<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值，象征心智。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(4)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -515,30 +499,26 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:ptop,bottom:0,width:pleft,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',right:0,top:ptop,bottom:0,left:pright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'absolute',
               left:px,
               top:Math.max(8,py-90),
               width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 当一个人完全丧失心智，被遗迹里那些邪祟占据身体，所有人都会大祸临头！
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 哦，不过<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>可能会挺高兴…
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(5)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -555,30 +535,26 @@ export default function InGameTutorialOverlay({
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none'}}>
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'absolute',
               left:rx,
               top:Math.max(8,ry-20),
               width:TW,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
-              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',left:-9,top:arrowTop,width:0,height:0,borderTop:'8px solid transparent',borderBottom:'8px solid transparent',borderRight:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',left:-7,top:arrowTop+1,width:0,height:0,borderTop:'7px solid transparent',borderBottom:'7px solid transparent',borderRight:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 说到<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你知道你这次的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>吗？
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 每次探索中你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>身份</span>都有可能不一样。不知道的话，你可要记好了：
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(6)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -591,25 +567,21 @@ export default function InGameTutorialOverlay({
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'relative',zIndex:901,
               width:tooltipWidth(280),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 首先是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。他们贪婪、无惧危险，进入遗迹只为独占<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>。他们不会跟任何人合作，包括其他<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 至于他们大闹一通后，邪恶的古神会不会第二天就复活？他们才不管。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(7)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -638,31 +610,27 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',
               left:tooltipLeft,
               bottom:tooltipBottom,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
               {/* Arrow pointing down */}
-              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 你问我如何寻得<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>宝藏</span>？翻遍所有地方，就这么简单。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 先驱在遗迹地图上标记了ABCD四列、1234四行。如果你是<span style={{color:'#c8a96e',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #c8a96e88'}}>寻宝者</span>，手牌中有<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>所有列和所有行</span>的编号，你就赢了。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(8)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -676,25 +644,21 @@ export default function InGameTutorialOverlay({
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'relative',zIndex:901,
               width:tooltipWidth(280),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 接着是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，他们<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>团结一心</span>，是遗迹的卫士。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 所有闯入者，都是他们的敌人，是可能复活邪神的潜在威胁。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(9)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -723,28 +687,24 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
             <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
             <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',
               left:tooltipLeft,
               top:tooltipTop,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
               {/* Arrow pointing UP */}
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 如果你是<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>，你要肃清所有非<span style={{color:'#dd6a30',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc440088'}}>追猎者</span>角色，将他们的<span style={{color:'#e05050',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #cc222288'}}>HP</span>全部清零，就能获胜。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(10)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -758,22 +718,18 @@ export default function InGameTutorialOverlay({
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'relative',zIndex:901,
               width:tooltipWidth(280),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 最后是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，他们一心复活邪神，基于利害关系相互合作，精于算计他人。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(11)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -802,31 +758,27 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:aty,bottom:0,width:aleft,background:BG}}/>
             <div style={{position:'absolute',left:aright,top:aty,right:0,bottom:0,background:BG}}/>
             <div style={{position:'absolute',left:aleft,right:W-aright,top:abottom,bottom:0,background:BG}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',
               left:tooltipLeft,
               top:tooltipTop,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
               padding:'18px 20px',
-              boxShadow:'0 0 40px #7a502066',
               animation:'animPop 0.25s ease-out',
               zIndex:901,
             }}>
               {/* Arrow pointing UP */}
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 如果你是<span style={{color:'#9060cc',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #7040aa88'}}>邪祀者</span>，你要专注于腐化一名角色的心智。当他<span style={{color:'#a78bfa',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #8844cc88'}}>SAN</span>值清零，被邪神占据身体，你就赢了。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 当然，如果你准备自己丧失心智，成为邪神的宿主…那也未尝不可。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(12)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >
                 下一步 →
               </button>
@@ -853,23 +805,20 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
             <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
             <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',left:tooltipLeft,top:tooltipTop,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              padding:'18px 20px',
               animation:'animPop 0.25s ease-out',zIndex:901,
             }}>
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 每回合你将从<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>牌堆</span>摸一张牌，探索一个新区域，同时也会发生<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>随机事件</span>。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(13)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >下一步 →</button>
             </div></div>
             </div>
@@ -894,26 +843,23 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:pty,bottom:0,width:pleft,background:BG}}/>
             <div style={{position:'absolute',left:pright,top:pty,right:0,bottom:0,background:BG}}/>
             <div style={{position:'absolute',left:pleft,right:W-pright,top:pbottom,bottom:0,background:BG}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',left:tooltipLeft,top:tooltipTop,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              padding:'18px 20px',
               animation:'animPop 0.25s ease-out',zIndex:901,
             }}>
-              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',top:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderBottom:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',top:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderBottom:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 也有可能，你遇到的不是新区域，而是<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>邪神的化身</span>。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 是否<span style={{color:'#c060e0',fontStyle:'normal',fontWeight:700,textShadow:'0 0 8px #9030cc88'}}>信仰</span>祂，分享祂的权能，取决于你。小心越陷越深。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(14)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >下一步 →</button>
             </div></div>
             </div>
@@ -924,24 +870,21 @@ export default function InGameTutorialOverlay({
         return(
           <div style={{position:'fixed',inset:0,zIndex:900,pointerEvents:'none',display:'flex',alignItems:'center',justifyContent:'center'}}>
             <div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.58)',pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'relative',zIndex:901,
               width:tooltipWidth(280),pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              padding:'18px 20px',
               animation:'animPop 0.25s ease-out',
             }}>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 你问我还能遇到什么？天知道。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 我已经老了，或许你<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>以后</span>能遇到更多事。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(15)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >下一步 →</button>
             </div></div>
             </div>
@@ -967,26 +910,23 @@ export default function InGameTutorialOverlay({
             <div style={{position:'absolute',left:0,top:hty,bottom:0,width:hleft,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',right:0,top:hty,bottom:0,left:hright,background:BG,pointerEvents:'none'}}/>
             <div style={{position:'absolute',left:hleft,right:W-hright,top:hbottom,bottom:0,background:BG,pointerEvents:'none'}}/>
-            <div style={{
+            <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{
               position:'fixed',left:tooltipLeft,bottom:tooltipBottom,
               width:TOOLTIP_W,pointerEvents:'auto',
-              background:'#120d06',border:'1.5px solid #7a5020',borderRadius:4,
-              padding:'18px 20px',boxShadow:'0 0 40px #7a502066',
+              padding:'18px 20px',
               animation:'animPop 0.25s ease-out',zIndex:901,
             }}>
-              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid #7a5020'}}/>
-              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #120d06'}}/>
-              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:10,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <div style={{position:'absolute',bottom:-9,left:arrowLeft,width:0,height:0,borderLeft:'8px solid transparent',borderRight:'8px solid transparent',borderTop:'9px solid var(--toe-ui-accent, #c3a374)'}}/>
+              <div style={{position:'absolute',bottom:-7,left:arrowLeft+1,width:0,height:0,borderLeft:'7px solid transparent',borderRight:'7px solid transparent',borderTop:'8px solid #101b1b'}}/>
+              <div style={{display:'flex',gap:10,alignItems:'flex-start'}}><NarratorAvatar tooltipW={tooltipWidth(280)}/><div style={{flex:1,minWidth:0}}><p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:10,opacity:0.9}}>
                 务必注意，你的行囊有限。回合结束时，如果你的<span style={{color:'#e8c87a',fontStyle:'normal',fontWeight:700}}>手牌多于4张</span>，那就丢掉多余的东西，轻装上路。
               </p>
-              <p style={{color:'#c8a96e',fontSize:12,lineHeight:1.85,fontStyle:'italic',marginBottom:18,fontFamily:"'IM Fell English','Georgia',serif",opacity:0.9}}>
+              <p className="toe-subtitle" style={{fontSize:12,lineHeight:1.85,marginBottom:18,opacity:0.9}}>
                 我还有很多没教你，不过想要生存并获胜，你得自己学了。
               </p>
-              <button
+              <button className="toe-button toe-button-primary" type="button"
                 onClick={()=>setTutorialStep(16)}
-                style={{width:'100%',padding:'8px',background:'#1c1008',border:'1.5px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:11,borderRadius:2,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',boxShadow:'0 0 12px #c8a96e33',transition:'all .2s'}}
-                onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';}}
-                onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';}}
+                style={{width:'100%',padding:'8px',fontWeight:700,fontSize:11,cursor:'pointer',letterSpacing:1.5,textTransform:'uppercase',transition:'all .2s'}}
               >下一步 →</button>
             </div></div>
             </div>
@@ -996,25 +936,23 @@ export default function InGameTutorialOverlay({
       {/* ── Step 16: closing modal, "完成引导" ── */}
       {tutorialStep===16&&(
         <div style={{position:'fixed',inset:0,background:'#000000cc',zIndex:999,display:'flex',alignItems:'center',justifyContent:'center'}}>
-          <div style={{background:'#120d06',border:'2px solid #7a5020',borderRadius:4,padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',boxShadow:'0 0 60px #7a502066',animation:'animPop 0.25s ease-out'}}>
+          <div className="toe-dialog toe-dialog--tutorial" data-ui-dialog="tutorial" role="dialog" style={{padding:'36px 40px',maxWidth:380,width:'90%',textAlign:'center',animation:'animPop 0.25s ease-out'}}>
             <img src={NARRATOR_AVATAR} alt="narrator" style={{width:Math.min(80,Math.floor((vw-20)/4)),height:Math.min(80,Math.floor((vw-20)/4)),borderRadius:4,objectFit:'cover',objectPosition:'top',border:'2px solid #5a3a10',boxShadow:'0 0 16px #7a502066',margin:'0 auto 14px',display:'block'}} />
             <div style={{width:160,height:1,background:'linear-gradient(90deg,transparent,#5a4020,transparent)',margin:'0 auto 20px'}}/>
-            <p style={{color:'#c8a96e',fontSize:13,lineHeight:1.9,fontStyle:'italic',marginBottom:14,opacity:0.85}}>
+            <p style={{color:'#c8a96e',fontSize:13,lineHeight:1.9,marginBottom:14,opacity:0.85}}>
               如果你开始害怕这座遗迹，像我一样逃离还来得及。如果你依然无所畏惧…
             </p>
-            <p style={{color:'#e8c87a',fontSize:17,lineHeight:1.9,fontWeight:700,fontStyle:'italic',marginBottom:28,fontFamily:"'IM Fell English','Georgia',serif",textShadow:'0 0 16px #c8a96e66'}}>
+            <p style={{color:'#e8c87a',fontSize:17,lineHeight:1.9,fontWeight:700,marginBottom:28,textShadow:'0 0 16px #c8a96e66'}}>
               那就<span style={{color:'#f0d890',textShadow:'0 0 20px #e8c87a99',fontWeight:700}}>开始探索</span>吧！
             </p>
-            <button
+            <button className="toe-button toe-button-primary" type="button"
               onClick={completeTutorial}
-              style={{padding:'10px 36px',background:'#1c1008',border:'2px solid #c8a96e',color:'#e8c87a',fontFamily:"'Cinzel',serif",fontWeight:700,fontSize:13,borderRadius:2,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',boxShadow:'0 0 20px #c8a96e44',transition:'all .2s'}}
-              onMouseEnter={e=>{e.currentTarget.style.background='#2a1a08';e.currentTarget.style.boxShadow='0 0 30px #c8a96e88';}}
-              onMouseLeave={e=>{e.currentTarget.style.background='#1c1008';e.currentTarget.style.boxShadow='0 0 20px #c8a96e44';}}
+              style={{padding:'10px 36px',fontWeight:700,fontSize:13,cursor:'pointer',letterSpacing:2,textTransform:'uppercase',transition:'all .2s'}}
             >
               ✦ 完成引导
             </button>
             {isArtifact&&!isH5Package&&(
-              <div style={{marginTop:14,fontSize:10,color:'#7a5a2a',fontFamily:"'Cinzel',serif",letterSpacing:0.5}}>
+              <div className="toe-subtitle" style={{marginTop:14,fontSize:10,letterSpacing:0.5}}>
                 （当前为预览环境，引导完成状态不会被保存）
               </div>
             )}

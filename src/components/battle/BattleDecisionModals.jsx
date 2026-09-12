@@ -81,7 +81,7 @@ export function BattleDecisionModals({
   return (
     <>
       {decisionError && canShowTurnDecisionModal && phase !== 'DRAW_REVEAL' && (
-        <div role="alert" style={{ position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', zIndex: 1200, padding: '8px 14px', border: '1px solid #a64f4f', borderRadius: 3, background: '#2a1111ee', color: '#e8a0a0', fontFamily: "'Cinzel',serif", fontSize: 12, letterSpacing: 1, pointerEvents: 'none' }}>
+        <div role="alert" style={{ position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', zIndex: 1200, padding: '8px 14px', border: '1px solid #a64f4f', borderRadius: 3, background: '#2a1111ee', color: '#e8a0a0', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, letterSpacing: 1, pointerEvents: 'none' }}>
           结算准备失败，请重试。
         </div>
       )}
@@ -130,20 +130,20 @@ export function BattleDecisionModals({
       {/* Zhu hide card modal */}
       {!suppressAnim && canShowTurnDecisionModal && pendingZhuCard && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 520, pointerEvents: 'none' }}>
-          <div style={{ background: '#130f07f2', border: `2px solid ${GOD_DEFS.ZHU.col}`, boxShadow: `0 0 60px ${GOD_DEFS.ZHU.col}44,0 0 120px #000c`, borderRadius: 4, padding: '22px 26px', maxWidth: 520, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: GOD_DEFS.ZHU.col, fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 衔烛照幽 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
+          <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 520, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: GOD_DEFS.ZHU.col, fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 衔烛照幽 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
               是否将 {cardLogText(pendingZhuCard, { alwaysShowName: true })} 藏到牌堆底？
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-              <button
+              <button className="toe-button"
                 onClick={() => runDecision(`zhu-hide:${phase}:yes`, () => pendingZhuDrawCard ? handleZhuHideDrawnCard(true) : pendingZhuGodCard ? handleZhuHideGodCard(true) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(true) : handleZhuHideAiDrawCard(true))}
-                style={{ padding: '8px 18px', background: '#1b1408', border: `1.5px solid ${GOD_DEFS.ZHU.col}`, color: '#f2df8a', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}
-              >是</button>
-              <button
+                style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}
+              >藏到牌堆底</button>
+              <button className="toe-button"
                 onClick={() => runDecision(`zhu-hide:${phase}:no`, () => pendingZhuDrawCard ? handleZhuHideDrawnCard(false) : pendingZhuGodCard ? handleZhuHideGodCard(false) : pendingZhuSphinxCard ? handleZhuHideTopCardDuringSphinx(false) : handleZhuHideAiDrawCard(false))}
-                style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}
-              >否</button>
+                style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}
+              >不藏牌</button>
             </div>
           </div>
         </div>
@@ -151,7 +151,7 @@ export function BattleDecisionModals({
 
       {/* Zhu hide: waiting for other players */}
       {!suppressAnim && gs._isMP && pendingZhuAnyCard && visualMe?.godName !== 'ZHU' && (
-        <div style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', background: 'rgba(0,0,0,0.82)', border: '1.5px solid #6a5430', borderRadius: 4, padding: '18px 22px', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 14, letterSpacing: 1, zIndex: 519, pointerEvents: 'none' }}>
+        <div className="toe-dialog" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',    padding: '18px 22px',  fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 14, letterSpacing: 1, zIndex: 519, pointerEvents: 'none' }}>
           请等待其他玩家选择…
         </div>
       )}
@@ -199,16 +199,14 @@ export function BattleDecisionModals({
 
       {/* Other players see thinking text during AOE dodge */}
       {!suppressAnim && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && !isLocalTreasureAoEDodgePhase(gs) && gs._isMP && (
-        <div style={{
+        <div className="toe-dialog" style={{
           position: 'fixed',
           top: '50%',
           left: '50%',
           transform: 'translate(-50%, -50%)',
-          background: 'rgba(0, 0, 0, 0.8)',
           padding: '20px',
-          borderRadius: '5px',
           color: '#c8a96e',
-          fontFamily: "'Cinzel', serif",
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
           fontSize: '16px',
           zIndex: 1000
         }}>
@@ -219,20 +217,20 @@ export function BattleDecisionModals({
       {/* Tsathoggua slime balance decision */}
       {!suppressAnim && canShowTurnDecisionModal && phase === 'TSG_SLIME_BALANCE' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || gs._isMP) && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 430, pointerEvents: 'none' }}>
-          <div style={{ background: '#101608f2', border: '2px solid #5f8f4a', boxShadow: '0 0 60px #5f8f4a33, 0 0 120px #000c', borderRadius: 4, padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#9ed27f', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 赐福黏液 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
+          <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#9ed27f', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 赐福黏液 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
               {isLocalSeatIndex(gs.abilityData?.targetIdx)
                 ? `是否牺牲撒托古亚的赐福黏液，将当前 HP/SAN（${gs.abilityData?.afterHp ?? '?'} / ${gs.abilityData?.afterSan ?? '?'}）平分？`
                 : `等待 ${gs.players[gs.abilityData?.targetIdx]?.name || '目标'} 选择是否牺牲黏液…`}
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => runDecision('tsg-slime:yes', () => resolveTsathogguaSlimeBalance(true))} style={{ padding: '8px 18px', background: '#17220e', border: '1.5px solid #5f8f4a', color: '#d8f0bd', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
-                <button onClick={() => runDecision('tsg-slime:no', () => resolveTsathogguaSlimeBalance(false))} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
+                <button className="toe-button toe-button-primary" onClick={() => runDecision('tsg-slime:yes', () => resolveTsathogguaSlimeBalance(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>牺牲黏液</button>
+                <button className="toe-button" onClick={() => runDecision('tsg-slime:no', () => resolveTsathogguaSlimeBalance(false))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>保留黏液</button>
               </div>
             ) : (
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                 请等待其他玩家选择…
               </div>
             )}
@@ -243,9 +241,9 @@ export function BattleDecisionModals({
       {/* Etherealize decision —— AI 的决策弹窗不对玩家展示 */}
       {!suppressAnim && canShowTurnDecisionModal && phase === 'ETHEREALIZE_DECISION' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || (gs._isMP && !isAiSeat(gs, gs.abilityData?.targetIdx))) && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 430, pointerEvents: 'none' }}>
-          <div style={{ background: '#0c1118f2', border: '2px solid #87a9c8', boxShadow: '0 0 60px #87a9c833, 0 0 120px #000c', borderRadius: 4, padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#b9d8f0', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 半物质化 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
+          <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#b9d8f0', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 半物质化 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#d8c078', fontSize: 14, lineHeight: 1.6, marginBottom: 18 }}>
               {isLocalSeatIndex(gs.abilityData?.targetIdx)
                 ? (gs.abilityData?.viaEtherealizeFrom != null
                   ? `${gs.players[gs.abilityData.viaEtherealizeFrom]?.name || '有角色'} 通过虚化将即将失去的 ${gs.abilityData?.lostHp || 0} HP / ${gs.abilityData?.lostSan || 0} SAN 转移给了你！是否消耗1层虚化，将其继续转移？`
@@ -254,11 +252,11 @@ export function BattleDecisionModals({
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button onClick={() => runDecision('etherealize:yes', () => resolveEtherealizeRedirect(true))} style={{ padding: '8px 18px', background: '#101a22', border: '1.5px solid #87a9c8', color: '#d9efff', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>是</button>
-                <button onClick={() => runDecision('etherealize:no', () => resolveEtherealizeRedirect(false))} style={{ padding: '8px 18px', background: '#100c08', border: '1.5px solid #6a5430', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>否</button>
+                <button className="toe-button toe-button-primary" onClick={() => runDecision('etherealize:yes', () => resolveEtherealizeRedirect(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>消耗虚化并转移</button>
+                <button className="toe-button" onClick={() => runDecision('etherealize:no', () => resolveEtherealizeRedirect(false))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>承受损失</button>
               </div>
             ) : (
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                 请等待其他玩家选择…
               </div>
             )}
@@ -288,9 +286,9 @@ export function BattleDecisionModals({
       {/* First come pick select */}
       {!suppressAnim && canShowTurnDecisionModal && phase === 'FIRST_COME_PICK_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
-          <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 先到先得 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
+          <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 先到先得 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
               {gs.players[gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex || 0]]?.name || '当前角色'} 选择一张翻开的牌收入手牌
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -311,7 +309,7 @@ export function BattleDecisionModals({
               })}
             </div>
             {!isLocalFirstComePicker(gs) && (
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                 其他角色选择中…
               </div>
             )}
@@ -322,9 +320,9 @@ export function BattleDecisionModals({
       {/* Grave dig select */}
       {!suppressAnim && canShowTurnDecisionModal && phase === 'GRAVE_DIG_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
-          <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 掘墓 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
+          <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 掘墓 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
               从弃牌堆中选择一张邪神牌放入你的手牌
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
@@ -344,7 +342,7 @@ export function BattleDecisionModals({
               })}
             </div>
             {!isLocalSeatIndex(gs.abilityData?.playerIndex) && (
-              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+              <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                 等待 {gs.players[gs.abilityData?.playerIndex]?.name || '目标'} 做出选择…
               </div>
             )}
@@ -355,23 +353,23 @@ export function BattleDecisionModals({
       {/* Same abyss select */}
       {!suppressAnim && canShowTurnDecisionModal && phase === 'SAME_ABYSS_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
-          <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 同归深渊 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
+          <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 同归深渊 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
               你手牌最多（{gs.abilityData?.targetHandCount ?? gs.players[gs.abilityData?.targetIdx]?.hand?.length ?? 0} 张）。将手牌弃至与 {gs.players[gs.abilityData?.actorIdx ?? gs.currentTurn]?.name || '对方'} 数量相等（{gs.abilityData?.actorHandCount || 0} 张），或者失去 4 HP。
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {isLocalSameAbyssTargetPhase(gs) ? (
                 <>
-                  <button onClick={() => runDecision('same-abyss:discard', () => sameAbyssSelect('discard'))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button className="toe-button" onClick={() => runDecision('same-abyss:discard', () => sameAbyssSelect('discard'))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     {(gs.abilityData?.discardCount || 0) > 0 ? '弃置手牌至' : '不弃牌，保持'} {gs.abilityData?.actorHandCount || 0} 张
                   </button>
-                  <button onClick={() => runDecision('same-abyss:hp', () => sameAbyssSelect('hp'))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a3a3a', color: '#c87878', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button className="toe-button toe-button-danger" onClick={() => runDecision('same-abyss:hp', () => sameAbyssSelect('hp'))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     失去 4 HP
                   </button>
                 </>
               ) : (
-                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+                <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                   等待 {gs.players[gs.abilityData?.targetIdx]?.name || '目标'} 做出选择…
                 </div>
               )}
@@ -383,23 +381,23 @@ export function BattleDecisionModals({
       {/* Sphinx guess */}
       {!pendingZhuSphinxAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'SPHINX_GUESS' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
-          <div style={{ background: '#150e07ee', border: '2px solid #d7b46a', boxShadow: '0 0 60px #d7b46a33, 0 0 120px #000a', borderRadius: 4, padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
-            <div style={{ fontFamily: "'Cinzel',serif", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 斯芬克斯 ──</div>
-            <div style={{ fontFamily: "'IM Fell English','Georgia',serif", fontStyle: 'italic', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
+          <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 斯芬克斯 ──</div>
+            <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal', color: '#b09090', fontSize: 14, marginBottom: 18, lineHeight: 1.5 }}>
               猜测牌堆顶的牌是否是区域牌。若猜对，收入这张牌；若猜错，失去 3 HP。
             </div>
             <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
               {isLocalSphinxGuessPhase(gs) ? (
                 <>
-                  <button onClick={() => runDecision('sphinx:true', () => sphinxGuess(true))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button className="toe-button" onClick={() => runDecision('sphinx:true', () => sphinxGuess(true))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     是区域牌
                   </button>
-                  <button onClick={() => runDecision('sphinx:false', () => sphinxGuess(false))} style={{ padding: '8px 16px', background: '#1a1008', border: '1.5px solid #8a6a3a', color: '#c8a96e', fontFamily: "'Cinzel',serif", fontSize: 13, cursor: 'pointer', borderRadius: 3 }}>
+                  <button className="toe-button" onClick={() => runDecision('sphinx:false', () => sphinxGuess(false))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     不是区域牌
                   </button>
                 </>
               ) : (
-                <div style={{ fontFamily: "'Cinzel',serif", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
+                <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, color: '#a07838', letterSpacing: 1 }}>
                   等待 {gs.players[gs.currentTurn]?.name || '对方'} 做出猜测…
                 </div>
               )}
