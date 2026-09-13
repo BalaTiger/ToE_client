@@ -8,6 +8,11 @@ import { useTutorialHighlightMeasurements } from './hooks/useTutorialHighlightMe
 import { normalizeLogForViewer } from './game/logPerspective';
 import { createLogOnlyVisualEvent } from './game/visualEvents';
 import { shouldPlayGodResurrection } from './game/gameOverPresentation';
+import { resolveSameAbyssState, resumeSameAbyssContinuation } from './game/sameAbyssResolution';
+import { chooseAiPublicCardIndex, chooseAiTortoiseKey } from './game/aiPublicChoices';
+import { chooseAiStoneCardIndex } from './game/aiStoneChoice';
+import { chooseAiHuntDiscardIndex, chooseAiSameAbyssAction } from './game/aiDiscardChoices';
+import { resolveAiHandLimitDiscards } from './game/aiHandLimitDiscard';
 import {
   classifyTreasureDodgeRoll,
   classifyTreasureDodgeSkip,
@@ -229,7 +234,6 @@ import {
   createHuntTargetEvent,
   createHuntRevealEvent,
   createHuntResultEvent,
-  createHandLimitDiscardEvent,
   createRandomTargetVisualEvent,
   createTsathogguaSlimeGrantEvent,
   createTurnDrawVisualEvents,
@@ -267,7 +271,6 @@ import {
   getDefaultTargetForMpDecision,
   getDefaultHandCardIndexForMpDecision,
   getBuryAliveLocalPendingTarget,
-  getRandomHandCardIndex,
   isLocalCaveDuelCardDecisionPhase,
   isMpBlockingDecisionPhase,
   isLocalMpDecisionPhase,
@@ -951,6 +954,14 @@ export default function Game(){
   const debugVritraImmortalRevealHandlerRef=useRef(null);
   const debugGuillotineHandlerRef=useRef(null);
   const debugPetrifyDeathHandlerRef=useRef(null);
+  const debugHuntRegressionRef=useRef(null);
+  const debugHuntRegressionPlayRef=useRef(null);
+  const [debugHuntRegressionStatus,setDebugHuntRegressionStatus]=useState('idle');
+  const [debugRegressionScenario,setDebugRegressionScenario]=useState('hunt');
+  const [debugHuntRegressionTrace,setDebugHuntRegressionTrace]=useState([]);
+  const debugHuntRegressionEnabled=import.meta.env.DEV
+    && ['localhost','127.0.0.1','[::1]'].includes(window.location.hostname)
+    && new URLSearchParams(window.location.search).get('regression')==='hunt-night';
   const [handAreaRect,setHandAreaRect]=useState(null);
   const [tutorialHandCardRect,setTutorialHandCardRect]=useState(null);
   const [handCardsRect,setHandCardsRect]=useState(null);
@@ -2215,9 +2226,10 @@ export default function Game(){
       case 'DECIPHER_STONE_CARVING': {
         const revealed=state.abilityData?.revealedCards||[];
         if(!revealed.length)return false;
+        const chosenIdx=chooseAiStoneCardIndex({state,actorIdx:state.abilityData?.playerIndex??state.currentTurn,cards:revealed});
         return withCurrentState(()=>decipherStoneCarvingConfirm({
-          handCard:revealed[0],
-          deckTopCards:revealed.slice(1).reverse(),
+          handCard:revealed[chosenIdx],
+          deckTopCards:revealed.filter((_,index)=>index!==chosenIdx).reverse(),
           deckBottomCards:[],
           allowAi:true,
         }));
@@ -2229,11 +2241,9 @@ export default function Game(){
       }
       case 'SAME_ABYSS_SELECT': {
         const targetIdx=state.abilityData?.targetIdx;
-        const target=state.players?.[targetIdx];
-        const actorHandCount=state.abilityData?.actorHandCount??0;
-        const discardCount=state.abilityData?.discardCount??0;
-        const canDiscard=discardCount>0&&(target?.hand?.length||0)>actorHandCount;
-        return withCurrentState(()=>sameAbyssSelect(canDiscard?'discard':'hp',true));
+        const action=chooseAiSameAbyssAction(state,targetIdx,state.abilityData?.actorIdx??state.currentTurn);
+        if(!action)return false;
+        return withCurrentState(()=>sameAbyssSelect(action.type,true));
       }
       case 'SPHINX_GUESS':
         if(getPendingZhuHideCardForState(state))return withCurrentState(()=>handleZhuHideTopCardDuringSphinx(false));
@@ -2912,6 +2922,14 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs,anim,showTutorial,softGuidePauseActive]);
 
+  useEffect(()=>{
+    if(!gs||gs.phase!=='SAME_ABYSS_SELECT'||!gs.abilityData?.forceDiscard||gs.gameOver||anim||animExiting||showTutorial||softGuidePauseActive)return;
+    if(isMultiplayerGame(gs)&&!isLocalSameAbyssTargetPhase(gs))return;
+    const timer=setTimeout(()=>sameAbyssSelect('discard',true),AI_AUTO_STEP_DELAY);
+    return()=>clearTimeout(timer);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
+
   // Handle AI automatic target selection for rose thorn (玫瑰倒刺)
   useEffect(()=>{
     if(!gs||gs.phase!=='ROSE_THORN_SELECT_TARGET'||gs.gameOver||gs.phase==='PLAYER_WIN_PENDING'||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current||showTutorial||softGuidePauseActive||isMultiplayerGame(gs))return;
@@ -2979,7 +2997,7 @@ export default function Game(){
     if(!gs||gs.gameOver||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current||showTutorial||softGuidePauseActive||isMultiplayerGame(gs))return;
     if(gs.phase==='TORTOISE_ORACLE_SELECT'){
       const actorIdx=gs.abilityData?.playerIndex??gs.currentTurn;
-      const key=gs.abilityData?.selectableKeys?.[0];
+      const key=chooseAiTortoiseKey({state:gs,actorIdx,revealedCards:gs.abilityData?.revealedCards,selectableKeys:gs.abilityData?.selectableKeys});
       if(!isAiSeat(gs,actorIdx)||key==null)return;
       const t=setTimeout(()=>tortoiseOracleSelect(key,true),AI_AUTO_STEP_DELAY);
       return()=>clearTimeout(t);
@@ -3015,7 +3033,7 @@ export default function Game(){
         const currentPicker=ad.pickOrder?.[ad.pickIndex||0];
         if(currentPicker==null||isLocalSeatIndex(currentPicker)||!cards.length)return prev;
         let P=copyPlayers(prev.players),D=[...prev.deck],Disc=[...prev.discard],L=[...prev.log];
-        const chosenIdx=chooseFirstComePickForAI(cards,currentPicker,P);
+        const chosenIdx=chooseFirstComePickForAI(cards,currentPicker,P,prev);
         const [chosenCard]=cards.splice(chosenIdx,1);
         P[currentPicker].hand.push(chosenCard);
         L.push(`【先到先得】${P[currentPicker].name} 选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`);
@@ -3429,15 +3447,23 @@ export default function Game(){
     if(gs.phase==='TREASURE_AOE_DODGE_DECISION'){handleTreasureAOEDodgeSkip();return;}
     if(gs.phase==='NYA_BORROW'){nyaSkip();return;}
     if(gs.phase==='TORTOISE_ORACLE_SELECT'){
-      const key=gs.abilityData?.selectableKeys?.[0];
+      const key=chooseAiTortoiseKey({state:gs,actorIdx:0,revealedCards:gs.abilityData?.revealedCards,selectableKeys:gs.abilityData?.selectableKeys});
       if(key!=null)tortoiseOracleSelect(key);
       return;
     }
-    if(gs.phase==='FIRST_COME_PICK_SELECT'){firstComePickSelectCard(0);return;}
+    if(gs.phase==='FIRST_COME_PICK_SELECT'){
+      const cardIdx=chooseAiPublicCardIndex({state:gs,actorIdx:0,cards:gs.abilityData?.revealedCards});
+      if(cardIdx>=0)firstComePickSelectCard(cardIdx);
+      return;
+    }
     if(gs.phase==='SWAP_STEAL_CARD'){swapSelectTargetCard(0);return;}
     if(gs.phase==='HUNT_SELECT_CARD_FROM_PUBLIC'){huntSelectCardFromPublic(0);return;}
     if(gs.phase==='GRAVE_DIG_SELECT'){graveDigSelectGod(0);return;}
-    if(gs.phase==='SAME_ABYSS_SELECT'){sameAbyssSelect('hp');return;}
+    if(gs.phase==='SAME_ABYSS_SELECT'){
+      const action=chooseAiSameAbyssAction(gs,gs.abilityData?.targetIdx,gs.abilityData?.actorIdx??gs.currentTurn);
+      if(action)sameAbyssSelect(action.type);
+      return;
+    }
     if(gs.phase==='SPHINX_GUESS'){sphinxGuess(false);return;}
     if(gs.phase==='TSG_SLIME_BALANCE'){resolveTsathogguaSlimeBalance(false);return;}
     if(gs.phase==='ETHEREALIZE_DECISION'){resolveEtherealizeRedirect(false);return;}
@@ -3460,7 +3486,7 @@ export default function Game(){
       const ad=gs.abilityData||{};
       const revealed=ad.revealedCards||[];
       if(revealed.length){
-        const handCard=revealed[0];
+        const handCard=revealed[chooseAiStoneCardIndex({state:gs,actorIdx:ad.playerIndex??0,cards:revealed})];
         const remaining=revealed.filter(c=>c.id!==handCard.id);
         decipherStoneCarvingConfirm({
           handCard,
@@ -3471,7 +3497,7 @@ export default function Game(){
       return;
     }
     if(gs.phase==='CAVE_DUEL_SELECT_CARD'||gs.phase==='CAVE_DUEL_WAIT_REVEAL'){
-      const cardIdx=getRandomHandCardIndex(me.hand);
+      const cardIdx=getDefaultHandCardIndexForMpDecision(gs);
       if(cardIdx>=0)caveDuelSelectCard(cardIdx,me.hand[cardIdx]);
       return;
     }
@@ -3738,6 +3764,52 @@ export default function Game(){
   // ── Loading Screen ───────────────────────────────────────────
   const handleGodResurrectionDone=useCallback(()=>setShowGodResurrection(true),[]);
 
+  useEffect(()=>{
+    if(!debugHuntRegressionEnabled||!debugHuntRegressionRef.current)return;
+    const expectedPhase=debugRegressionScenario==='swap'?'ACTION':'PLAYER_REVEAL_FOR_HUNT';
+    if(debugHuntRegressionStatus==='playing'&&gs?.phase===expectedPhase
+      &&!anim&&!animExiting&&!animQueueRef.current.length&&!pendingGsRef.current){
+      setDebugHuntRegressionStatus('complete');
+    }
+    const sample={
+      animation:anim?.type||'idle', target:anim?.targetIdx??null,
+      from:anim?.fromPid??null, to:anim?.toPid??null,
+      privateTransfer:anim?.type==='CARD_TRANSFER'&&!anim?.cards?.length,
+      hp:displayStats?.[2]?.hp??gs?.players?.[2]?.hp??null,
+      phase:gs?.phase||'', ready:guillotineTargets.length>0,
+      snapshots:guillotineTargets.filter(target=>!!target.snapshotUrl).length,
+    };
+    setDebugHuntRegressionTrace(trace=>JSON.stringify(trace.at(-1))===JSON.stringify(sample)
+      ?trace:[...trace,sample].slice(-160));
+  },[debugHuntRegressionEnabled,debugHuntRegressionStatus,debugRegressionScenario,anim,animExiting,animQueueRef,pendingGsRef,displayStats,guillotineTargets,gs?.phase,gs?.players]);
+
+  const debugHuntRegressionControls=debugHuntRegressionEnabled&&<div
+    data-testid="debug-hunt-regression"
+    style={{position:'fixed',left:8,bottom:8,zIndex:1600,maxWidth:410,padding:8,background:'#14100fee',border:'1px solid #8d7546',borderRadius:4,color:'#eeddb2',fontSize:11}}
+  >
+    <div style={{display:'flex',gap:6}}>
+      <button type="button" onClick={()=>loadDebugHuntRegression('hunt')}>载入追捕回归</button>
+      <button type="button" disabled={debugRegressionScenario!=='hunt'||!debugHuntRegressionRef.current||debugHuntRegressionStatus!=='loaded'} onClick={()=>debugHuntRegressionPlayRef.current?.()}>播放追捕回归</button>
+    </div>
+    <div style={{display:'flex',gap:6,marginTop:4}}>
+      <button type="button" onClick={()=>loadDebugHuntRegression('swap')}>载入AI掉包回归</button>
+      <button type="button" disabled={debugRegressionScenario!=='swap'||!debugHuntRegressionRef.current||debugHuntRegressionStatus!=='loaded'} onClick={()=>debugHuntRegressionPlayRef.current?.()}>播放AI掉包回归</button>
+    </div>
+    <output data-testid="debug-hunt-regression-status"
+      data-status={debugHuntRegressionStatus}
+      data-scenario={debugRegressionScenario}
+      data-animation={anim?.type||'idle'} data-target={anim?.targetIdx??''}
+      data-from={anim?.fromPid??''} data-to={anim?.toPid??''}
+      data-phase={gs?.phase||''}
+      data-display-hp={displayStats?.[2]?.hp??gs?.players?.[2]?.hp??''}
+      data-ready={guillotineTargets.length>0}
+      data-snapshot-count={guillotineTargets.filter(target=>!!target.snapshotUrl).length}
+    >
+      {debugHuntRegressionStatus} · {anim?.type||'idle'} · 黛安娜 HP {displayStats?.[2]?.hp??gs?.players?.[2]?.hp??'—'} · 截图 {guillotineTargets.filter(target=>!!target.snapshotUrl).length}
+    </output>
+    <details><summary>回放观测记录</summary><pre data-testid="debug-hunt-regression-trace" style={{maxHeight:170,overflow:'auto',fontSize:10,whiteSpace:'pre-wrap'}}>{JSON.stringify(debugHuntRegressionTrace,null,2)}</pre></details>
+  </div>;
+
   if(isLoading){
     return(
       <div style={{minHeight:'100vh',background:'#0a0705',color:'#c8a96e',fontFamily:"'IM Fell English','Georgia',serif",display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',textAlign:'center',padding:24,position:'relative',overflow:'hidden'}}>
@@ -3893,6 +3965,7 @@ export default function Game(){
         style={{position:'fixed',left:4,bottom:4,zIndex:99999,opacity:0.02,width:8,height:8,padding:0,border:0}}
         aria-label="Replay multiplayer swap slime draw"
       />}
+      {debugHuntRegressionControls}
     </>);
   }
 
@@ -6049,6 +6122,7 @@ export default function Game(){
         })]:[]),
       ];
     }
+    nextGs=resumeSameAbyssContinuation(nextGs);
     const flowResolution=resolveTargetContinuation(nextGs,{continueRest,continueTurnStartDraw});
     nextGs=flowResolution.state;
     const continuationRoute=flowResolution.route;
@@ -6463,7 +6537,7 @@ export default function Game(){
       return;
     }else{
       // AI作为源角色，按启发式选择
-      sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand);
+      sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:caveDuelSource,opponentIdx:ti});
       sourceCard=sourcePlayer.hand[sourceCardIndex];
     }
     
@@ -6474,8 +6548,8 @@ export default function Game(){
       setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,log:baseLog,phase:'CAVE_DUEL_SELECT_CARD',abilityData:{...gs.abilityData,caveDuelSource:caveDuelSource,caveDuelTarget:ti,sourceCardIndex:sourceCardIndex,sourceCard:sourceCard},...apophisNightPatch(night)});
       return;
     }else{
-      // AI作为目标角色，按盲选启发式选择，不查看源角色亮牌
-      targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
+      // 只使用目标角色可见的信息，不读取源角色封存的选择。
+      targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:ti,opponentIdx:caveDuelSource});
       targetCard=targetPlayer.hand[targetCardIndex];
       // 执行穴居人战争效果
       executeCaveDuel(P, caveDuelSource, ti, sourceCardIndex, targetCardIndex, sourceCard, targetCard, {...gs,deck:D,discard:Disc,log:baseLog,...apophisNightPatch(night)});
@@ -6555,12 +6629,12 @@ export default function Game(){
     }
 
     if(!ad.sourceCard&&isAiSeat(gs,caveDuelSource)){
-      const sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand);
+      const sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand,{state:{...gs,players:P},actorIdx:caveDuelSource,opponentIdx:caveDuelTarget});
       ad.sourceCardIndex=sourceCardIndex;
       ad.sourceCard=sourcePlayer.hand[sourceCardIndex];
     }
     if(!ad.targetCard&&isAiSeat(gs,caveDuelTarget)){
-      const targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
+      const targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand,{state:{...gs,players:P},actorIdx:caveDuelTarget,opponentIdx:caveDuelSource});
       ad.targetCardIndex=targetCardIndex;
       ad.targetCard=targetPlayer.hand[targetCardIndex];
     }
@@ -7237,6 +7311,64 @@ export default function Game(){
       });
       triggerAnimQueue(queue,base,()=>{},AUTHORITATIVE_QUEUE_META);
       return {ok:true,playerIndex,playerName,count:cards.length,success};
+    }
+    :null;
+
+  async function loadDebugHuntRegression(scenario='hunt'){
+    if(!debugHuntRegressionEnabled||isMultiplayerGame(latestGsRef.current))return;
+    try{
+      const fixture=await import('./debug/huntNightRegression');
+      const previousState=scenario==='swap'
+        ?fixture.createAiSwapNightRegressionState()
+        :fixture.createHuntNightRegressionState();
+      clearBattleAnimationState();
+      consumedVisualEventIdsRef.current=new Set();
+      roseThornPrevRef.current=null;
+      setShowTutorial(false);
+      setPendingSoftGuideId(null);
+      setPreparingSoftGuideId(null);
+      setSoftGuideDone(markAllSoftGuidesDone());
+      setIsSoloPaused(false);
+      setPendingRoleSelection(null);
+      setRoleRevealAnim(null);
+      setShowFullLog(false);
+      setShowGodResurrection(false);
+      debugHuntRegressionRef.current={fixture,previousState,scenario};
+      setDebugRegressionScenario(scenario);
+      setDebugHuntRegressionTrace([]);
+      setDebugHuntRegressionStatus('loaded');
+      // Staging must belong to the local seat; an AI-owned ACTION state is
+      // automatically resumed by the ordinary turn coordinator.
+      applyTutorialStateSnapshot({...previousState,currentTurn:0,phase:'ACTION'});
+    }catch(error){
+      setDebugHuntRegressionStatus(`error: ${error.message}`);
+      console.error('[hunt-regression]',error);
+    }
+  }
+
+  debugHuntRegressionPlayRef.current=debugHuntRegressionEnabled
+    ?()=>{
+      const loaded=debugHuntRegressionRef.current;
+      if(!loaded||anim||animExiting||animQueueRef.current.length||pendingGsRef.current)return;
+      try{
+        const presentation=loaded.scenario==='swap'
+          ?loaded.fixture.resolveAiSwapNightRegression(loaded.previousState)
+          :loaded.fixture.resolveHuntNightRegression(loaded.previousState);
+        setDebugHuntRegressionStatus('playing');
+        setDebugHuntRegressionTrace([]);
+        setGs(loaded.previousState);
+        presentation.externalVisualLocks.forEach(lock=>visualStateLocks.lock(lock));
+        if(presentation.inspectionEvents?.length)markInspectionEventsSeen(presentation.inspectionEvents);
+        roseThornPrevRef.current=presentation.roseThornSnapshot;
+        triggerAnimQueue(
+          presentation.queue,presentation.nextState,undefined,
+          strictActionQueueMeta(presentation.nextState,presentation.queue,
+            consumedVisualEventIdsRef.current,'Browser hunt regression',{eventIds:presentation.eventIds}),
+        );
+      }catch(error){
+        setDebugHuntRegressionStatus(`error: ${error.message}`);
+        console.error('[hunt-regression]',error);
+      }
     }
     :null;
 
@@ -8166,7 +8298,7 @@ export default function Game(){
       attemptId:huntAttemptId,
     });
     const aiHand=P[huntingAI].hand;
-    const mi=aiHand.findIndex(c=>cardsHuntMatch(c,card));
+    const mi=chooseAiHuntDiscardIndex({...gs,players:P,deck:D,discard:Disc,log:L},huntingAI,card,0);
     const hadHuntDamage=mi>=0;
     if(mi>=0){
       discardedCard=aiHand.splice(mi,1)[0];Disc.push(discardedCard);
@@ -8293,33 +8425,22 @@ export default function Game(){
     const baseGs={...gs,players:huntResolvedPlayers,deck:D,discard:huntResolvedDiscard,log:huntResolvedLog,abilityData:{},phase:'ACTION', huntAbandoned: newAbandoned};
 
     let newGs;
-    const aiHandLimitDiscardCards=[];
-    let aiHandLimitDiscardMsgs=[];
-    let aiHandLimitBeforePlayers=null;
-    let aiHandLimitBeforeDiscard=null;
+    let aiHandLimitVisualEvents=[];
     let beforeNextTurnGs=null;
-    if (win) newGs = {...baseGs, gameOver:win};
+    if(damage?.phase)newGs={...baseGs,currentTurn:huntingAI,phase:damage.phase,abilityData:damage.abilityData,skillUsed:hadHuntDamage};
+    else if (win) newGs = {...baseGs, gameOver:win};
     // 决定是让 AI 重新进入 AI_TURN 继续追杀，还是结束该回合
       else if (wantsToHuntAgain) newGs = withClearedTurnAnimFields({...baseGs, phase: 'AI_TURN', currentTurn: huntingAI, skillUsed: false, restUsed: false, _aiName: aiHunterName});
     else{
-      const aiHandLimit=P[huntingAI]._nyaHandLimit??4;
-      aiHandLimitBeforePlayers=copyPlayers(P);
-      aiHandLimitBeforeDiscard=[...Disc];
-      const aiHandLimitLogStart=L.length;
-      while(P[huntingAI].hand.length>aiHandLimit){
-        const c=P[huntingAI].hand.shift();
-        const {kept,destroyed}=splitKeptDestroyedDiscarded([c]);
-        aiHandLimitDiscardCards.push(c);
-        if(kept.length){
-          Disc.push(...kept);
-          L.push(`${aiHunterName} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
-        }else if(destroyed.length){
-          L.push(`${aiHunterName} 的衍生牌被销毁`);
-        }
+      const handLimit=resolveAiHandLimitDiscards({...baseGs,players:P,deck:D,discard:Disc,log:L},huntingAI);
+      P=handLimit.state.players;D=handLimit.state.deck;Disc=handLimit.state.discard;L=handLimit.state.log;
+      aiHandLimitVisualEvents=handLimit.visualEvents;
+      if(handLimit.damageDecision||handLimit.state.gameOver){
+        newGs=handLimit.state;
+      }else{
+        beforeNextTurnGs=handLimit.state;
+        newGs=startNextTurn(beforeNextTurnGs);
       }
-      aiHandLimitDiscardMsgs=L.slice(aiHandLimitLogStart);
-      beforeNextTurnGs={...baseGs, players:P, discard:Disc, log:L, currentTurn: huntingAI, skillUsed: true};
-      newGs = startNextTurn(beforeNextTurnGs);
     }
     if(damage?.phase)newGs={...newGs,phase:damage.phase,abilityData:damage.abilityData};
 
@@ -8345,16 +8466,7 @@ export default function Game(){
       msgs:huntResolvedLog.slice(huntLogStart+1),
       resolutionPatch:{phase:'AI_TURN',currentTurn:huntingAI,abilityData:{}},
     });
-    const handLimitDiscardEvent=createHandLimitDiscardEvent({
-      playerIdx:huntingAI,
-      playerName:aiHunterName||'???',
-      cards:aiHandLimitDiscardCards,
-      msgs:aiHandLimitDiscardMsgs,
-      beforePlayers:beforeNextTurnGs ? aiHandLimitBeforePlayers : null,
-      beforeDiscard:beforeNextTurnGs ? aiHandLimitBeforeDiscard : null,
-      afterDiscard:beforeNextTurnGs ? beforeNextTurnGs.discard : null,
-    });
-    const huntSettlementEvents=[huntRevealEvent,huntResultEvent,handLimitDiscardEvent].filter(Boolean);
+    const huntSettlementEvents=[huntRevealEvent,huntResultEvent,...aiHandLimitVisualEvents].filter(Boolean);
     let resolutionQueue=[];
     if(beforeNextTurnGs){
       const stagedSettlement=buildHuntStageVisualTransaction({
@@ -8464,94 +8576,12 @@ export default function Game(){
 
   function sameAbyssSelect(choice, allowAi=false){
     const abilityData=gs.abilityData||{};
-    const{targetIdx,actorHandCount,discardCount}=abilityData;
     if(gs.phase!=='SAME_ABYSS_SELECT'||(!isLocalSameAbyssTargetPhase(gs)&&!allowAi))return;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
-    const L=[...gs.log];
-    const target=P[targetIdx];
-    if(!target)return;
-    let damage=null;
-    let damageStatPatch={};
-    const beforeSameAbyssPlayers=copyPlayers(P);
-    const beforeSameAbyssDiscard=[...Disc];
-    const sameAbyssDiscardEvents=[];
-    const sameAbyssBalanceCards=[];
-    if(choice==='discard'){
-      if(discardCount>0){
-        for(let d=0;d<discardCount;d++){
-          if(target.hand.length>actorHandCount){
-            const c=target.hand.shift();
-            const {kept,destroyed}=splitKeptDestroyedDiscarded([c]);
-            if(destroyed.length){
-              L.push(`${target.name} 的衍生牌被销毁`);
-            }else if(c.type!=='blankZone'){
-              Disc.push(...kept);
-              sameAbyssBalanceCards.push(...kept);
-            }
-            if(c.type!=='blankZone'){
-              sameAbyssDiscardEvents.push({
-                playerIndex:targetIdx,
-                card:c,
-                afterPlayers:copyPlayers(P),
-                afterDiscard:[...Disc],
-              });
-            }
-          }
-        }
-      }
-      L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
-      if(sameAbyssBalanceCards.length){
-        const balance=applyBalanceDiscardSideEffects({
-          players:P,deck:D,discard:Disc,log:L,ownerIdx:targetIdx,cards:sameAbyssBalanceCards,
-          reason:'同归深渊弃牌',applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,
-          currentTurn:gs.currentTurn,statEventSeq:(gs._statEventSeq||0)+1,statEventReason:'同归深渊弃牌',
-          continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
-        });
-        P=balance.players;D=balance.deck;Disc=balance.discard;
-        L.splice(0,L.length,...balance.log);
-        damage=balance.damageDecision||null;
-        damageStatPatch=buildStatChangeStatePatch(gs,damage);
-      }
-    }else{
-      L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-      const statEventSeq=(gs._statEventSeq||0)+1;
-      damage=submitLossEvents({
-        players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
-        events:[{targetIdx,lostHp:4,source:'同归深渊'}],
-        continuation:{...buildTargetContinuationAbilityData(abilityData),_turnOwner:abilityData._turnOwner??gs.currentTurn},
-        statEventSeq,statEventReason:'同归深渊',statEventLogs:[L.at(-1)],
-      });
-      damageStatPatch=buildStatChangeStatePatch(gs,damage);
-    }
-    const win=damage?.abilityData?null:checkWin(P,gs._isMP);
-    const nextTurn=gs.abilityData?._turnOwner??gs.currentTurn;
-    const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
-    const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
-    const continuationAbilityData=buildTargetContinuationAbilityData(abilityData);
-    const sameAbyssDiscardEvent=sameAbyssDiscardEvents.length?createCardEffectEvent({
-      effectKey:'forcedRandomDiscard',
-      card:{name:'同归深渊',type:'sameAbyssChoice'},
-      actorIdx:gs.abilityData?.actorIdx??gs.currentTurn,
-      beforePlayers:beforeSameAbyssPlayers,
-      beforeDiscard:beforeSameAbyssDiscard,
-      afterPlayers:copyPlayers(P),
-      afterDiscard:[...Disc],
-      discardEvents:sameAbyssDiscardEvents,
-      statEvents:damage?.statEvents||[],
-      msgs:L.slice(gs.log.length),
-    }):null;
-    const newGs={
-      ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurn,
-      phase:damage?.phase||nextPhase,abilityData:damage?.abilityData||continuationAbilityData,
-      ...damageStatPatch,
-      ...(sameAbyssDiscardEvent?{_visualEvents:[...(gs._visualEvents||[]),sameAbyssDiscardEvent]}:{}),
-      ...(win?{gameOver:win}:{}),
-    };
-    const queue=bindAnimLogChunks(compileFreshVisualEventQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    finishTargetContinuation({
-      queue,
-      nextGs:newGs,
-      continueRest:!damage?.phase&&!win&&!!abilityData.fromRest,
+    const newGs=resolveSameAbyssState(gs,{choice});
+    if(!newGs)return;
+    const queue=bindAnimLogChunks(compileFreshVisualEventQueue(gs,newGs),splitAnimBoundLogs(newGs.log.slice(gs.log.length)));
+    finishTargetContinuation({queue,nextGs:newGs,
+      continueRest:!newGs._sameAbyssContinuation&&!newGs.gameOver&&!!abilityData.fromRest,
     });
   }
 
@@ -10356,6 +10386,7 @@ export default function Game(){
 
   return(<>
     <BattleScreen {...battleScreenProps} />
+    {debugHuntRegressionControls}
     {import.meta.env.DEV&&<button
       type="button"
       data-testid="debug-mp-swap-slime-replay"

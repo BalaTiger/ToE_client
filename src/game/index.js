@@ -56,3 +56,8 @@ export * from './caveDuel';
 export * from './multiplayerAiTakeover';
 export * from './targetContinuation';
 export * from './damageLinks';
+export * from './aiPolicy';
+export * from './aiDiscardChoices';
+export * from './aiHandLimitDiscard';
+export * from './sameAbyssResolution';
+export * from './aiPublicChoices';

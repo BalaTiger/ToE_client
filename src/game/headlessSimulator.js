@@ -1,4 +1,6 @@
 import { aiStep } from './aiTurn';
+import { resolveSameAbyssState, resumeSameAbyssContinuation } from './sameAbyssResolution';
+import { resolveAiPublicChoiceState } from './publicChoiceResolution';
 import { resolveAiGodChoiceState } from './aiDecisionState';
 import {
   appendConfirmedChainLoss,
@@ -11,14 +13,13 @@ import {
 import {
   buildTsathogguaSlimeBalanceDecision,
   copyPlayers,
-  splitHandDiscardCards,
   isTsathogguaSlime,
   killPlayerState,
   tryVritraImmortal,
   makeInspectionMeta,
 } from './coreUtils';
-import { createCardEffectEvent, VISUAL_EVENT } from './visualEvents';
-import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak, submitLossEvents } from './effectEngine';
+import { VISUAL_EVENT } from './visualEvents';
+import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
 import { initGame } from './setup';
 import {
@@ -404,13 +405,13 @@ function applyHeadlessLoss(gs, loss, state) {
   return { P, D, Disc, L, inspectionMeta };
 }
 
-export function resolveHeadlessEtherealize(gs) {
+export function resolveHeadlessEtherealize(gs, decision = null) {
   if (!gs || gs.phase !== 'ETHEREALIZE_DECISION') return null;
   let P = copyPlayers(gs.players);
   let abilityData = { ...(gs.abilityData || {}) };
   const sourceIdx = abilityData.targetIdx;
   const source = P[sourceIdx];
-  const useEtherealize = shouldAiUseEtherealize({
+  const useEtherealize = decision ? !!decision.useEtherealize : shouldAiUseEtherealize({
     player: source,
     lostHp: abilityData.lostHp || 0,
     lostSan: abilityData.lostSan || 0,
@@ -418,7 +419,8 @@ export function resolveHeadlessEtherealize(gs) {
   let finalTargetIdx = sourceIdx;
   let recursionLoss = null;
   if (useEtherealize) {
-    const redirectTargetIdx = chooseAiEtherealizeRedirectTarget(P, abilityData.adjacentTargets || []);
+    const redirectTargetIdx = decision ? decision.redirectTargetIdx
+      : chooseAiEtherealizeRedirectTarget(P, abilityData.adjacentTargets || []);
     if (redirectTargetIdx != null) {
       source.etherealizeStacks = Math.max(0, (source.etherealizeStacks || 0) - 1);
       finalTargetIdx = redirectTargetIdx;
@@ -514,86 +516,15 @@ export function resolveHeadlessEtherealize(gs) {
 
 export function resolveHeadlessSameAbyss(gs) {
   if (!gs || gs.phase !== 'SAME_ABYSS_SELECT') return null;
-  const { targetIdx, actorHandCount = 0, discardCount = 0 } = gs.abilityData || {};
-  let P = copyPlayers(gs.players);
-  const D = [...gs.deck];
-  const Disc = [...gs.discard];
-  const L = [...gs.log];
-  const target = P[targetIdx];
-  if (!target) return null;
-  const beforeLossPlayers = copyPlayers(P);
-  const beforeLossDiscard = [...Disc];
-  const discardEvents = [];
-
-  const canDiscard = discardCount > 0 && target.hand.length > actorHandCount;
-  if (canDiscard) {
-    for (let count = 0; count < discardCount && target.hand.length > actorHandCount; count++) {
-      const card = target.hand.shift();
-      const { kept, destroyed } = splitHandDiscardCards([card]);
-      if (card?.type !== 'blankZone') {
-        Disc.push(...kept);
-        if (destroyed.length) L.push(`${target.name} 的衍生牌被销毁`);
-        discardEvents.push({
-          playerIndex: targetIdx,
-          card,
-          afterPlayers: copyPlayers(P),
-          afterDiscard: [...Disc],
-        });
-      }
-    }
-    L.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
-  } else {
-    L.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-    const damage = submitLossEvents({
-      players: P, deck: D, discard: Disc, log: L, currentTurn: gs.currentTurn,
-      events: [{ targetIdx, lostHp: 4, source: '同归深渊' }],
-      continuation: { _turnOwner: gs.abilityData?._turnOwner ?? gs.currentTurn },
-    });
-    if (damage.phase) {
-      return {
-        ...gs,
-        players: P,
-        deck: D,
-        discard: Disc,
-        log: L,
-        phase: damage.phase,
-        abilityData: damage.abilityData,
-      };
-    }
-  }
-
-  const win = checkWin(P, gs._isMP);
-  const turnOwner = gs.abilityData?._turnOwner ?? gs.currentTurn;
-  const slimeDecision = win
-    ? null
-    : buildTsathogguaSlimeBalanceDecision(beforeLossPlayers, P, { _turnOwner: turnOwner });
-  const discardEvent = discardEvents.length ? createCardEffectEvent({
-    effectKey: 'forcedRandomDiscard',
-    card: { name: '同归深渊', type: 'sameAbyssChoice' },
-    actorIdx: gs.abilityData?.actorIdx ?? gs.currentTurn,
-    beforePlayers: beforeLossPlayers,
-    beforeDiscard: beforeLossDiscard,
-    afterPlayers: copyPlayers(P),
-    afterDiscard: [...Disc],
-    discardEvents,
-    msgs: L.slice(gs.log.length),
-  }) : null;
-  return {
-    ...gs,
-    players: P,
-    deck: D,
-    discard: Disc,
-    log: L,
-    currentTurn: turnOwner,
-    phase: slimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN',
-    abilityData: slimeDecision || {},
-    ...(discardEvent ? { _visualEvents: [...(gs._visualEvents || []), discardEvent] } : {}),
-    ...(win ? { gameOver: win } : {}),
-  };
+  return resolveSameAbyssState(gs);
 }
 
 export function advanceHeadlessGame(gs) {
   if (!gs || gs.gameOver) return { state: gs, status: 'terminal' };
+  gs = resumeSameAbyssContinuation(gs);
+  if (['FIRST_COME_PICK_SELECT', 'TORTOISE_ORACLE_SELECT', 'DECIPHER_STONE_CARVING', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(gs.phase)) {
+    return { state: resolveAiPublicChoiceState(gs), status: 'advanced' };
+  }
   if (gs.abilityData?.continueTurnStartDraw && gs.phase === 'AI_TURN') {
     return { state: continueHeadlessTurnStartDraw(gs), status: 'advanced' };
   }

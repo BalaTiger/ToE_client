@@ -3,7 +3,15 @@
 const session = globalThis.crypto?.randomUUID?.()
   || `${Date.now().toString(36)}-${globalThis.performance?.now?.().toString(36) || '0'}`;
 let nextId = 0;
-const referenceIds = new WeakMap();
+let referenceIds = new WeakMap();
+export function withStatEventIdentityScope(callback) {
+  const savedId = nextId, savedReferences = referenceIds;
+  referenceIds = new WeakMap();
+  try { return callback(); } finally {
+    nextId = savedId;
+    referenceIds = savedReferences;
+  }
+}
 const statTypes = new Set(['HP_LOSS', 'HP_GAIN', 'SAN_LOSS', 'SAN_GAIN',
   'HP_SAN_LOSS', 'HP_SAN_GAIN', 'DAMAGE_LINK_BREAK', 'PLAYER_DEFEATED']);
 

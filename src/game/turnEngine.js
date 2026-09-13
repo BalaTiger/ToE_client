@@ -15,6 +15,8 @@ import {
   formatSanLoss,
 } from './coreUtils';
 import { aiShouldKeepZoneCard, chooseAiCultistBewitchPlan, getHunterChaseTargets } from './ai';
+import { checkWin } from './victory';
+export { checkWin } from './victory';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
@@ -182,44 +184,6 @@ function consumeDebugForceKeepOverride(gs, ci) {
   gs.debugForceCardKeepPending = null;
   gs.debugForceCardKeepTarget = null;
   return keepOverride;
-}
-
-export function checkWin(players, isMP) {
-  const hasHunters = players.some(p => p.role === ROLE_HUNTER);
-  const hasCultists = players.some(p => p.role === ROLE_CULTIST);
-  // 1. SAN归零：有邪祀者则邪祀者获胜；无邪祀者则全员失败（邪神复活但无人受益）
-  for (const p of players) if (!p.isDead && p.san <= 0) {
-    if (hasCultists) {
-      const ws = players.filter(q => q.role === ROLE_CULTIST).map(q => q.name).join('、');
-      return { winner: ROLE_CULTIST, reason: `${p.name} 的理智归零，邪神苏醒！邪祀者（${ws}）获胜！` };
-    } else {
-      return { winner: 'LOSE_ALL', reason: `${p.name} 的理智归零，邪神复活，无人幸存！全员失败！` };
-    }
-  }
-  // 2. 非追猎者全灭：有追猎者则追猎者获胜；无追猎者则全员失败
-  const nonHunters = players.filter(p => p.role !== ROLE_HUNTER);
-  if (nonHunters.length && nonHunters.every(p => p.isDead)) {
-    if (hasHunters) {
-      const ws = players.filter(q => q.role === ROLE_HUNTER).map(q => q.name).join('、');
-      return { winner: ROLE_HUNTER, reason: `所有非追猎者已覆灭！追猎者（${ws}）获胜！` };
-    } else {
-      return { winner: 'LOSE_ALL', reason: '所有探险者均已覆灭，无人幸存！全员失败！' };
-    }
-  }
-  // 3. 场上只有一人存活：寻宝者获胜或邪祀者阵营获胜
-  const alivePlayers = players.filter(p => !p.isDead);
-  if (alivePlayers.length === 1) {
-    const survivor = alivePlayers[0];
-    if (survivor.role === ROLE_TREASURE) {
-      return { winner: ROLE_TREASURE, reason: `${survivor.name} 是唯一的幸存者，成功逃离！` };
-    } else if (survivor.role === ROLE_CULTIST) {
-      return { winner: ROLE_CULTIST, reason: `${survivor.name} 是唯一的幸存者，邪祀者阵营获胜！` };
-    }
-    // 追猎者单独存活的情况已被条件2覆盖
-  }
-  // 4. Player death — single-player only (MP games continue when a player dies)
-  if (!isMP && players[0].isDead) return { winner: 'LOSE', reason: '你已沉入永恒的黑暗…' };
-  return null;
 }
 
 export function shouldTriggerGodResurrection(gs) {
@@ -2753,9 +2717,10 @@ function markTerminalVisualEventBoundary(events = [], state = null) {
 // one-shot visual events instead of reconstructing them later in React.
 export function startNextTurn(gs, opts = {}) {
   const previousStatSeq = maxKnownStatEventSeq(gs);
+  const { _aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...turnInput } = gs;
   const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
-    ? { ...gs, _visualEvents: [] }
-    : gs;
+    ? { ...turnInput, _visualEvents: [] }
+    : turnInput;
   // Cleanup, expiry, next-seat selection and turn-key advancement are rules
   // executed at the turn boundary, before the next TURN_START stage begins.
   const boundaryInput = enterTurnBoundary(cleanInput);

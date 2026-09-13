@@ -1,0 +1,186 @@
+{
+  "started": "2026-09-13T07:29:38.812Z",
+  "frames": [
+    {
+      "at": "2026-09-13T07:29:39.426Z",
+      "animation": "DICE_ROLL",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n10\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · DICE_ROLL · 黛安娜 HP 10 · 截图 0\n回放观测记录\n卡洛斯 在黑夜中掷骰\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:40.397Z",
+      "animation": "DICE_ROLL",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n10\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · DICE_ROLL · 黛安娜 HP 10 · 截图 0\n回放观测记录\n卡洛斯 在黑夜中掷骰\n卡洛斯在一片黑暗中丢失了目标……\n掷出 1 点，目标偏移\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:42.583Z",
+      "animation": "SAN_DAMAGE",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n10\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · SAN_DAMAGE · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:43.057Z",
+      "animation": "SAN_DAMAGE",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · SAN_DAMAGE · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:44.098Z",
+      "animation": "SKILL_SWAP",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · SKILL_SWAP · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:44.150Z",
+      "animation": "SKILL_SWAP",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · SKILL_SWAP · 黛安娜 HP 10 · 截图 0\n回放观测记录\n⇌\n卡洛斯（寻宝者）对 黛安娜 掉包中…\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:45.037Z",
+      "animation": "SKILL_SWAP",
+      "from": "",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · SKILL_SWAP · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:45.614Z",
+      "animation": "CARD_TRANSFER",
+      "from": "2",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\n✦ 寻宝者\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · CARD_TRANSFER · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:29:47.006Z",
+      "animation": "CARD_TRANSFER",
+      "from": "1",
+      "phase": "AI_TURN",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\n✦ 寻宝者\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n卡洛斯 正在行动…\n手牌 (2/4)\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · CARD_TRANSFER · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:29:48.376Z",
+      "animation": "idle",
+      "from": "",
+      "phase": "ACTION",
+      "status": "playing",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\n✦ 寻宝者\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n你的回合 — 可发动技能、休息，或结束回合\n鼠标悬停查看卡牌详情（移动端请点击卡牌）\n手牌 (2/4)\n✦ 掉包\n♥ 休息\n结束回合\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\nplaying · idle · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:29:48.404Z",
+      "animation": "idle",
+      "from": "",
+      "phase": "ACTION",
+      "status": "complete",
+      "text": "邪神的宝藏\nTreasures of Evils\n暂停游戏\n返回主界面\n卡洛斯\n✦ 寻宝者\nHP\n10\nSAN\n9\n黛安娜\nHP\n10\nSAN\n10\n你的身份\n✦ 寻宝者\n集齐宝藏\nHP\n10\nSAN\n10\n检定:0\n牌堆:2\n弃牌堆:0\n冒险日志\n浏览器回归：黑夜使卡洛斯掉包目标偏移到黛安娜，双方暗中交换手牌。\n【黑夜】卡洛斯 选择【掉包】目标掷出 1，目标由 你 错乱为 黛安娜，失去 1 SAN\n卡洛斯（寻宝者）对 黛安娜 【掉包】\n你的回合 — 可发动技能、休息，或结束回合\n鼠标悬停查看卡牌详情（移动端请点击卡牌）\n手牌 (2/4)\n✦ 掉包\n♥ 休息\n结束回合\nA1\n坠落\n你失去3HP，随机弃1张牌（强制触发）\n从口袋里搜出一张字条：“现在买入，一定暴赚！”\nA1 · 坠落\nB1\n圣甲虫\n你恢复1SAN\n最古老的一生推。\nB1 · 圣甲虫\nDebug: 开\n载入追捕回归\n播放追捕回归\n载入AI掉包回归\n播放AI掉包回归\ncomplete · idle · 黛安娜 HP 10 · 截图 0\n回放观测记录\n☀ / ♪",
+      "to": ""
+    }
+  ],
+  "trace": [
+    {
+      "animation": "DICE_ROLL",
+      "target": null,
+      "from": null,
+      "to": null,
+      "privateTransfer": false,
+      "hp": 10,
+      "phase": "AI_TURN",
+      "ready": false,
+      "snapshots": 0
+    },
+    {
+      "animation": "SAN_DAMAGE",
+      "target": null,
+      "from": null,
+      "to": null,
+      "privateTransfer": false,
+      "hp": 10,
+      "phase": "AI_TURN",
+      "ready": false,
+      "snapshots": 0
+    },
+    {
+      "animation": "SKILL_SWAP",
+      "target": null,
+      "from": null,
+      "to": null,
+      "privateTransfer": false,
+      "hp": 10,
+      "phase": "AI_TURN",
+      "ready": false,
+      "snapshots": 0
+    },
+    {
+      "animation": "CARD_TRANSFER",
+      "target": null,
+      "from": 2,
+      "to": 1,
+      "privateTransfer": true,
+      "hp": 10,
+      "phase": "AI_TURN",
+      "ready": false,
+      "snapshots": 0
+    },
+    {
+      "animation": "CARD_TRANSFER",
+      "target": null,
+      "from": 1,
+      "to": 2,
+      "privateTransfer": true,
+      "hp": 10,
+      "phase": "AI_TURN",
+      "ready": false,
+      "snapshots": 0
+    },
+    {
+      "animation": "idle",
+      "target": null,
+      "from": null,
+      "to": null,
+      "privateTransfer": false,
+      "hp": 10,
+      "phase": "ACTION",
+      "ready": false,
+      "snapshots": 0
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Updating animation animationPlayState",
+      "timestamp": "2026-09-13T07:29:42.596Z",
+      "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=4def78af"
+    },
+    {
+      "level": "error",
+      "message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing animation animationPlayState",
+      "timestamp": "2026-09-13T07:29:42.877Z",
+      "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=4def78af"
+    }
+  ]
+}

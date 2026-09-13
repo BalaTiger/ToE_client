@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createStatEventsEvent, createHuntResultEvent, createSwapCardsEvent } from '../visualEvents';
+import { assertPreparedAnimationTransaction, createQueueAnimationTransaction } from '../animationTransaction';
 import { ANIMATION_COMPILED_SCHEMA_VERSION, compileRuleVisualEventsToAnimTransaction, getVisualEventIdsCoveredByAnimationQueue, validateAnimationQueueEventDependencies, validateVisualEventTransaction } from '../visualEventTransactionCompiler';
 
 const players = [0, 1].map(index => ({ name: `玩家${index}`, hp: 6, san: 6, hand: [], godZone: [] }));
@@ -71,6 +72,36 @@ describe('complete visual event coverage at queue preparation', () => {
     expect(transfers).toHaveLength(2);
     expect(getVisualEventIdsCoveredByAnimationQueue(stateFor([event]), queue.filter(step => step !== transfers[1]))).toEqual([]);
     expect(getVisualEventIdsCoveredByAnimationQueue(stateFor([event]), queue)).toEqual([event.id]);
+  });
+
+  it('proves hidden swap card identities without requiring the rendered card faces', () => {
+    const event = createSwapCardsEvent({ sourceIdx: 1, targetIdx: 2,
+      takenCard: { id: 0, key: 'A1' }, givenCard: { id: 'given', key: 'A2' } });
+    const state = stateFor([event]);
+    const queue = compileRuleVisualEventsToAnimTransaction(state, null, { hidePrivateCards: true }).queue;
+    const transfers = queue.filter(step => step.type === 'CARD_TRANSFER');
+    expect(transfers.map(step => step.hiddenCardIdentities)).toEqual([[0], ['given']]);
+    expect(transfers.every(step => !step.cards?.length)).toBe(true);
+    expect(getVisualEventIdsCoveredByAnimationQueue(state, queue)).toEqual([event.id]);
+    expect(getVisualEventIdsCoveredByAnimationQueue(state,
+      queue.map(step => withoutField(step, 'hiddenCardIdentities')))).toEqual([]);
+    expect(getVisualEventIdsCoveredByAnimationQueue(state,
+      queue.map(step => step === transfers[0] ? { ...step, hiddenCardIdentities: ['given'] } : step))).toEqual([]);
+    expect(getVisualEventIdsCoveredByAnimationQueue(state,
+      queue.map(step => step === transfers[0] ? { ...step, visualEventId: 'other-owner' } : step))).toEqual([]);
+  });
+
+  it('rejects in-place changes to hidden card identities after preparation', () => {
+    const event = createSwapCardsEvent({ sourceIdx: 1, targetIdx: 2,
+      takenCard: { id: 0, key: 'A1' }, givenCard: { id: 'given', key: 'A2' } });
+    const compiled = compileRuleVisualEventsToAnimTransaction(stateFor([event]), null, { hidePrivateCards: true });
+    const prepared = createQueueAnimationTransaction({ queue: compiled.queue });
+    expect(assertPreparedAnimationTransaction(prepared)).toBe(prepared);
+    prepared.queue.find(step => step.type === 'CARD_TRANSFER').hiddenCardIdentities[0] = 'wrong-card';
+
+    expect(() => assertPreparedAnimationTransaction(prepared)).toThrow('prepared queue changed after compilation');
+    expect(validateVisualEventTransaction(compiled, [event]))
+      .toContainEqual({ code: 'INCOMPLETE_COMPILED_STEP_MANIFEST' });
   });
 
   it('walks nested composites and inherits the container owner without skipping projections', () => {

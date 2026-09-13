@@ -77,7 +77,6 @@ import {
   createGodPowerBlockedEvent,
   createGodStatusChangedEvent,
   createDiceResultVisualEvent,
-  createHandLimitDiscardEvent,
   createHuntTargetEvent,
   createHuntResultEvent,
   createMultiplyVisualEvent,
@@ -92,6 +91,8 @@ import {
   resolveCaveDuelOutcome,
 } from './caveDuel';
 import { addDamageLink } from './damageLinks';
+import { chooseAiHuntDiscardIndex } from './aiDiscardChoices';
+import { resolveAiHandLimitDiscards } from './aiHandLimitDiscard';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -431,41 +432,26 @@ export function clearPlayerGodZone(targetPlayer, discard) {
 /**
  * AI 弃牌至手牌上限。
  */
-export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = [], statEventSeq = 0) {
-  const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
-  let damageDecision = null;
-  const statEvents = [], visualEvents = [];
-  while (P[ct].hand.length > aiHandLimit) {
-    const beforePlayers = copyPlayers(P), beforeDiscard = [...Disc], logStart = L.length;
-    const c = P[ct].hand.shift();
-    // Animation owns the attempted discard, even when the rules destroy the
-    // derived card instead of adding it to the discard pile.
-    discardedCards.push(c);
-    if (isVanishingDerivedCard(c)) {
-      L.push(`${P[ct].name} 的衍生牌被销毁`);
-    } else {
-      Disc.push(c);
-      L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-    }
-    visualEvents.push(createHandLimitDiscardEvent({playerIdx:ct,playerName:P[ct].name,cards:[c],msgs:L.slice(logStart),beforePlayers,beforeDiscard,afterDiscard:[...Disc]}));
-    if (!isVanishingDerivedCard(c)) {
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: ct, statEventSeq: statEventSeq + 1 });
-      P.splice(0, P.length, ...balance.players);
-      D.splice(0, D.length, ...balance.deck);
-      Disc.splice(0, Disc.length, ...balance.discard);
-      L.splice(0, L.length, ...balance.log);
-      if (balance.statEvents?.length) {
-        statEventSeq = balance.statEventSeq;
-        statEvents.push(...balance.statEvents);
-        visualEvents.push(createStatEventsEvent({statEvents:balance.statEvents,msgs:balance.logs}));
-      }
-      if (balance.damageDecision?.phase) {
-        damageDecision = balance.damageDecision;
-        break;
-      }
-    }
-  }
-  return { damageDecision, statEvents, statEventSeq, visualEvents };
+export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = [], statEventSeq = 0, context = {}) {
+  const result = resolveAiHandLimitDiscards({
+    ...context, players:P, deck:D, discard:Disc, log:L, _statEventSeq:statEventSeq,
+  },ct);
+  P.splice(0,P.length,...result.state.players);
+  D.splice(0,D.length,...result.state.deck);
+  Disc.splice(0,Disc.length,...result.state.discard);
+  L.splice(0,L.length,...result.state.log);
+  discardedCards.push(...result.discardedCards);
+  return {
+    damageDecision:result.damageDecision,
+    statEvents:(result.state._statEvents||[]).slice(context._statEvents?.length||0),
+    statEventSeq:result.state._statEventSeq??statEventSeq,
+    visualEvents:result.visualEvents,
+    handledRoseThorns:true,
+    statePatch:{
+      _aiFinishingTurn:result.state._aiFinishingTurn,
+      _aiPendingHandLimitThorns:result.state._aiPendingHandLimitThorns,
+    },
+  };
 }
 
 // Compile this card's complete event transaction so explicit result owners
@@ -926,6 +912,15 @@ function cthRestContinuationAbilityData(abilityData = {}) {
 }
 
 export function aiStep(gs, opts = {}) {
+  const result=resolveAiStep(gs,opts);
+  if(result&&(result.currentTurn!==gs.currentTurn||result.gameOver)){
+    const {_aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...next}=result;
+    return next;
+  }
+  return result;
+}
+
+function resolveAiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
   const incomingVisualEventIds = new Set(
     (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
@@ -1068,10 +1063,11 @@ export function aiStep(gs, opts = {}) {
     const beforeDiscard=[...Disc];
     const beforeLog=[...L];
     const discardedCards=[];
-    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards,gs._statEventSeq||0);
+    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards,gs._statEventSeq||0,gs);
+    gs={...gs,...discardResult.statePatch};
     let damageDecision=discardResult.damageDecision||null;
     let thornDamage=null;
-    if(!damageDecision?.phase&&discardedCards.length){
+    if(!discardResult.handledRoseThorns&&!damageDecision?.phase&&discardedCards.length){
       const thornLosses={};
       discardedCards.forEach(card=>{
         if(card?.roseThornHolderId!=null&&P[card.roseThornHolderId]&&!P[card.roseThornHolderId].isDead){
@@ -1470,7 +1466,7 @@ export function aiStep(gs, opts = {}) {
       const targetPlayer=P[targetIdx];
 
       // 源角色（AI）按穴居人战争规则选择牌
-      let sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand), sourceCard;
+      let sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:ct,opponentIdx:targetIdx}), sourceCard;
       sourceCard=sourcePlayer.hand[sourceCardIndex];
 
       // 目标角色选择牌
@@ -1488,8 +1484,8 @@ export function aiStep(gs, opts = {}) {
           phase:'CAVE_DUEL_SELECT_CARD',
         });
       }else{
-        // AI作为目标角色，按盲选启发式选择，不查看源角色亮牌
-        targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
+        // 双方只使用各自可见的手牌信息，不读取对方封存的选择。
+        targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:targetIdx,opponentIdx:ct});
         targetCard=targetPlayer.hand[targetCardIndex];
 
         const outcome=resolveCaveDuelOutcome({
@@ -1533,14 +1529,14 @@ export function aiStep(gs, opts = {}) {
   }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
-  if(!gs.skillUsed&&!gs.restUsed){
+  if(!gs._aiFinishingTurn&&!gs.skillUsed&&!gs.restUsed){
     const handGodIdx=P[ct].hand.findIndex(c=>c.isGod);
     if(handGodIdx>=0){
       const hgc=P[ct].hand[handGodIdx];
       let inspectionMeta=makeInspectionMeta(gs);
       const alreadyHasGod=P[ct].godName&&P[ct].godName!==hgc.godKey;
       const handAiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
-      const reserveForCultistBewitch=handAiEffRole===ROLE_CULTIST&&!gs.multiplyUsed&&!!chooseAiCultistBewitchPlan(P,ct);
+      const reserveForCultistBewitch=handAiEffRole===ROLE_CULTIST&&!gs.multiplyUsed&&!!chooseAiCultistBewitchPlan(P,ct,{state:{...gs,deck:D,discard:Disc}});
       const handGodAction=reserveForCultistBewitch?'discard':chooseAiGodEncounterAction(ct,hgc,P,false);
       const willWorship=handGodAction==='worship'||handGodAction==='convert'||handGodAction==='upgrade';
       if(willWorship){
@@ -1676,6 +1672,7 @@ export function aiStep(gs, opts = {}) {
     && hasImmediateHunterKill(P,ct,newAbandoned);
   const hunterMustChase = !!preRestHunterDecision?.forceHunterChase || hunterHasImmediateKill;
   const shouldRest=(()=>{
+    if(gs._aiFinishingTurn)return false;
     if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!treasureSwapPlan))return false;
     if(aiEffRole===ROLE_HUNTER&&hunterMustChase)return false;
     return shouldAiRest(gs, P[ct], aiEffRole);
@@ -1743,22 +1740,22 @@ export function aiStep(gs, opts = {}) {
   if(gs.multiplyUsed) useSkill=false;
   let cultistBewitchPlan = null;
   if (aiEffRole === ROLE_CULTIST && useSkill) {
-    cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+    cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
     if (!cultistBewitchPlan && !P[ct].roleRevealed) {
       useSkill = false;
     }
   }
   if (aiEffRole === ROLE_CULTIST && !useSkill && !gs.skillUsed && !gs.multiplyUsed && !gs.restUsed) {
-    const canWin = canCultistWinByBewitch(P, ct);
+    const canWin = canCultistWinByBewitch(P, ct, { state: { ...gs, deck: D, discard: Disc } });
     const canEmpty = canCultistEmptyHandByBewitch(P, ct);
     if ((ai.hp <= 4 && (canWin || canEmpty)) || (ai.hp <= 2 && canWin)) {
-      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if (cultistBewitchPlan) {
         useSkill = true;
       }
     }
     if (!useSkill && (P[ct].hand || []).some(card => card?.isGod)) {
-      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if (cultistBewitchPlan?.card?.isGod) {
         useSkill = true;
       }
@@ -1781,7 +1778,8 @@ export function aiStep(gs, opts = {}) {
     if (!treasureSwapPlan) useSkill = false;
   }
 
-  const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
+  if(gs._aiFinishingTurn)useSkill=false;
+  const multiplyEvent = (!gs._aiFinishingTurn && !gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
     ? getBlackGoatMultiplyEvent(P, ct)
     : null;
   if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
@@ -1949,7 +1947,7 @@ export function aiStep(gs, opts = {}) {
                 continue;
               }
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 ${cardLogText(rc)}`);
-              const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
+              const mi = chooseAiHuntDiscardIndex({...gs,players:P,deck:D,discard:Disc,log:L},ct,rc,ti);
               if (mi >= 0) {
                 const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
                 clearHunterLowQualityHand(P, ct);
@@ -2164,7 +2162,7 @@ export function aiStep(gs, opts = {}) {
       if(!alive.length){
         huntContinue=false;
       }else{
-      const plan = cultistBewitchPlan || chooseAiCultistBewitchPlan(P, ct);
+      const plan = cultistBewitchPlan || chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if(!plan){
         huntContinue = false;
       }else if(P[ct].hand.length){
@@ -2302,8 +2300,8 @@ export function aiStep(gs, opts = {}) {
         }
       }
   }else if(!P[ct].isDead){
-    if(aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
-      cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
+    if(!gs._aiFinishingTurn&&aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
+      cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct,{state:{...gs,deck:D,discard:Disc}});
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
         alive=getAlive();

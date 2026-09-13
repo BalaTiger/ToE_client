@@ -29,7 +29,7 @@ import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
 import { adaptLegacyStatEventGraph } from './statEventIdentity';
-import { ANIMATION_COMPILED_SCHEMA_VERSION, buildAnimationQueueStepManifest, flattenAnimationCoverageSteps, queueCoversCompiledEvent, validateAnimationQueueEventDependencies } from './animationEventCoverage';
+import { ANIMATION_COMPILED_SCHEMA_VERSION, animationCardIdentity, buildAnimationQueueStepManifest, flattenAnimationCoverageSteps, queueCoversCompiledEvent, validateAnimationQueueEventDependencies } from './animationEventCoverage';
 export { ANIMATION_COMPILED_SCHEMA_VERSION, buildAnimationQueueStepManifest, validateAnimationQueueEventDependencies } from './animationEventCoverage';
 
 function stateWithSingleEvent(state, event) {
@@ -624,6 +624,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
       return flattenStep(buildCardEffectAnimStep(event, state));
     case VISUAL_EVENT.SWAP_CARDS: {
       const hideCards = options.hidePrivateCards === true;
+      const transferredCards = [event.takenCard, event.givenCard];
+      let transferIndex = 0;
       return [
         { type: 'SKILL_SWAP', msgs: event.msgs || [] },
         ...swapCardsSteps({
@@ -638,6 +640,12 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           playersAfter: event.afterPlayers || null,
           discardAfter: event.afterDiscard || null,
           zhuLight: previousState?.zhuLight || state?.zhuLight || null,
+        }).map(step => {
+          if (step.type !== 'CARD_TRANSFER') return step;
+          const identity = animationCardIdentity(transferredCards[transferIndex++]);
+          return hideCards && identity != null
+            ? { ...step, hiddenCardIdentities: [identity] }
+            : step;
         }),
       ];
     }

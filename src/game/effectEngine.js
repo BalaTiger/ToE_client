@@ -1,3 +1,6 @@
+import { chooseAiTortoiseKey, getTortoiseSelectableKeys, matchesTortoiseKey } from './aiPublicChoices';
+import { chooseAiStoneCardIndex } from './aiStoneChoice';
+import { resolveSameAbyssState } from './sameAbyssResolution';
 import {
   clamp,
   killPlayerState,
@@ -8,8 +11,6 @@ import {
   getLivingPlayerOrder,
   cardLogText,
   isZoneCard,
-  isPositiveZoneCard,
-  isNegativeZoneCard,
   isTsathogguaSlime,
   isVanishingDerivedCard,
   splitHandDiscardCards,
@@ -930,6 +931,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
     const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => {
       if (event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard') {
+        if (event.payload?.sequentialDiscard) return event;
         return { ...event, statEvents };
       }
       if (event?.type === VISUAL_EVENT.SPHINX_RESULT) {
@@ -1210,13 +1212,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       msgs.push(`${actor.name} 解读石刻，翻开了牌堆顶的 ${revealedCards.length} 张牌`);
       if (isAI) {
-        // AI 策略：优先选非邪神牌中评分最高的；若没有则选邪神牌并承受 SAN 损失
-        const sorted = [...revealedCards].map((c, i) => ({ card: c, originalIdx: i })).sort((a, b) => {
-          const scoreA = a.card.isGod ? -10 : (isPositiveZoneCard(a.card) ? 5 : (isNegativeZoneCard(a.card) ? 2 : 3));
-          const scoreB = b.card.isGod ? -10 : (isPositiveZoneCard(b.card) ? 5 : (isNegativeZoneCard(b.card) ? 2 : 3));
-          return scoreB - scoreA;
+        const chosenIndex = chooseAiStoneCardIndex({
+          state: { ...gs, ...statePatch, players: P, deck: D, discard: Disc },
+          actorIdx: ci, cards: revealedCards,
         });
-        const chosen = sorted[0];
+        const chosen = { card: revealedCards[chosenIndex] };
         const remaining = revealedCards.filter(c => c.id !== chosen.card.id);
         P[ci].hand.push(chosen.card);
         msgs.push(`【解读石刻】${actor.name} 选择了 ${cardLogText(chosen.card, { alwaysShowName: true })} 收入手牌`);
@@ -2022,9 +2022,9 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         settlePendingDamages('eager');
       }
       const actorHand = actor.hand || [];
-      const cardAlreadyInHand = card?.id ? actorHand.some(c => c?.id === card.id) : false;
+      const cardAlreadyInHand = card?.id != null ? actorHand.some(c => c?.id === card.id) : false;
       const incomingCardCount = cardAlreadyInHand ? 0 : 1;
-      const getSameAbyssHandCount = i => (P[i]?.hand?.length || 0) + (i === ci ? incomingCardCount : 0);
+      const getSameAbyssHandCount = i => (P[i]?.hand?.length || 0) + (i === ci && !P[i]?.isDead ? incomingCardCount : 0);
       const livingPlayers = P.map((p, i) => i).filter(i => !P[i].isDead);
       if (livingPlayers.length === 0) return;
       let maxHand = -1;
@@ -2044,8 +2044,18 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const actorHandCount = getSameAbyssHandCount(ci);
       const targetHandCount = getSameAbyssHandCount(targetIdx);
       const discardCount = Math.max(0, targetHandCount - actorHandCount);
+      const sourceDamageDecision = buildChainEtherealizeDecision()
+        || buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: gs?.currentTurn ?? ci });
+      if (sourceDamageDecision) {
+        statePatch = { ...statePatch, abilityData: sourceDamageDecision,
+          _sameAbyssContinuation: { awaitingSourceDamage: true, actorIdx: ci, targetIdx,
+            sameAbyssIncomingCount: incomingCardCount, sameAbyssIncomingCardId: card.id,
+            _turnOwner: gs?.currentTurn ?? ci },
+        };
+        return { P, D, Disc, msgs, statePatch };
+      }
       msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${targetHandCount} 张），须做出选择`);
-      if (targetIdx === 0 && !isAI) {
+      if (gs?._aiPreview || (targetIdx === 0 && !isAI)) {
         return {
           P, D, Disc, msgs,
           statePatch: {
@@ -2054,67 +2064,36 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               actorIdx: ci,
               targetIdx,
               actorHandCount,
+              sameAbyssIncomingCount: incomingCardCount,
+              sameAbyssIncomingCardId: card.id,
               discardCount,
               targetHandCount,
             }
           }
         };
       }
-      const target = P[targetIdx];
-      if (discardCount > 0 && target.hp <= 5) {
-        const beforeSameAbyssPlayers = copyPlayers(P);
-        const beforeSameAbyssDiscard = [...Disc];
-        const sameAbyssDiscardEvents = [];
-        for (let d = 0; d < discardCount; d++) {
-          if (target.hand.length > actorHandCount) {
-            const c = target.hand.shift();
-            if (isVanishingDerivedCard(c)) {
-              msgs.push(`${target.name} 的衍生牌被销毁`);
-            } else if (c.type !== 'blankZone') {
-              Disc.push(c);
-              const afterDiscardPlayers = copyPlayers(P);
-              const afterDiscard = [...Disc];
-              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
-              msgs.splice(0, msgs.length, ...balance.log);
-              (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
-                pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
-              });
-              sameAbyssDiscardEvents.push({
-                playerIndex: targetIdx,
-                card: c,
-                afterPlayers: afterDiscardPlayers,
-                afterDiscard,
-              });
-            }
-            if (c.type !== 'blankZone' && !sameAbyssDiscardEvents.some(event => event.card === c)) {
-              sameAbyssDiscardEvents.push({
-                playerIndex: targetIdx,
-                card: c,
-                afterPlayers: copyPlayers(P),
-                afterDiscard: [...Disc],
-              });
-            }
-          }
-        }
-        msgs.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
-        if (sameAbyssDiscardEvents.length) {
-          const event = createCardEffectEvent({
-            effectKey: 'forcedRandomDiscard',
-            card,
-            actorIdx: ci,
-            beforePlayers: beforeSameAbyssPlayers,
-            beforeDiscard: beforeSameAbyssDiscard,
-            afterPlayers: copyPlayers(P),
-            afterDiscard: [...Disc],
-            discardEvents: sameAbyssDiscardEvents,
-            msgs: msgs.slice(),
-          });
-          if (event) statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), event] };
-        }
-      } else {
-        msgs.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-        hurtHP(targetIdx, 4);
-      }
+      const sourceStatEvents = attachVritraRevealsToStatEvents(
+        buildStatEvents(beforePlayers, P, msgs, { reason: card.name || '同归深渊', seq: (gs._statEventSeq || 0) + 1 }),
+        takeVritraImmortalRevealEvents(P),
+      );
+      const sourceVisual = createStatEventsEvent({ statEvents: sourceStatEvents, msgs: [...msgs] });
+      const resolved = resolveSameAbyssState({
+        ...gs, players: P, deck: D, discard: Disc, log: [...(gs.log || []), ...msgs],
+        _statEvents: [...(gs._statEvents || []), ...sourceStatEvents],
+        _statEventSeq: (gs._statEventSeq || 0) + (sourceStatEvents.length ? 1 : 0),
+        _visualEvents: [...(gs._visualEvents || []), ...(sourceVisual ? [sourceVisual] : [])],
+        abilityData: { ...gs.abilityData, type: 'sameAbyssChoice', actorIdx: ci, targetIdx,
+          actorHandCount, sameAbyssIncomingCount: incomingCardCount, sameAbyssIncomingCardId: card.id },
+      }, { card });
+      P = resolved.players; D = resolved.deck; Disc = resolved.discard;
+      msgs = resolved.log.slice(gs.log?.length || 0);
+      directStatEvents = [];
+      statePatch = {
+        ...statePatch, _statEvents: resolved._statEvents, _statEventSeq: resolved._statEventSeq,
+        _visualEvents: resolved._visualEvents, _sameAbyssContinuation: resolved._sameAbyssContinuation,
+        ...(!['ACTION', 'AI_TURN'].includes(resolved.phase) ? { abilityData: resolved.abilityData } : {}),
+      };
+      return { P, D, Disc, msgs, statePatch };
     },
     sphinxGuess: () => {
       if (D.length === 0) {
@@ -2219,59 +2198,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     revealTopCards: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         const revealedCards = [];
-        const isZoneMatchKey = (card, key) => {
-          if (!isZoneCard(card)) return false;
-          return /^[A-Z]$/.test(key) ? card.letter === key : /^\d$/.test(key) ? String(card.number) === String(key) : false;
-        };
+        const isZoneMatchKey = matchesTortoiseKey;
         for (let i = 0; i < card.val && D.length > 0; i++) {
           revealedCards.push(D.shift());
         }
         if (revealedCards.length > 0) {
           msgs.push(`${actor.name} 展示了牌堆顶的 ${revealedCards.length} 张牌：${revealedCards.map(c => cardLogText(c)).join(' ')}`);
-          const letterCountMap = {};
-          const numberCountMap = {};
-          P[ci].hand.forEach(card => {
-            if (isZoneCard(card) && card.key) {
-              const letter = card.key.match(/[A-Z]/);
-              const number = card.key.match(/\d/);
-              if (letter) {
-                const l = letter[0];
-                letterCountMap[l] = (letterCountMap[l] || 0) + 1;
-              }
-              if (number) {
-                const n = number[0];
-                numberCountMap[n] = (numberCountMap[n] || 0) + 1;
-              }
-            }
-          });
-          let maxLetterCount = 0;
-          const maxLetters = [];
-          Object.entries(letterCountMap).forEach(([key, count]) => {
-            if (count > maxLetterCount) {
-              maxLetterCount = count;
-              maxLetters.length = 0;
-              maxLetters.push(key);
-            } else if (count === maxLetterCount) {
-              maxLetters.push(key);
-            }
-          });
-          let maxNumberCount = 0;
-          const maxNumbers = [];
-          Object.entries(numberCountMap).forEach(([key, count]) => {
-            if (count > maxNumberCount) {
-              maxNumberCount = count;
-              maxNumbers.length = 0;
-              maxNumbers.push(key);
-            } else if (count === maxNumberCount) {
-              maxNumbers.push(key);
-            }
-          });
-          const selectableKeys = [];
-          if (maxLetters.length > 0) selectableKeys.push(...maxLetters);
-          if (maxNumbers.length > 0) selectableKeys.push(...maxNumbers);
+          const selectableKeys = getTortoiseSelectableKeys(P[ci].hand);
           if (selectableKeys.length > 0) {
             if (isAI) {
-              const selectedKey = selectableKeys[Math.floor(Math.random() * selectableKeys.length)];
+              const selectedKey = chooseAiTortoiseKey({
+                state: { ...gs, ...statePatch, players: P, deck: D, discard: Disc },
+                actorIdx: ci, revealedCards, selectableKeys,
+              });
               msgs.push(`${actor.name} 选择了编号 ${selectedKey}`);
               const matchedCards = revealedCards.filter(c => isZoneMatchKey(c, selectedKey));
               if (matchedCards.length > 0) {

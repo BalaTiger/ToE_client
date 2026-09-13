@@ -80,7 +80,11 @@ export function getDefaultHandCardIndexForMpDecision(state) {
     return hand.findIndex(card => fireCardIds.includes(card?.id));
   }
   if (state?.phase !== 'CAVE_DUEL_SELECT_CARD' && state?.phase !== 'CAVE_DUEL_WAIT_REVEAL') return 0;
-  return getBestCaveDuelCardIndex(hand);
+  const ad = state.abilityData || {};
+  return getBestCaveDuelCardIndex(hand, {
+    state, actorIdx: 0,
+    opponentIdx: ad.caveDuelSource === 0 ? ad.caveDuelTarget : ad.caveDuelSource,
+  });
 }
 
 export function getBuryAliveLocalPendingTarget(state) {

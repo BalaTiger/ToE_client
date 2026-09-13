@@ -1231,7 +1231,13 @@ export function buildTurnStartDrawReplayQueue({
       .filter(seq => seq != null)
   );
   const visualStatQ = buildFilteredStatStepsFromVisualEvents(
-    newGs,
+    // A prior action can share an AOE log with this draw, making a log-derived
+    // sequence watermark older than that action. The authored replay segment
+    // remains authoritative even while this draw is paused for a decision.
+    hasAuthoritativeTurnStartEvents ? {
+      ...newGs,
+      _visualEvents: getVisualEvents(newGs).filter(event => event.turnStartStage === TURN_START_ANIMATION_STAGE.DRAW),
+    } : newGs,
     beforeDrawPlayers,
     statEvent => (
       !fallbackHandledStatSeqs.has(statEvent?.seq) &&

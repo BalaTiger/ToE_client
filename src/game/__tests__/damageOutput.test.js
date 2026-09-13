@@ -24,7 +24,9 @@ function playback(queue, state) {
 describe('complete damage rule output', () => {
   it('AI balance discard retains its death transaction separately from the discard notice', () => {
     const players = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉', hp: 4,
-      hand: [{ id: 'balance', type: 'lifeBalance', name: '生命天平' }, ...Array.from({ length: 4 }, () => makeBlankZoneCard())] })];
+      // Every legal discard carries the same cost. Safe alternatives belong in
+      // strategy tests; this fixture exercises the unavoidable death replay.
+      hand: Array.from({ length: 5 }, () => makeZoneCard('B1', 2)) })];
     addDamageLink(players, 0, 1, { expiryOwner: 0 });
     const previous = makeGs({ players: structuredClone(players), currentTurn: 1 });
     const result = discardAiHandToLimit(players, 1, [], [], [], [], 0);

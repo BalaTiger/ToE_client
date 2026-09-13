@@ -1028,6 +1028,13 @@ export function createTsathogguaSlimeCard() {
 }
 
 let _gmRestoreId = 0;
+export function withDerivedCardIdentityScope(callback) {
+  const saved = [_bgyId, _tsgSlimeId, _gmRestoreId];
+  try { return callback(); } finally {
+    [_bgyId, _tsgSlimeId, _gmRestoreId] = saved;
+  }
+}
+
 export function createGeomagneticRestoreCard() {
   return {
     id: `gmr-${_gmRestoreId++}`,

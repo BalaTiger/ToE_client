@@ -611,10 +611,10 @@ describe('aiShouldKeepZoneCard', () => {
       polarity: 'negative',
     };
     const players = [
-      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 4, san: 8 }),
-      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hp: 3, san: 8 }),
-      makePlayer({ name: '贝拉', role: ROLE_CULTIST, hp: 4, san: 8 }),
-      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, hp: 8, san: 8 }),
+      makePlayer({ name: '你', role: ROLE_TREASURE, roleRevealed: true, hp: 4, san: 8 }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, roleRevealed: true, hp: 3, san: 8 }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST, roleRevealed: true, hp: 4, san: 8 }),
+      makePlayer({ name: '卡洛斯', role: ROLE_HUNTER, roleRevealed: true, hp: 8, san: 8 }),
     ];
 
     expect(aiShouldKeepZoneCard(card, 1, players)).toBe(true);
@@ -1357,8 +1357,11 @@ describe('aiStep optional action limits', () => {
     const reserveCard = makeZoneCard('A2', 0, { id: 'hunter-a2' });
     const targetCard = makeZoneCard('C1', 0, { id: 'target-c1' });
     const players = [
-      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 10, hand: [] }),
+      makePlayer({ name: '你', role: ROLE_TREASURE, roleRevealed: true, hp: 10, hand: [] }),
       makePlayer({ name: '黛安娜', role: ROLE_HUNTER, roleRevealed: true, hp: 3, hand: [hunterCard, reserveCard] }),
+      // Both possible redirect recipients are non-hunters; the attacker is not
+      // adjacent to Bella, so entering this decision is a sound hunting action.
+      makePlayer({ name: '卡洛斯', role: ROLE_TREASURE, roleRevealed: true, hp: 10, hand: [] }),
       makePlayer({ name: '贝拉', role: ROLE_CULTIST, roleRevealed: true, hp: 7, etherealizeStacks: 1, hand: [targetCard] }),
     ];
     const gs = makeGs({
@@ -2632,11 +2635,11 @@ describe('aiStep optional action limits', () => {
     vi.spyOn(Math, 'random').mockReturnValue(0);
     const sourceCard = makeZoneCard('A2', 0, { id: 'source-2' });
     const targetWinningCard = makeZoneCard('A3', 0, { id: 'target-3' });
-    const targetBlindPreferredCard = makeGodCard('SHU', { id: 'target-no-number' });
+    const targetOtherCard = makeGodCard('SHU', { id: 'target-no-number' });
     const players = [
       makePlayer({ name: '你', hand: [] }),
       makePlayer({ name: '艾伦', hand: [sourceCard] }),
-      makePlayer({ name: '贝拉', hand: [targetWinningCard, targetBlindPreferredCard] }),
+      makePlayer({ name: '贝拉', hand: [targetWinningCard, targetOtherCard] }),
     ];
     const gs = makeGs({
       players,
@@ -2648,9 +2651,15 @@ describe('aiStep optional action limits', () => {
 
     const result = aiStep(gs);
 
-    expect(result.log.at(-1)).toContain('艾伦 胜出');
-    expect(result.log.at(-1)).toContain('森之领主');
-    expect(result.players[1].hand).toEqual(expect.arrayContaining([sourceCard, targetBlindPreferredCard]));
-    expect(result.players[2].hand).toEqual(expect.arrayContaining([targetWinningCard]));
+    expect(result.log.at(-1)).toContain('贝拉 亮出 [A3]');
+    expect(result.players[2].hand).toEqual(expect.arrayContaining([sourceCard, targetWinningCard, targetOtherCard]));
+
+    const differentHiddenSource = structuredClone(gs);
+    differentHiddenSource.players[1].hand = [makeZoneCard('A4', 0, { id: 'source-4' })];
+    const otherResult = aiStep(differentHiddenSource);
+    // With no public hand or peek memory, changing the sealed opposing hand
+    // cannot change the target's blind prior choice, even when it now loses.
+    expect(otherResult.log.at(-1)).toContain('贝拉 亮出 [A3]');
+    expect(otherResult.log.at(-1)).toContain('艾伦 胜出');
   });
 });

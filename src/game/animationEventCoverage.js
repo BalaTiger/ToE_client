@@ -20,7 +20,8 @@ export function flattenAnimationCoverageSteps(queue = [], inheritedOwner = null)
 
 const statKeys = step => (Array.isArray(step?.statEvents) ? step.statEvents : []).map(statEventIdentity);
 const sourceKeys = step => (Array.isArray(step?.sourceStatEventIds) ? step.sourceStatEventIds : []).map(id => `id:${id}`);
-const cardKey = card => card?.id || (card ? `${card.key || ''}:${card.name || ''}` : null);
+export const animationCardIdentity = card => card?.id ?? card?.uid
+  ?? (card ? `${card.key || ''}:${card.name || ''}` : null);
 
 function stepSubject(step) {
   const subject = {};
@@ -34,8 +35,16 @@ function stepSubject(step) {
   for (const key of ['hitIndices', 'deadIndices', 'targetIndices', 'playerIndices', 'affectedIndices']) {
     if (Array.isArray(step?.[key])) subject[key] = [...step[key]].sort((a, b) => a - b);
   }
-  if (step?.card) subject.card = cardKey(step.card);
-  if (Array.isArray(step?.cards)) subject.cards = step.cards.map(cardKey);
+  if (step?.card) subject.card = animationCardIdentity(step.card);
+  if (Array.isArray(step?.cards) && step.cards.length) {
+    subject.cards = step.cards.map(animationCardIdentity);
+  } else if (step?.type === 'CARD_TRANSFER' && Array.isArray(step.hiddenCardIdentities)) {
+    // A private transfer omits card faces but must still prove which instances
+    // moved. Missing faces alone never authorize a weaker coverage match.
+    subject.cards = [...step.hiddenCardIdentities];
+  } else if (Array.isArray(step?.cards)) {
+    subject.cards = [];
+  }
   return subject;
 }
 

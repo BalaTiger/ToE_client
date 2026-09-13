@@ -102,6 +102,15 @@ let godPowerBlockedEventSeq = 0;
 let tsgSlimePopEventSeq = 0;
 let godStatusChangedEventSeq = 0;
 
+export function withVisualEventIdentityScope(callback) {
+  const saved = [actionEventSeq, visualEventSeq, cardEffectEventSeq, earthquakeEventSeq,
+    animTransactionEventSeq, godPowerBlockedEventSeq, tsgSlimePopEventSeq, godStatusChangedEventSeq];
+  try { return callback(); } finally {
+    [actionEventSeq, visualEventSeq, cardEffectEventSeq, earthquakeEventSeq,
+      animTransactionEventSeq, godPowerBlockedEventSeq, tsgSlimePopEventSeq, godStatusChangedEventSeq] = saved;
+  }
+}
+
 function msgsIdentity(msgs) {
   return Array.isArray(msgs) ? msgs.join('|') : '';
 }

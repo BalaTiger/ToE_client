@@ -16,6 +16,7 @@ const ROTATE_GS_PLAYER_SNAPSHOT_FIELDS = [
   '_inspectionBeforePlayers',
 ];
 const ROTATE_ABILITYDATA_INDEX_FIELDS = [
+  'actorIdx',
   'drawerIdx',
   'swapTi',
   'huntTi',
@@ -449,12 +450,20 @@ export function rotateGsForViewer(gs, myIndex) {
     ...(gs._decisionContinuations ? {
       _decisionContinuations: rotateDecisionContinuationsForViewer(gs._decisionContinuations, rotateIndex, myIndex),
     } : {}),
+    ...(gs._sameAbyssContinuation ? {
+      _sameAbyssContinuation: rotateAbilityDataForViewer(gs._sameAbyssContinuation, rotateIndex, myIndex),
+    } : {}),
     drawReveal,
     zhuLight,
     ...(gs._earthquakeDiscardEvents ? { _earthquakeDiscardEvents: rotateEarthquakeDiscardEvents(gs._earthquakeDiscardEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHuntEvents ? { _aiHuntEvents: rotateAiHuntEvents(gs._aiHuntEvents, rotateIndex, myIndex) } : {}),
     ...(gs._statEvents ? { _statEvents: rotateStatEvents(gs._statEvents, rotateIndex, myIndex) } : {}),
     ...(gs._aiHandLimitStatEvents ? { _aiHandLimitStatEvents: rotateStatEvents(gs._aiHandLimitStatEvents, rotateIndex, myIndex) } : {}),
+    ...(Array.isArray(gs._aiPendingHandLimitThorns) ? {
+      _aiPendingHandLimitThorns: gs._aiPendingHandLimitThorns.map(card => (
+        rotateIndexedFields(card, ['roseThornHolderId', 'roseThornSourceId'], rotateIndex)
+      )),
+    } : {}),
     ...(gs._inspectionTarget != null ? { _inspectionTarget: rotateIndex(gs._inspectionTarget) } : {}),
     ...(gs._animMultiplyEvent ? { _animMultiplyEvent: rotateAnimMultiplyEvent(gs._animMultiplyEvent, rotateIndex) } : {}),
     ...(gs._animSphinxReveal ? { _animSphinxReveal: rotateAnimSphinxReveal(gs._animSphinxReveal, rotateIndex) } : {}),

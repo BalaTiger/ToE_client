@@ -13,6 +13,23 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates and restores pending AI discard thorns without changing the source state', () => {
+    const card = { id: 'pending-thorn', roseThornHolderId: 2, roseThornSourceId: 0 };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0, abilityData: {}, _aiFinishingTurn: true,
+      _aiPendingHandLimitThorns: [card],
+    };
+    const rotated = rotateGsForViewer(gs, 1);
+    expect(rotated._aiFinishingTurn).toBe(true);
+    expect(rotated._aiPendingHandLimitThorns).toEqual([
+      { ...card, roseThornHolderId: 1, roseThornSourceId: 2 },
+    ]);
+    expect(derotateGs(rotated, 1)._aiPendingHandLimitThorns).toEqual([card]);
+    expect(gs._aiPendingHandLimitThorns[0]).toEqual(card);
+    expect(card.roseThornHolderId).toBe(2);
+  });
+
   it('rotates AI hand-limit stat metadata without changing identity or excluding another same-batch loss', () => {
     const handLimitLoss = {
       id: 'stat:hand-limit', seq: 4, type: 'HP_LOSS', target: 2,

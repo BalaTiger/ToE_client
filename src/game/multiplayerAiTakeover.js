@@ -1,27 +1,20 @@
-import { appendPublicCardGainTriggers } from './cardGainEvents';
 import {
   canRevealForHunt,
   cardLogText,
   copyPlayers,
-  makeInspectionMeta,
 } from './coreUtils';
-import {
-  applyHandDiscardSideEffectsWithAnim,
-  discardCardsFromHandFromRight,
-  splitKeptDestroyedDiscarded,
-} from './handLimitDiscard';
+import { resolveAiHandLimitDiscards } from './aiHandLimitDiscard';
 import { resolveMpTimeoutToAction } from './multiplayerTimeouts';
 import {
-  applySanLossToPlayerWithInspection,
   checkWin,
   startNextTurn,
 } from './turnEngine';
 import {
   createHuntRevealEvent,
-  createHandLimitDiscardEvent,
   createTimedOutDrawDiscardEvent,
 } from './visualEvents';
 import { getBestCaveDuelCardIndex } from './caveDuel';
+import { resolveAiPublicChoiceState } from './publicChoiceResolution';
 import { localDisplayName } from './rotateState';
 
 const CURRENT_TURN_PHASES = new Set([
@@ -53,6 +46,12 @@ const CURRENT_TURN_PHASES = new Set([
 export function isMpAiTakeoverRelevant(state, takeoverIdx) {
   if (!state || takeoverIdx < 0 || state.gameOver) return false;
   const phase = state.phase;
+  if (phase === 'FIRST_COME_PICK_SELECT') {
+    return state.abilityData?.pickOrder?.[state.abilityData?.pickIndex || 0] === takeoverIdx;
+  }
+  if (phase === 'TORTOISE_ORACLE_SELECT' || phase === 'DECIPHER_STONE_CARVING') {
+    return (state.abilityData?.playerIndex ?? state.currentTurn) === takeoverIdx;
+  }
   if (phase === 'DRAW_REVEAL') {
     return !!state.drawReveal?.needsDecision
       && (state.drawReveal.drawerIdx ?? state.currentTurn) === takeoverIdx;
@@ -74,7 +73,7 @@ export function isMpAiTakeoverRelevant(state, takeoverIdx) {
   if (phase === 'DISCARD_PHASE' || phase === 'ACTION') {
     return state.currentTurn === takeoverIdx;
   }
-  if (phase === 'CAVE_DUEL_SELECT_CARD') {
+  if (phase === 'CAVE_DUEL_SELECT_CARD' || phase === 'CAVE_DUEL_WAIT_REVEAL') {
     const abilityData = state.abilityData || {};
     return abilityData.caveDuelSource === takeoverIdx
       || abilityData.caveDuelTarget === takeoverIdx;
@@ -119,92 +118,25 @@ function autoDiscardSeatAndAdvance(
 ) {
   const player = baseState?.players?.[seatIdx];
   if (!player) return baseState;
-  const limit = getHandLimitForPlayer(player);
-  const count = Math.max(0, (player.hand?.length || 0) - limit);
-  let { players, discarded } = discardCardsFromHandFromRight(
-    baseState.players,
-    seatIdx,
-    count
-  );
-  const {
-    kept: keptDiscarded,
-    destroyed: destroyedDiscarded,
-    animationCards: discardAnimationCards,
-  } = splitKeptDestroyedDiscarded(discarded);
-  let deck = [...(baseState.deck || [])];
-  let discard = [...(baseState.discard || [])];
-  let log = [...(baseState.log || [])];
-  const actorName = localDisplayName(
-    seatIdx,
-    players[seatIdx]?.name || '该玩家'
-  );
-  let balanceStatePatch = {};
-  if (keptDiscarded.length) {
-    discard = [...discard, ...keptDiscarded];
-    log.push(
-      `(AI接管) ${actorName} 弃置：${keptDiscarded
-        .map(card => cardLogText(card, { alwaysShowName: true }))
-        .join(' ')}`
-    );
-    const balance = applyHandDiscardSideEffectsWithAnim({
-      baseGs: baseState,
-      players,
-      deck,
-      discard,
-      log,
-      ownerIdx: seatIdx,
-      cards: keptDiscarded,
-      reason: '手牌上限弃牌',
-    });
-    players = balance.players;
-    deck = balance.deck;
-    discard = balance.discard;
-    log = balance.log;
-    balanceStatePatch = balance.statePatch || {};
-  }
-  if (destroyedDiscarded.length) {
-    log.push(
-      `(AI接管) ${actorName} 的衍生牌 ×${destroyedDiscarded.length} 被销毁`
-    );
-  }
-  const handLimitDiscardEvent = discardAnimationCards.length
-    ? createHandLimitDiscardEvent({
-        playerIdx: seatIdx,
-        playerName: players[seatIdx]?.name || '该玩家',
-        cards: discardAnimationCards,
-        msgs: log.slice(baseState.log?.length || 0),
-        beforePlayers: baseState.players,
-        beforeDiscard: baseState.discard,
-        afterDiscard: discard,
-      })
-    : null;
-  const carriedVisualEvents = Array.isArray(balanceStatePatch._visualEvents)
-    ? balanceStatePatch._visualEvents
-    : (baseState._visualEvents || []);
+  const result = resolveAiHandLimitDiscards(baseState, seatIdx, {
+    handLimit: getHandLimitForPlayer(player),
+  });
   const postDiscardState = {
-    ...baseState,
-    players,
-    deck,
-    discard,
-    log,
+    ...result.state,
     currentTurn: seatIdx,
-    phase: 'ACTION',
     drawReveal: null,
     selectedCard: null,
-    abilityData: {},
-    ...balanceStatePatch,
-    ...(handLimitDiscardEvent ? { _visualEvents: [...carriedVisualEvents, handLimitDiscardEvent] } : {}),
+    _visualEvents: [...(baseState._visualEvents || []), ...result.visualEvents],
   };
-  const win = checkWin(players, true);
-  if (win) return { ...postDiscardState, gameOver: win };
-  const nextTurnState = startNextTurn(postDiscardState);
-  if (!handLimitDiscardEvent) return nextTurnState;
-  const nextVisualEvents = Array.isArray(nextTurnState._visualEvents) ? nextTurnState._visualEvents : [];
+  if (result.damageDecision || postDiscardState.gameOver) return postDiscardState;
+  const nextTurnState = startNextTurn({ ...postDiscardState, phase: 'ACTION', abilityData: {} });
+  if (!result.visualEvents.length) return nextTurnState;
+  const discardEventIds = new Set(result.visualEvents.map(event => event.id));
   return {
     ...nextTurnState,
     _visualEvents: [
-      handLimitDiscardEvent,
-      ...nextVisualEvents.filter(event => event?.id !== handLimitDiscardEvent.id),
+      ...result.visualEvents,
+      ...(nextTurnState._visualEvents || []).filter(event => !discardEventIds.has(event?.id)),
     ],
   };
 }
@@ -217,6 +149,12 @@ function finishMpAiTakeoverTurn(
 ) {
   if (!baseState) return null;
   const actorIdx = baseState.currentTurn ?? takeoverIdx;
+  if (!baseState.gameOver && baseState._aiPendingHandLimitThorns?.length) {
+    return withTimeoutDrawDiscardVisual(
+      autoDiscardSeatAndAdvance(baseState, actorIdx, getHandLimitForPlayer),
+      timeoutSource
+    );
+  }
   const win = checkWin(baseState.players, true);
   if (win) {
     return withTimeoutDrawDiscardVisual(
@@ -227,7 +165,9 @@ function finishMpAiTakeoverTurn(
   const actor = baseState.players?.[actorIdx];
   if (
     actor
-    && (actor.hand?.length || 0) > getHandLimitForPlayer(actor)
+    && ((actor.hand?.length || 0) > getHandLimitForPlayer(actor)
+      || baseState._aiFinishingTurn
+      || baseState._aiPendingHandLimitThorns?.length)
   ) {
     return withTimeoutDrawDiscardVisual(
       autoDiscardSeatAndAdvance(
@@ -251,81 +191,10 @@ function finishMpAiTakeoverTurn(
 }
 
 function autoResolveDecipherStoneCarving(baseState, actorIdx) {
-  const abilityData = baseState?.abilityData || {};
-  const revealed = Array.isArray(abilityData.revealedCards)
-    ? abilityData.revealedCards
-    : [];
-  if (!revealed.length) {
-    return {
-      ...baseState,
-      phase: 'ACTION',
-      abilityData: {},
-      drawReveal: null,
-      selectedCard: null,
-    };
-  }
-  let players = copyPlayers(baseState.players);
-  let deck = [...(baseState.deck || [])];
-  let discard = [...(baseState.discard || [])];
-  let log = [...(baseState.log || [])];
-  const actorName = localDisplayName(
-    actorIdx,
-    players[actorIdx]?.name || '该玩家'
-  );
-  const handCard = revealed[0];
-  const remaining = revealed.slice(1);
-  players[actorIdx].hand.push(handCard);
-  log.push(
-    `(AI接管) 【解读石刻】${actorName} 选择将 ${cardLogText(
-      handCard,
-      { alwaysShowName: true }
-    )} 收入手牌`
-  );
-  let inspectionMeta = makeInspectionMeta(baseState);
-  if (handCard.isGod) {
-    log.push(`【解读石刻】${actorName} 因选择邪神牌失去 1 SAN`);
-    const processed = applySanLossToPlayerWithInspection(
-      actorIdx,
-      1,
-      baseState.currentTurn ?? actorIdx,
-      players,
-      deck,
-      discard,
-      log,
-      inspectionMeta,
-      '解读石刻'
-    );
-    players = processed.P;
-    deck = processed.D;
-    discard = processed.Disc;
-    log = processed.L;
-    inspectionMeta = processed.inspectionMeta;
-  }
-  if (remaining.length) {
-    deck.unshift(...remaining);
-    log.push(`【解读石刻】${remaining.length} 张牌放回牌堆顶`);
-  }
-  const cardGainPatch = appendPublicCardGainTriggers(
-    { ...baseState, ...inspectionMeta },
-    players,
-    actorIdx,
-    handCard
-  );
-  const nextState = {
+  return resolveAiPublicChoiceState({
     ...baseState,
-    players,
-    deck,
-    discard,
-    log,
-    phase: 'ACTION',
-    abilityData: {},
-    drawReveal: null,
-    selectedCard: null,
-    ...inspectionMeta,
-    ...cardGainPatch,
-  };
-  const win = checkWin(players, true);
-  return win ? { ...nextState, gameOver: win } : nextState;
+    abilityData: { ...baseState.abilityData, playerIndex: actorIdx },
+  });
 }
 
 export function resolveMpAiTakeoverState(
@@ -339,6 +208,9 @@ export function resolveMpAiTakeoverState(
   if (!isMpAiTakeoverRelevant(sourceState, takeoverIdx)) return null;
   if (sourceState.players?.[takeoverIdx]?.isDead) {
     if (sourceState.currentTurn !== takeoverIdx) return null;
+    if (sourceState._aiPendingHandLimitThorns?.length) {
+      return autoDiscardSeatAndAdvance(sourceState, takeoverIdx, getHandLimitForPlayer);
+    }
     return startNextTurn({
       ...sourceState,
       currentTurn: takeoverIdx,
@@ -424,7 +296,7 @@ export function resolveMpAiTakeoverState(
       getHandLimitForPlayer
     );
   }
-  if (phase === 'CAVE_DUEL_SELECT_CARD') {
+  if (phase === 'CAVE_DUEL_SELECT_CARD' || phase === 'CAVE_DUEL_WAIT_REVEAL') {
     const abilityData = { ...sourceState.abilityData };
     const players = copyPlayers(sourceState.players);
     const sourcePlayer = players[abilityData.caveDuelSource];
@@ -438,7 +310,8 @@ export function resolveMpAiTakeoverState(
       && !abilityData.sourceCard
     ) {
       abilityData.sourceCardIndex = getBestCaveDuelCardIndex(
-        sourcePlayer.hand
+        sourcePlayer.hand,
+        { state: sourceState, actorIdx: abilityData.caveDuelSource, opponentIdx: abilityData.caveDuelTarget }
       );
       abilityData.sourceCard = sourcePlayer.hand[
         abilityData.sourceCardIndex
@@ -449,7 +322,8 @@ export function resolveMpAiTakeoverState(
       && !abilityData.targetCard
     ) {
       abilityData.targetCardIndex = getBestCaveDuelCardIndex(
-        targetPlayer.hand
+        targetPlayer.hand,
+        { state: sourceState, actorIdx: abilityData.caveDuelTarget, opponentIdx: abilityData.caveDuelSource }
       );
       abilityData.targetCard = targetPlayer.hand[
         abilityData.targetCardIndex
@@ -479,12 +353,17 @@ export function resolveMpAiTakeoverState(
     return nextGs;
   }
   if (phase === 'DECIPHER_STONE_CARVING') {
+    const resolved = autoResolveDecipherStoneCarving(sourceState, takeoverIdx);
+    if (takeoverIdx !== sourceState.currentTurn || resolved.gameOver || !['ACTION', 'AI_TURN'].includes(resolved.phase)) return resolved;
     return finishMpAiTakeoverTurn(
-      autoResolveDecipherStoneCarving(sourceState, takeoverIdx),
+      resolved,
       sourceState,
       takeoverIdx,
       getHandLimitForPlayer
     );
+  }
+  if (phase === 'FIRST_COME_PICK_SELECT' || phase === 'TORTOISE_ORACLE_SELECT') {
+    return resolveAiPublicChoiceState(sourceState);
   }
   if (
     phase === 'DRAW_REVEAL'

@@ -1989,10 +1989,10 @@ describe('inspection and AI decision regressions', () => {
     expect(result.statePatch.abilityData).toBeUndefined();
     expect(result.P[0].hand).toHaveLength(2);
     expect(result.Disc).toEqual([discardedNormal]);
-    const discardEvent = result.statePatch._visualEvents?.find(event => (
+    const discardEvents = result.statePatch._visualEvents?.filter(event => (
       event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
     ));
-    expect(discardEvent?.discardEvents.map(event => event.card)).toEqual([
+    expect(discardEvents?.flatMap(event => event.discardEvents.map(discard => discard.card))).toEqual([
       derived,
       discardedNormal,
     ]);

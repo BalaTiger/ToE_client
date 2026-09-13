@@ -5,6 +5,12 @@ import {
 } from './coreUtils';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { buildTargetContinuationState } from './targetContinuation';
+import {
+  chooseAiAction,
+  createAiObservationState,
+  evaluateAiState,
+  rankAiActions,
+} from './aiPolicy';
 
 export function resolveHandCardSelection(
   player,
@@ -23,14 +29,75 @@ export function caveDuelBlindChoiceScore(card) {
   return Number.isFinite(card?.number) ? card.number : 3.5;
 }
 
-export function getBestCaveDuelCardIndex(hand = []) {
+export function getBestCaveDuelCardIndex(hand = [], context = {}) {
   if (!hand.length) return -1;
-  return hand.reduce((bestIdx, card, index) => (
-    caveDuelBlindChoiceScore(card)
-      > caveDuelBlindChoiceScore(hand[bestIdx])
-      ? index
-      : bestIdx
-  ), 0);
+  const hasOpponent = context.state?.players?.[context.opponentIdx];
+  const actorIdx = hasOpponent ? context.actorIdx : 0;
+  const opponentIdx = hasOpponent ? context.opponentIdx : 1;
+  const baseState = hasOpponent ? context.state : {
+    players: [
+      { name: 'AI', hand, hp: 10, san: 10, role: null, godZone: [] },
+      { name: '?', hand: [{ id: 'unknown-duel', _aiUnknown: true }], hp: 10, san: 10, role: null, godZone: [] },
+    ],
+    deck: [], discard: [], log: [], currentTurn: 0,
+  };
+  const observation = createAiObservationState(baseState, actorIdx);
+  observation.players[actorIdx].hand = [...hand];
+  const opponentHand = observation.players[opponentIdx].hand;
+  const knownResponses = opponentHand.flatMap((card, cardIndex) => (
+    card && !card._aiUnknown ? [{ card, cardIndex, weight: 1 }] : []
+  ));
+  const unknownIndices = opponentHand.flatMap((card, index) => (
+    !card || card._aiUnknown ? [index] : []
+  ));
+  // Unknown cards use a fixed, deck-independent prior. A sealed choice is never
+  // read from abilityData, even after the other participant has selected it.
+  const blindResponses = unknownIndices.length ? [1, 2, 3, 4, null].map(number => ({
+    card: { id: `duel-prior-${number}`, ...(number != null ? { number } : {}) },
+    cardIndex: unknownIndices[0],
+    weight: unknownIndices.length / 5,
+  })) : [];
+  const responses = [...knownResponses, ...blindResponses];
+  if (!responses.length) return 0;
+  const actions = hand.map((card, cardIndex) => ({
+    card,
+    cardIndex,
+    expectedComparison: responses.reduce((sum, response) => (
+      sum + compareCaveDuelCards(card, response.card) * response.weight
+    ), 0) / responses.reduce((sum, response) => sum + response.weight, 0),
+  }));
+  return chooseAiAction({
+    state: observation,
+    actorIdx,
+    actions,
+    simulate: (snapshot, candidate) => {
+      // Resolve every legal visible reply through the real transfer rules.
+      // Use the least favorable reply for public information, and retain that
+      // safety check while ranking the blind prior by expected comparison.
+      const replies = rankAiActions({
+        state: snapshot,
+        actorIdx,
+        actions: responses,
+        allowTreasureDeclaration: true,
+        simulate: (replyState, response) => {
+          replyState.players[opponentIdx].hand[response.cardIndex] = response.card;
+          return resolveCaveDuelState(
+            replyState.players, actorIdx, opponentIdx,
+            candidate.cardIndex, response.cardIndex,
+            candidate.card, response.card, replyState,
+          ).nextGs;
+        },
+      });
+      return replies.at(-1)?.outcome || snapshot;
+    },
+    ...(unknownIndices.length ? {
+      evaluate: (outcome, candidate) => [
+        candidate.expectedComparison,
+        ...evaluateAiState(outcome, actorIdx, { allowTreasureDeclaration: true }).slice(2),
+      ],
+    } : {}),
+    allowTreasureDeclaration: true,
+  })?.cardIndex ?? 0;
 }
 
 function removeSelectedHandCard(player, cardIndex, selectedCard) {

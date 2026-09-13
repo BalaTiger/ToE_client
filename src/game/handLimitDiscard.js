@@ -50,12 +50,16 @@ export function applyHandDiscardSideEffectsWithAnim({
     return { ...result, statePatch: {}, queue: [] };
   }
   const statEventSeq = (baseGs?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, result.players, sideLogs, {
-    reason: '天平',
-    seq: statEventSeq,
-    discardBefore: baseGs?.discard,
-    discardAfter: result.discard,
-  });
+  // submitLossEvents already owns intermediate damage/rope/death boundaries.
+  // Rebuilding from the final players would collapse 4 -> 1 -> 0 into 4 -> 0.
+  const statEvents = result.statEvents?.length
+    ? result.statEvents.map(event => ({ ...event, seq: statEventSeq }))
+    : buildStatEvents(beforePlayers, result.players, sideLogs, {
+      reason: '天平',
+      seq: statEventSeq,
+      discardBefore: baseGs?.discard,
+      discardAfter: result.discard,
+    });
   const statePatch = statEvents.length
     ? { _statEvents: [...(baseGs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq }
     : {};

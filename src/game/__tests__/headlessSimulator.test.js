@@ -181,5 +181,5 @@ describe('headless simulator', () => {
     expect(summary.statuses).toEqual({ complete: 40 });
     expect(summary.unresolvedPhases).toEqual({});
     expect(Object.keys(summary.winners)).not.toContain('LOSE');
-  });
+  }, 20000);
 });

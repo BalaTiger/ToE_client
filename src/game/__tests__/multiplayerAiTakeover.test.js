@@ -4,7 +4,10 @@ import {
   resolveMpAiTakeoverState,
   withTimeoutDrawDiscardVisual,
 } from '../multiplayerAiTakeover';
-import { makeGs, makePlayer, makeZoneCard } from './factory';
+import { makeBlankZoneCard, makeGs, makePlayer, makeZoneCard } from './factory';
+import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { addDamageLink } from '../damageLinks';
+import { resolveHeadlessEtherealize } from '../headlessSimulator';
 
 const dependencies = {
   getHandLimitForPlayer: () => 4,
@@ -12,6 +15,77 @@ const dependencies = {
 };
 
 describe('multiplayer AI takeover decisions', () => {
+  it('keeps a life balance at 3 HP when a safe hand-limit discard is available', () => {
+    const balance = makeZoneCard('B1', 2);
+    const state = makeGs({
+      _isMP: true, phase: 'DISCARD_PHASE', currentTurn: 0,
+      players: [
+        makePlayer({ role: ROLE_TREASURE, roleRevealed: true, hp: 3,
+          hand: [balance, makeZoneCard('A1'), makeZoneCard('B2'), makeZoneCard('B2'), makeZoneCard('C3')] }),
+        makePlayer({ role: ROLE_HUNTER, roleRevealed: true }),
+      ],
+      deck: [makeBlankZoneCard()],
+    });
+    const result = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(result.players[0].hand).toContainEqual(balance);
+    expect(result.players[0].hand).toHaveLength(4);
+    expect(result.players[0]).toMatchObject({ hp: 3, isDead: false });
+    expect(result.currentTurn).toBe(1);
+    expect(result._aiFinishingTurn).toBeUndefined();
+    expect(result._aiPendingHandLimitThorns).toBeUndefined();
+  });
+
+  it('waits for a forced discard reaction and settles deferred thorns before the next turn', () => {
+    const state = makeGs({
+      _isMP: true, phase: 'DISCARD_PHASE', currentTurn: 0,
+      players: [
+        makePlayer({ role: ROLE_HUNTER, roleRevealed: true,
+          hand: Array.from({ length: 5 }, () => makeZoneCard('B1', 2, { roseThornHolderId: 2, roseThornSourceId: 0 })) }),
+        makePlayer({ role: ROLE_TREASURE, roleRevealed: true, etherealizeStacks: 1, hand: [makeZoneCard('D1')] }),
+        makePlayer({ role: ROLE_CULTIST, roleRevealed: true }),
+      ],
+      deck: [makeBlankZoneCard()],
+    });
+    addDamageLink(state.players, 0, 1);
+    const paused = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(paused.phase).toBe('ETHEREALIZE_DECISION');
+    expect(paused.currentTurn).toBe(0);
+    expect(paused.players[0].hand).toHaveLength(4);
+    expect(paused.deck).toEqual(state.deck);
+    expect(paused._aiFinishingTurn).toBe(true);
+    expect(paused._aiPendingHandLimitThorns).toHaveLength(1);
+    expect(paused.players[2].hp).toBe(10);
+
+    const reaction = resolveHeadlessEtherealize(paused, { useEtherealize: false });
+    const resumed = resolveMpAiTakeoverState({ ...reaction, phase: 'ACTION' }, 0, dependencies);
+    expect(resumed.currentTurn).toBe(1);
+    expect(resumed.players[2].hp).toBe(8);
+    expect(resumed.players[0].hand).toHaveLength(4);
+    expect(resumed.log.filter(line => line.includes('【玫瑰倒刺】'))).toHaveLength(1);
+    expect(resumed._aiFinishingTurn).toBeUndefined();
+    expect(resumed._aiPendingHandLimitThorns).toBeUndefined();
+  });
+
+  it('settles deferred thorns after the discarding player dies before advancing', () => {
+    const state = makeGs({
+      _isMP: true, phase: 'ACTION', currentTurn: 0,
+      _aiFinishingTurn: true,
+      _aiPendingHandLimitThorns: [{ id: 'deferred-after-death', roseThornHolderId: 2, roseThornSourceId: 0 }],
+      players: [
+        makePlayer({ role: ROLE_TREASURE, roleRevealed: true, hp: 0, isDead: true }),
+        makePlayer({ role: ROLE_HUNTER, roleRevealed: true }),
+        makePlayer({ role: ROLE_CULTIST, roleRevealed: true }),
+        makePlayer({ role: ROLE_TREASURE, roleRevealed: true }),
+      ],
+      deck: [makeBlankZoneCard()],
+    });
+    const result = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(result.players[2].hp).toBe(8);
+    expect(result.currentTurn).toBe(1);
+    expect(result._aiFinishingTurn).toBeUndefined();
+    expect(result._aiPendingHandLimitThorns).toBeUndefined();
+  });
+
   it('accepts only the seat responsible for the current decision', () => {
     const drawState = makeGs({
       currentTurn: 0,
@@ -89,10 +163,9 @@ describe('multiplayer AI takeover decisions', () => {
   it('auto hand-limit discard destroys derived cards but publishes all discarded cards for animation', () => {
     const normal = makeZoneCard('C3', 0, { id: 'takeover-normal' });
     const derived = { id: 'takeover-derived', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
-    const kept = ['A1', 'A2', 'B1', 'B2'].map(key => makeZoneCard(key, 0));
     const state = makeGs({
       players: [
-        makePlayer({ name: '掉线玩家', hand: [...kept, normal, derived] }),
+        makePlayer({ name: '掉线玩家', hand: [normal, derived] }),
         makePlayer({ name: '下一位' }),
       ],
       currentTurn: 0,
@@ -102,14 +175,14 @@ describe('multiplayer AI takeover decisions', () => {
       log: [],
     });
 
-    const result = resolveMpAiTakeoverState(state, 0, dependencies);
+    const result = resolveMpAiTakeoverState(state, 0, { ...dependencies, getHandLimitForPlayer: () => 0 });
 
     expect(result.discard).toContain(normal);
     expect(result.discard).not.toContain(derived);
-    expect(result._visualEvents?.find(event => event.type === 'handLimitDiscard')?.cards).toEqual([
-      derived,
-      normal,
-    ]);
+    const animatedCards = result._visualEvents
+      .filter(event => event.type === 'handLimitDiscard').flatMap(event => event.cards);
+    expect(animatedCards).toHaveLength(2);
+    expect(animatedCards).toEqual(expect.arrayContaining([derived, normal]));
   });
 
   it('records one cave-duel choice while the other player is pending', () => {

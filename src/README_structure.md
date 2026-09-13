@@ -81,6 +81,7 @@ Pure logic modules with no React dependency. Important files include:
 - `RULES.md` - normative turn phases, event priority, interruption, and state-snapshot semantics
 - `turnFlowStages.js` / `turnStartEvents.js` / `endTurnEvents.js` - shared phase names and player/AI event registries
 - `ai.js` / `aiTurn.js` - AI choices and AI turn resolution
+- `AI_STRATEGY.md` / `aiPolicy.js` - observation, isolated rule previews, faction scoring, and AI decision adapters
 - `aiTurnPresentation.js` / `aiDecisionState.js` - AI presentation queues, recovery, and decision-state helpers
 - `effectEngine.js` - zone/check card and public effect resolution
 - `balancePatches.js` / `balanceCards.js` - explicit balance-rule switches and card side effects

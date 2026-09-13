@@ -12,6 +12,7 @@ import {
   zoneCardProvidesGuaranteedCardGain,
   zoneCardUsesTargetInteraction,
   isBlackGoatYoung,
+  isTsathogguaSlime,
   canRevealForHunt,
   hasHuntRevealableCard,
   ROLE_TREASURE,
@@ -19,6 +20,10 @@ import {
   ROLE_CULTIST,
 } from './coreUtils';
 import { getActiveDamageLinksForPlayer } from './damageLinks';
+import { createAiObservationState, evaluateAiState, rankAiActions } from './aiPolicy';
+import { runAiPreview } from './aiPreviewRuntime';
+import { previewAiZoneAcquisition } from './aiRulePreview';
+import { chooseAiPublicCardIndex } from './aiPublicChoices';
 
 function damageLinkMissingHp(player) {
   return Math.min(4, Math.max(0, 10 - (player?.hp || 0)));
@@ -216,27 +221,6 @@ function sortByLowestHpThenSan(a, b) {
   return (a.player.hp - b.player.hp) || (a.player.san - b.player.san) || (a.idx - b.idx);
 }
 
-function estimateSameAbyssSelfFollowupPenalty(card, self, players, ci) {
-  if (card?.type !== 'sameAbyssChoice' || !self || self.isDead) return 0;
-  const living = players
-    .map((player, idx) => ({ player, idx }))
-    .filter(({ player }) => player && !player.isDead);
-  if (!living.length) return 0;
-  const selfHandAfterKeep = (self.hand?.length || 0) + 1;
-  const maxOtherHand = Math.max(
-    0,
-    ...living
-      .filter(({ idx }) => idx !== ci)
-      .map(({ player }) => player.hand?.length || 0)
-  );
-  if (selfHandAfterKeep < maxOtherHand) return 0;
-  const actorHandCount = selfHandAfterKeep;
-  const discardCount = Math.max(0, selfHandAfterKeep - actorHandCount);
-  const hpLoss = 4;
-  const deathRisk = self.hp <= hpLoss ? 8 : 0;
-  return hpLoss * 2.2 + discardCount * 1.5 + deathRisk + 2;
-}
-
 function estimateEtherealizeZoneCardScore(self, players, ci) {
   if (!self || self.isDead) return -1;
   if (!getLivingAdjacentTargets(players, ci).length) return -1;
@@ -248,17 +232,14 @@ function estimateEtherealizeZoneCardScore(self, players, ci) {
 function estimateHunterGlobalDamageScore(players, hpLoss = 0, sanLoss = 0, dmgBonus = 0) {
   const nonHunters = players
     .map((player, idx) => ({ player, idx }))
-    .filter(({ player }) => player && player.role !== ROLE_HUNTER);
+    .filter(({ player }) => player && player.roleRevealed && player.role !== ROLE_HUNTER);
   if (!nonHunters.length) return 0;
   const killedNonHunters = nonHunters.filter(({ player }) => {
     if (player.isDead) return true;
     const nextHp = player.hp - (hpLoss || 0) - dmgBonus;
-    const nextSan = player.san - (sanLoss || 0);
-    return nextHp <= 0 || nextSan <= 0;
+    return nextHp <= 0;
   });
   const livingNonHunters = nonHunters.filter(({ player }) => !player.isDead);
-  const immediateWin = killedNonHunters.length === nonHunters.length;
-  if (immediateWin) return 120;
   if (!killedNonHunters.length) return 0;
   const revealedBonus = killedNonHunters.filter(({ player }) => player.roleRevealed).length * 2;
   const damagePressure = livingNonHunters.length * Math.max(hpLoss || 0, sanLoss || 0) * 0.25;
@@ -400,7 +381,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       score = hasProliferatingZPayoff(self) ? 3.0 : 1.0;
       break;
     case 'sameAbyssChoice':
-      score = -(card.hpVal || 2) * 2.1 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+      score = -(card.hpVal || 2) * 2.1;
       break;
     case 'roseThornGiftAllHand': {
       const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
@@ -589,7 +570,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       score = hasProliferatingZPayoff(self) ? 3.2 : 1.1;
       break;
     case 'sameAbyssChoice':
-      score = -(card.hpVal || 2) * 2.2 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+      score = -(card.hpVal || 2) * 2.2;
       break;
     case 'roseThornGiftAllHand':
       score = -100;
@@ -889,14 +870,9 @@ export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {
   return scored.slice(0, maxToTake).map(s => s.card);
 }
 
-export function chooseFirstComePickForAI(cards, ci, players) {
+export function chooseFirstComePickForAI(cards, ci, players, gs = {}) {
   if (!cards?.length) return 0;
-  const scored = cards.map((card, index) => ({
-    index,
-    score: estimateZoneCardKeepScore(card, ci, players) + (isZoneCard(card) ? 0.5 : 0),
-  }));
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0].index;
+  return chooseAiPublicCardIndex({ state: { ...gs, players }, actorIdx: ci, cards });
 }
 
 export function getHunterChaseTargets(players, hunterIdx, huntAbandoned = []) {
@@ -1149,7 +1125,7 @@ export function chooseAiRoseThornTarget(players, sourceIdx, validTargetIndices) 
   )[0].idx;
 }
 
-export function chooseAiCultistBewitchPlan(players, sourceIdx) {
+function chooseLegacyCultistBewitchPlan(players, sourceIdx) {
   const self = players?.[sourceIdx];
   if (!self || self.isDead) return null;
   const targets = players
@@ -1309,17 +1285,12 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
   return null;
 }
 
-export function aiShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
+function legacyShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
   if (!card || !isZoneCard(card)) return forced;
   if (card.isGod) return true;
   
   const self = players[ci];
   const role = self?._nyaBorrow || self?.role;
-
-  if (card.type === 'sameAbyssChoice') {
-    const selfPenalty = estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
-    if (selfPenalty > 0 && (self?.hp || 0) <= (card.hpVal || 2) + 4) return false;
-  }
 
   if (card.type === 'roseThornGiftAllHand') {
     const hand = self?.hand || [];
@@ -1391,32 +1362,103 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
   return estimateZoneCardKeepScore(card, ci, players) > 0;
 }
 
-export function canCultistWinByBewitch(players, ti) {
-  const cultistPlan = chooseAiCultistBewitchPlan(players, ti);
-  if (!cultistPlan) return false;
-
-  const self = players[ti];
-  const target = players[cultistPlan.targetIdx];
-  if (!self || !target) return false;
-
-  const card = cultistPlan.card;
-  if (card.isGod) {
-    const sanLoss = estimateGodGiftSanLoss(card, target);
-    return target.san - sanLoss <= 0 && target.hp > 0;
-  } else {
-    const sanLoss = zoneCardCanGiftLowerSan(card, target);
-    return target.san - sanLoss <= 0 && target.hp > 0;
-  }
+function makeDecisionObservation(players, actorIdx, context = {}) {
+  const state = context.state || context.gs || context;
+  const observation = createAiObservationState({
+    ...state,
+    players,
+    currentTurn: state.currentTurn ?? actorIdx,
+    deck: context.deck || state.deck || [],
+    discard: context.discard || state.discard || [],
+    log: state.log || [],
+  }, actorIdx);
+  // Compatibility callers that only pass players have supplied no deck
+  // knowledge. They must not make empty-deck immortality a certainty.
+  if (!Array.isArray(context.deck || state.deck) && state.deckCount == null) observation._aiUnknownDeck = true;
+  return observation;
 }
 
-export function canCultistEmptyHandByBewitch(players, ti) {
+function rankCultistBewitchActions(players, sourceIdx, context = {}) {
+  const observation = makeDecisionObservation(players, sourceIdx, context);
+  const self = observation.players?.[sourceIdx];
+  if (!self || self.isDead) return [];
+  const legacy = runAiPreview(() => chooseLegacyCultistBewitchPlan(observation.players, sourceIdx));
+  const targets = observation.players.map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== sourceIdx && !player.isDead);
+  const actions = [{ type: 'pass' }, ...self.hand.filter(card => !isBlackGoatYoung(card))
+    .flatMap(card => targets.map(({ idx }) => ({ type: 'gift', card, targetIdx: idx })))];
+  return rankAiActions({
+    state: observation,
+    actorIdx: sourceIdx,
+    actions,
+    simulate: (state, action) => action.type === 'pass' ? state : previewAiZoneAcquisition(state, {
+      card: action.card, receiverIdx: action.targetIdx, giverIdx: sourceIdx,
+    }),
+    evaluate: (outcome, action) => [
+      action.type === 'pass'
+        ? (legacy ? -1 : 1)
+        : (legacy?.card?.id === action.card.id && legacy.targetIdx === action.targetIdx ? 1 : 0),
+      evaluateAiState(outcome, sourceIdx).at(-1),
+    ],
+  });
+}
+
+export function chooseAiCultistBewitchPlan(players, sourceIdx, context = {}) {
+  const action = rankCultistBewitchActions(players, sourceIdx, context)[0]?.action;
+  if (!action || action.type === 'pass') return null;
+  // Return the actor's real card object, never an observation placeholder.
+  const card = players[sourceIdx].hand.find(held => held.id === action.card.id);
+  return card ? { card, targetIdx: action.targetIdx } : null;
+}
+
+export function aiShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
+  if (!card || !isZoneCard(card)) return forced;
+  if (card.isGod) return true;
+  const observation = makeDecisionObservation(players, ci, context);
+  const preferredKeep = legacyShouldKeepZoneCard(card, ci, observation.players, forced, observation);
+  const sourceState = context.state || context.gs || context;
+  const continuation = sourceState.abilityData || {};
+  const hasPendingDraws = continuation.continueTurnStartDraw || continuation.fromTsathogguaSlime
+    || continuation._tsgExtraDrawReady || (continuation.cthDrawsRemaining || 0) > 0
+    || sourceState._cthContinueRestDraws || (sourceState.pendingDrawCount || 0) > 0
+    || (sourceState._aiEndTurnReplayQueue?.length || 0) > 0
+    || (sourceState._turnFlowStage === 'draw' && players[ci]?.godName === 'TSG'
+      && (players[ci].hand || []).some(isTsathogguaSlime));
+  const allowTreasureDeclaration = context.allowTreasureDeclaration ?? (!hasPendingDraws
+    && !['turnStart', 'endTurn', 'turnBoundary'].includes(sourceState._turnFlowStage));
+  const ranked = rankAiActions({
+    state: observation,
+    actorIdx: ci,
+    allowTreasureDeclaration,
+    actions: [{ keep: false }, { keep: true }],
+    simulate: (state, action) => previewAiZoneAcquisition(state, {
+      card, receiverIdx: ci, keep: action.keep,
+      avoidNegative: !!context.avoidNegative,
+      avoidNegativeFor: context.avoidNegativeFor || [],
+    }),
+    // Preserve existing longer-term judgments (exposure, hunt ammunition,
+    // faith and card axes) after the shared terminal/survival priorities.
+    evaluate: (outcome, action) => [
+      action.keep === preferredKeep ? 1 : 0,
+      evaluateAiState(outcome, ci).at(-1),
+    ],
+  });
+  return ranked[0]?.action.keep ?? preferredKeep;
+}
+
+export function canCultistWinByBewitch(players, ti, context = {}) {
+  const best = rankCultistBewitchActions(players, ti, context)[0];
+  return best?.action.type === 'gift' && best.terminal > 0;
+}
+
+export function canCultistEmptyHandByBewitch(players, ti, context = {}) {
   const self = players[ti];
   if (!self || self.isDead) return false;
 
   const playableHand = (self.hand || []).filter(c => !isBlackGoatYoung(c));
   if (playableHand.length !== 1) return false;
 
-  const plan = chooseAiCultistBewitchPlan(players, ti);
+  const plan = chooseAiCultistBewitchPlan(players, ti, context);
   return !!plan && (plan.card?.id === playableHand[0]?.id || plan.card === playableHand[0]);
 }
 
@@ -1428,11 +1470,11 @@ export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {
   }
 
   if (aiEffRole === ROLE_CULTIST && ai.hp <= 4) {
-    if (canCultistWinByBewitch(players, ti)) {
+    if (canCultistWinByBewitch(players, ti, { state: gs })) {
       return { shouldNotRest: true, reason: 'bewitchWin' };
     }
 
-    if (ai.hp > 3 && canCultistEmptyHandByBewitch(players, ti)) {
+    if (ai.hp > 3 && canCultistEmptyHandByBewitch(players, ti, { state: gs })) {
       return { shouldNotRest: true, reason: 'bewitchEmptyHand' };
     }
 
