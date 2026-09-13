@@ -1451,7 +1451,7 @@ export default function Game(){
       if(seq)setHoundsRevealedSeq(prev=>Math.max(prev,seq));
     }
   },[gs?.houndsOfTindalosActive,anim?.type,anim?.card,anim?.inspectionSeq,latestHoundsInspectionSeq,houndsRevealedSeq]);
-  const {earthquakeShake,screenShake,deathShake}=useGlobalShakeEffects({
+  const {sceneShake}=useGlobalShakeEffects({
     anim,
     guillotineReady,
     localDebugMode,
@@ -10332,7 +10332,7 @@ export default function Game(){
     // animation highlights
     anim,suppressAnim,hitIndices,sanHitIndices,hpHealIndices,sanHealIndices,
     guillotinedPids,blackGoatPulsePid,godHighlightPanelBursts,damageLinkGhosts,damageLinkEstablishAnims,
-    deathShake,earthquakeShake,screenShake,
+    sceneShake,
     // interaction helpers
     selectingOther,canLocalTargetSelect,effectiveHandLimit,mobileArmedGodCardIdx,
     mobileArmedGodCard,mobileArmedGodTooltipRect,mobileGodCardRefs,

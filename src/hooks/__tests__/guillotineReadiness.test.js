@@ -11,6 +11,7 @@ const hooks = vi.hoisted(() => ({ current: null, captures: [], canvasOptions: []
 vi.mock('react', () => ({
   useCallback: (...args) => hooks.current.useCallback(...args),
   useEffect: (...args) => hooks.current.useEffect(...args),
+  useMemo: (...args) => hooks.current.useMemo(...args),
   useRef: (...args) => hooks.current.useRef(...args),
   useState: (...args) => hooks.current.useState(...args),
 }));
@@ -54,6 +55,11 @@ function createHookRenderer(renderHook) {
     useCallback(fn, deps) {
       const index = cursor++;
       if (!slots[index] || !same(slots[index].deps, deps)) slots[index] = { value: fn, deps };
+      return slots[index].value;
+    },
+    useMemo(factory, deps) {
+      const index = cursor++;
+      if (!slots[index] || !same(slots[index].deps, deps)) slots[index] = { value: factory(), deps };
       return slots[index].value;
     },
     useEffect(fn, deps) {
@@ -155,13 +161,16 @@ describe('guillotine screenshot readiness at real playback boundary', () => {
     expect(renderer.current.anim.type).toBe('GUILLOTINE');
     expect(renderer.current.guillotineTargets).toEqual([]);
     expect(sound).not.toHaveBeenCalled();
-    expect(renderer.current.deathShake).toBe(false);
+    expect(renderer.current.sceneShake).toBeNull();
     await resolveCapture();
     expect(renderer.current.guillotineTargets[0].snapshotUrl).toBe('data:image/png;base64,panel');
     expect(sound).toHaveBeenCalledTimes(1);
     expect(renderer.current.guillotineReady).toBe(true);
+    expect(renderer.current.sceneShake.event).toBe(renderer.current.anim);
+    expect(renderer.current.sceneShake.timing.delay).toBe(120);
+    expect(renderer.current.sceneShake.timing.duration * renderer.current.sceneShake.timing.iterations).toBe(220);
     await advance(120);
-    expect(renderer.current.deathShake).toBe(true);
+    expect(renderer.current.sceneShake).not.toBeNull();
     await advance(duration - 121);
     expect(renderer.current.anim.type).toBe('GUILLOTINE');
     await advance(1);

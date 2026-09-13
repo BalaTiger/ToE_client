@@ -24,6 +24,7 @@ import SoftGuideOverlay from '../tutorial/SoftGuideOverlay';
 import { HandArea } from './HandArea';
 import { SelfPlayerPanel } from './SelfPlayerPanel';
 import { BattleHeader } from './BattleHeader';
+import { BattleSceneContent } from './BattleSceneContent';
 import { SwapBlindDrawOverlay } from './SwapBlindDrawOverlay';
 import { BattleDecisionModals } from './BattleDecisionModals';
 
@@ -118,9 +119,7 @@ export function BattleScreen(props) {
     godHighlightPanelBursts,
     damageLinkGhosts,
     damageLinkEstablishAnims,
-    deathShake,
-    earthquakeShake,
-    screenShake,
+    sceneShake,
     selectingOther,
     canLocalTargetSelect,
     effectiveHandLimit,
@@ -300,8 +299,6 @@ export function BattleScreen(props) {
   return (
     <>
     <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
-    animation:deathShake?'deathShakeAnim 2.0s ease-in-out':earthquakeShake?'earthquakeSceneShake 1.25s linear 2':screenShake?'screenShakeAnim 0.38s ease-in-out':undefined,
-    animationPlayState:isSoloPaused?'paused':undefined,
     }}>
       {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
       {/* Global vignette */}
@@ -451,7 +448,8 @@ export function BattleScreen(props) {
         decipherStoneCarvingConfirm={decipherStoneCarvingConfirm}
       />
 
-      <div style={{position:'relative',zIndex:2,display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
+      {/* Shake only the board content: transforming the root reanchors and clips its fixed backgrounds/overlays. */}
+      <BattleSceneContent shake={sceneShake} paused={isSoloPaused} style={{position:'relative',zIndex:2,width:'100%',maxWidth:DESIGN_WIDTH*scaleRatio,alignSelf:'center',display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
         {/* Header */}
         <BattleHeader
           isMultiplayer={isMultiplayer}
@@ -657,7 +655,7 @@ export function BattleScreen(props) {
             </div>
           </div>
         </div>
-      </div>
+      </BattleSceneContent>
       {/* ── Overlays ── */}
       {createPortal(
         <>

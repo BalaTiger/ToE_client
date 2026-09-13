@@ -3,6 +3,7 @@ import { CS, GOD_CS } from '../../constants/card';
 import { MiniCardFace } from '../cards';
 import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
 import { FullscreenLightLayer } from './FullscreenLightLayer';
+import { EARTHQUAKE_SHAKE_DURATION_MS } from './sceneShake';
 
 const EARTHQUAKE_PEBBLES = [
   { top: '22%', left: '16%', size: 16, dx: 128, midDx: 58, lift: 28, drop: 58, rot: 210, delay: 0.08 },
@@ -85,7 +86,7 @@ export function EarthquakeOverlay({ anim, exiting }) {
   return (
     <>
       <FullscreenLightLayer>
-        <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeWhiteFlash 2.5s linear both' }} />
+        <div style={{ position: 'absolute', inset: 0, animation: `earthquakeWhiteFlash ${EARTHQUAKE_SHAKE_DURATION_MS}ms linear both` }} />
       </FullscreenLightLayer>
       <div style={{
         position: 'fixed',
@@ -93,9 +94,9 @@ export function EarthquakeOverlay({ anim, exiting }) {
         zIndex: 999,
         pointerEvents: 'none',
         overflow: 'hidden',
-        animation: `earthquakeSceneShake 1.25s linear 2${exiting ? ', animFadeOut 0.18s ease-in forwards' : ''}`,
+        animation: exiting ? 'animFadeOut 0.18s ease-in forwards' : undefined,
       }}>
-        <div style={{ position: 'absolute', inset: 0, animation: 'earthquakeBlackout 2.5s linear both' }} />
+        <div style={{ position: 'absolute', inset: 0, animation: `earthquakeBlackout ${EARTHQUAKE_SHAKE_DURATION_MS}ms linear both` }} />
         <div style={{
           position: 'absolute',
           inset: 0,

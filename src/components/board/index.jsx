@@ -1,4 +1,5 @@
 ﻿import React from 'react';
+import { createPortal } from 'react-dom';
 import { GOD_DEFS } from '../../constants/card';
 import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
@@ -329,7 +330,8 @@ function InspectionPile({count,scale=1}){
 
 function DiscardOverlay({cards,onClose}){
   if(!cards||!cards.length)return null;
-  return(
+  // Keep the full-screen gallery outside the board's zoom and screen shake.
+  return createPortal(
     <div onClick={onClose} style={{
       position:'fixed',inset:0,zIndex:99999,
       background:'rgba(0,0,0,0.85)',
@@ -358,7 +360,8 @@ function DiscardOverlay({cards,onClose}){
         <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:12,color:'#b8aa8c',marginTop:4}}>点击空白区域关闭</div>
         <button className="toe-button" onClick={onClose} style={{padding:'8px 24px'}}>返回对局</button>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

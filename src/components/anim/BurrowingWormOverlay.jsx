@@ -1,4 +1,5 @@
 import React from 'react';
+import { EARTHQUAKE_SHAKE_CYCLE_MS, EARTHQUAKE_SHAKE_STEPS } from './sceneShake';
 
 const WORM_DURATION_S = 2.75;
 const WORM_DPR_LIMIT = 1.1;
@@ -35,26 +36,9 @@ function lerp(a, b, t) {
 }
 
 function quakeStepOffset(time) {
-  const cycle = 1.25;
+  const cycle = EARTHQUAKE_SHAKE_CYCLE_MS / 1000;
   const phase = ((time % cycle) / cycle) * 100;
-  const keys = [
-    [0, 0],
-    [6.67, -5],
-    [13.33, 5],
-    [20, 0],
-    [26.67, 4],
-    [33.33, -4],
-    [40, 0],
-    [46.67, -5],
-    [53.33, 5],
-    [60, 0],
-    [66.67, 4],
-    [73.33, -4],
-    [80, 0],
-    [86.67, -3],
-    [93.33, 3],
-    [100, 0],
-  ];
+  const keys = EARTHQUAKE_SHAKE_STEPS;
   for (let i = 1; i < keys.length; i += 1) {
     const [prevT, prevX] = keys[i - 1];
     const [nextT, nextX] = keys[i];

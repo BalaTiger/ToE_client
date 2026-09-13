@@ -29,11 +29,11 @@ export const DICE_FACES=['⚀','⚁','⚂','⚃','⚄','⚅'];
 export const ANIM_CFG={
   // HP_DAMAGE handled via per-character KnifeEffect, no fullscreen overlay needed
   // SAN_DAMAGE: per-panel only, no fullscreen cfg
-  HP_HEAL:      {overlay:'rgba(3,12,3,0.90)', accent:'#4ade80', icon:'✚',  title:'创伤愈合',  shake:false},
-  SAN_HEAL:     {overlay:'rgba(8,3,18,0.90)', accent:'#a78bfa', icon:'☯',  title:'心神平复',  shake:false},
-  DECK_RESHUFFLE:{overlay:'rgba(4,9,15,0.88)', accent:'#c8a96e', icon:'↻',  title:'重洗弃牌堆', shake:false},
+  HP_HEAL:      {overlay:'rgba(3,12,3,0.90)', accent:'#4ade80', icon:'✚',  title:'创伤愈合'},
+  SAN_HEAL:     {overlay:'rgba(8,3,18,0.90)', accent:'#a78bfa', icon:'☯',  title:'心神平复'},
+  DECK_RESHUFFLE:{overlay:'rgba(4,9,15,0.88)', accent:'#c8a96e', icon:'↻',  title:'重洗弃牌堆'},
   // SKILL_SWAP/HUNT/BEWITCH use dedicated overlay components, not GenericAnimOverlay
   // DISCARD uses DiscardMoveOverlay, not GenericAnimOverlay
-  DEATH:        {overlay:'rgba(12,2,2,0.96)', accent:'#ff2020', icon:'☠',  title:'死亡降临',  shake:false},
-  EARTHQUAKE:   {overlay:'rgba(10,8,5,0.92)', accent:'#d4b468', icon:'⚡',  title:'地动山摇',  shake:true},
+  DEATH:        {overlay:'rgba(12,2,2,0.96)', accent:'#ff2020', icon:'☠',  title:'死亡降临'},
+  EARTHQUAKE:   {overlay:'rgba(10,8,5,0.92)', accent:'#d4b468', icon:'⚡',  title:'地动山摇'},
 };

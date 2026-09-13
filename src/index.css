@@ -38,6 +38,9 @@ body {
 }
 
 #root {
+  /* Keep the app's flex item full-width, independent of its contents. */
+  width: 100%;
+  min-width: 0;
   position: relative;
   z-index: 1;
 }

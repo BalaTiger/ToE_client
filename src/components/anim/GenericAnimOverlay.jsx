@@ -228,7 +228,7 @@ export function GenericAnimOverlay({ anim, exiting }) {
       <div style={{
         fontSize: 64, lineHeight: 1, marginBottom: 16,
         textShadow: `0 2px 6px #000, 0 0 18px ${cfg.accent}66`,
-        animation: cfg.shake ? 'animShake 0.45s ease-in-out' : 'animPop 0.4s ease-out',
+        animation: 'animPop 0.4s ease-out',
         filter: `drop-shadow(0 0 8px ${cfg.accent}66)`,
       }}>{cfg.icon}</div>
       <div style={{

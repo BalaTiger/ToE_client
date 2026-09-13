@@ -50,30 +50,6 @@ export const DAMAGE_ANIMATION_STYLES = `
     70%  {opacity:0.8;}
     100% {opacity:0; transform:translateY(16px) scale(0.6);}
   }
-  @keyframes screenShakeAnim {
-    0%,100%{transform:translateX(0)}
-    15%{transform:translateX(-6px)}
-    30%{transform:translateX(8px)}
-    50%{transform:translateX(-5px)}
-    70%{transform:translateX(6px)}
-    85%{transform:translateX(-3px)}
-  }
-  @keyframes deathShakeAnim {
-    0%,100%{transform:translate(0,0)}
-    4%  {transform:translate(-14px,-10px)}
-    8%  {transform:translate(18px,12px)}
-    13% {transform:translate(-12px,-16px)}
-    18% {transform:translate(20px,8px)}
-    24% {transform:translate(-16px,-10px)}
-    30% {transform:translate(14px,14px)}
-    38% {transform:translate(-10px,-8px)}
-    46% {transform:translate(12px,6px)}
-    55% {transform:translate(-8px,-4px)}
-    65% {transform:translate(6px,8px)}
-    75% {transform:translate(-5px,-3px)}
-    85% {transform:translate(4px,4px)}
-    93% {transform:translate(-2px,-2px)}
-  }
   @keyframes guillotineFall {
     0%   {transform:translateY(0)}
     100% {transform:translateY(var(--blade-dy))}
@@ -86,18 +62,6 @@ export const DAMAGE_ANIMATION_STYLES = `
     0%   {opacity:1}
     60%  {opacity:0.6}
     100% {opacity:0}
-  }
-  @keyframes deathScreenShake {
-    0%   {transform:translate(0,0) rotate(0deg)}
-    8%   {transform:translate(-6px,-4px) rotate(-0.4deg)}
-    16%  {transform:translate(7px,5px) rotate(0.5deg)}
-    24%  {transform:translate(-8px,3px) rotate(-0.6deg)}
-    32%  {transform:translate(6px,-6px) rotate(0.4deg)}
-    40%  {transform:translate(-5px,4px) rotate(-0.3deg)}
-    50%  {transform:translate(4px,-3px) rotate(0.25deg)}
-    60%  {transform:translate(-3px,2px) rotate(-0.15deg)}
-    75%  {transform:translate(2px,-1px) rotate(0.1deg)}
-    100% {transform:translate(0,0) rotate(0deg)}
   }
   @keyframes deathFragmentFly {
     0%   {transform:translate(0,0) rotate(0deg) scale(1);opacity:1}

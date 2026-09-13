@@ -1,21 +1,4 @@
 export const EARTHQUAKE_ANIMATION_STYLES = `
-  @keyframes earthquakeSceneShake {
-    0%, 100% {transform:translateX(0)}
-    6.67% {transform:translateX(-5px)}
-    13.33% {transform:translateX(5px)}
-    20% {transform:translateX(0)}
-    26.67% {transform:translateX(4px)}
-    33.33% {transform:translateX(-4px)}
-    40% {transform:translateX(0)}
-    46.67% {transform:translateX(-5px)}
-    53.33% {transform:translateX(5px)}
-    60% {transform:translateX(0)}
-    66.67% {transform:translateX(4px)}
-    73.33% {transform:translateX(-4px)}
-    80% {transform:translateX(0)}
-    86.67% {transform:translateX(-3px)}
-    93.33% {transform:translateX(3px)}
-  }
   @keyframes earthquakeBlackout {
     0%, 2%, 6%, 10%, 39%, 45%, 100% {opacity:0}
     4%, 8% {opacity:0.86; background:#000}
