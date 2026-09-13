@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dedupeInferredDiscardTransfers } from '../game/animQueueHelpers';
 import { markConsumedVisualEvents } from '../game/visualEvents';
 import { consumeVisualLogEntries } from '../game/visualEventLogs';
-import { attachApophisNightTimeline, normalizeApophisQueueForPlayback } from '../game/apophisAnimQueue';
+import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
+import { assertPreparedAnimationTransaction } from '../game/animationTransaction';
 import {
   applyStatAnimationImpact,
   primeDisplayStatsForStatQueue,
@@ -26,10 +26,6 @@ import {
   getPendingAnimationCues,
   resolveAnimationStepTiming,
 } from '../game/animationTiming';
-import {
-  ANIMATION_QUEUE_AUTHORITY,
-  getAnimationQueueVisualEventIds,
-} from '../game/visualEventTransactionCompiler';
 
 // Diagnostic tracing is opt-in so normal games do not pay for verbose queue
 // logging. Enable in a development console with:
@@ -98,6 +94,13 @@ export function useAnimationQueue({
 }) {
   const [anim, setAnim] = useState(null);
   const [animExiting, setAnimExiting] = useState(false);
+  const [readyGuillotineId, setReadyGuillotineId] = useState(null);
+  const guillotineReady = anim?.type !== 'GUILLOTINE' || !anim.hitIndices?.length
+    || readyGuillotineId === (anim._playbackId || anim);
+  const markGuillotineReady = useCallback(step => {
+    const id = step?._playbackId || step;
+    if (id && playbackRef.current.id === id) setReadyGuillotineId(id);
+  }, []);
   const animQueueRef = useRef([]);
   const pendingGsRef = useRef(null);
   const animCallbackRef = useRef(null);
@@ -117,6 +120,7 @@ export function useAnimationQueue({
     // Invalidate already-scheduled cues before React cleans up their timers.
     playbackRef.current = { id: null, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
     setAnimExiting(false);
+    setReadyGuillotineId(null);
     setAnim(null);
   }, []);
 
@@ -401,7 +405,7 @@ export function useAnimationQueue({
       playbackRef.current = { id: playbackId, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
     }
     const playback = playbackRef.current;
-    if (paused) {
+    if (paused || !guillotineReady) {
       sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.PAUSED);
       return;
     }
@@ -499,18 +503,15 @@ export function useAnimationQueue({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anim, paused]);
+  }, [anim, paused, guillotineReady]);
 
   function playAnimationTransaction(transaction) {
-    if (!transaction || transaction.authority !== ANIMATION_QUEUE_AUTHORITY.QUEUE || !Array.isArray(transaction.queue)) {
-      throw new TypeError('[animation-transaction] playback requires a queue-authoritative transaction');
-    }
+    assertPreparedAnimationTransaction(transaction);
     const {
       queue,
       nextState: nextGs,
       callback,
       eventIds = [],
-      preserveQueueOrder = false,
     } = transaction;
     traceAnimationQueue('transaction:start', {
       context: transaction.context || null,
@@ -523,15 +524,8 @@ export function useAnimationQueue({
     if (Array.isArray(queue) && queue.some(s => s?.type === 'EARTHQUAKE')) {
       try { console.log('[EQ-DEBUG] playAnimationTransaction received queue =', queue.map(s => s.type), '| hasCallback =', !!callback, '| nextGs.phase =', nextGs?.phase); } catch { /* noop */ }
     }
-    // Bespoke target-action queues do not all originate from the visual-event compiler.
-    // Normalize at the common playback boundary so the black-night roll is
-    // always shown before the selected action's own visual effects.
-    const apophisOrderedQueue = nextGs
-      ? normalizeApophisQueueForPlayback(queue, gs, nextGs, { preserveQueueOrder })
-      : queue;
-    const dedupedQueue = dedupeInferredDiscardTransfers(apophisOrderedQueue);
-    assertCompleteThrowStoneTransactions(dedupedQueue);
-    const schemaPreparation = prepareAnimationQueueSteps(dedupedQueue);
+    assertCompleteThrowStoneTransactions(queue);
+    const schemaPreparation = prepareAnimationQueueSteps(queue);
     reportSchemaIssues('input normalization failed', schemaPreparation.issues);
     const normalizedQueue = attachApophisNightTimeline(
       addDrawBackgroundCameraPrelude(schemaPreparation.steps),
@@ -576,9 +570,7 @@ export function useAnimationQueue({
     reportSchemaIssues('timed queue validation failed', validateAnimationQueueSteps(timedQueue));
     const preparedQueue = prepareAnimQueueLogs(timedQueue, nextGs, visibleLogRef.current)
       .map(step => ({ ...step, _playbackId: ++playbackIdRef.current }));
-    pendingVisualEventIdsRef.current = eventIds.length
-      ? [...new Set(eventIds)]
-      : getAnimationQueueVisualEventIds(preparedQueue);
+    pendingVisualEventIdsRef.current = [...new Set(eventIds)];
     const continuityIssues = validateStatAnimationContinuity(preparedQueue);
     if (continuityIssues.length && import.meta.env?.DEV) {
       console.warn('[stat-presentation] discontinuous stat animation queue', continuityIssues);
@@ -633,6 +625,8 @@ export function useAnimationQueue({
     anim,
     setAnim,
     animExiting,
+    guillotineReady,
+    markGuillotineReady,
     setAnimExiting,
     animQueueRef,
     pendingGsRef,

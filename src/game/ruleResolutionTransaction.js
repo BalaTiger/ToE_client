@@ -1,18 +1,5 @@
-export function statEventIdentity(event = {}) {
-  if (event.id) return `id:${event.id}`;
-  return [
-    event.seq ?? 'no-seq',
-    event.type || 'unknown',
-    event.target ?? 'no-target',
-    event.phaseOrder ?? 0,
-    event.from?.hp ?? 'no-from-hp',
-    event.from?.san ?? 'no-from-san',
-    event.from?.isDead ? 'from-dead' : 'from-alive',
-    event.to?.hp ?? 'no-to-hp',
-    event.to?.san ?? 'no-to-san',
-    event.to?.isDead ? 'to-dead' : 'to-alive',
-  ].join(':');
-}
+import { adaptLegacyStatEventGraph, statEventIdentity } from './statEventIdentity';
+export { statEventIdentity } from './statEventIdentity';
 
 export function createRuleResolutionTransaction({
   id,
@@ -68,8 +55,21 @@ export function orderRuleResolutionEvents(events = []) {
 }
 
 export function validateRuleResolutionEvents(events = []) {
-  const source = Array.isArray(events) ? events.filter(Boolean) : [];
-  const issues = [];
+  const input = Array.isArray(events) ? events.filter(Boolean) : [];
+  const hasLegacyStats = event => (
+    (Array.isArray(event?.statEvents) && event.statEvents.some(statEvent => statEvent && !statEvent.id))
+    || ['events', 'settlementEvents', 'encounterEvents', 'acceptanceEvents']
+      .some(key => Array.isArray(event?.[key]) && event[key].some(hasLegacyStats))
+  );
+  // Rules already allocate IDs. Validation must not traverse every embedded
+  // player/card snapshot merely to rediscover that no legacy repair is needed.
+  const adapted = input.some(hasLegacyStats)
+    ? adaptLegacyStatEventGraph({ state: { _visualEvents: input } })
+    : { state: { _visualEvents: input }, issues: [] };
+  const source = adapted.state._visualEvents;
+  const issues = adapted.issues.map(issue => issue.ownerIds?.length > 1
+    ? { ...issue, code: 'DUPLICATE_STAT_EVENT_OWNER', eventIds: issue.ownerIds }
+    : issue);
   const transactionGroups = new Map();
   const statOwners = new Map();
 

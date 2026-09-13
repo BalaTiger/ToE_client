@@ -68,6 +68,32 @@ describe('apophisNight', () => {
     });
   });
 
+  it('黑夜视觉事件只拥有本次损失，不吸收旧状态中相同 seq 的追捕伤害', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0);
+    const players = makeStandardPlayers(3);
+    const oldHuntDamage = {
+      id: 'older-hunt-loss', type: 'HP_LOSS', target: 2, seq: 1, reason: '追捕',
+      from: { hp: 6, san: 10 }, to: { hp: 3, san: 10 },
+    };
+    const gs = makeGs({ players, apophisNight: getApophisNightForLevel(1),
+      _statEventSeq: 0, _statEvents: [oldHuntDamage] });
+    const result = resolveApophisTarget({ gs, players, deck: [], discard: [], log: [],
+      actorIdx: 0, selectedIdx: 1, legalTargets: [1, 2] });
+
+    expect(result.apophisVisualEvent.statEvents).toEqual([
+      expect.objectContaining({ type: 'SAN_LOSS', target: 0, seq: 1, reason: '黑夜' }),
+    ]);
+    expect(result.statePatch._statEvents).toEqual([
+      oldHuntDamage, ...result.apophisVisualEvent.statEvents,
+    ]);
+    const nextState = { ...gs, ...result.statePatch, players: result.players };
+    const transaction = compileRuleVisualEventsToAnimTransaction(nextState, gs, {
+      eventIds: [result.apophisVisualEvent.id],
+    });
+    expect(transaction.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
+    expect(transaction.queue.some(step => step.type === 'HP_DAMAGE')).toBe(false);
+  });
+
   it('目标偏移造成 SAN 损失后立即生成检定日志、事件和视觉事务', () => {
     const rolls = [0, 0];
     vi.spyOn(Math, 'random').mockImplementation(() => rolls.shift() ?? 0.99);

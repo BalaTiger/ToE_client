@@ -21,13 +21,13 @@ describe('animation queue policy', () => {
       targetIdx: 1,
       resultText: '艾伦 被选中',
     }, { players });
-    const queue = [{ type: 'RANDOM_TARGET', visualEventId: event.id }];
+    const queue = [{ type: 'RANDOM_TARGET', sourceIdx: 0, targetIdx: 1, visualEventId: event.id }];
 
     expect(strictActionQueueMeta({ players, _visualEvents: [event] }, queue)).toEqual({
       authority: ANIMATION_QUEUE_AUTHORITY.QUEUE,
       eventIds: [event.id],
     });
-    expect(queue).toEqual([{ type: 'RANDOM_TARGET', visualEventId: event.id }]);
+    expect(queue).toEqual([{ type: 'RANDOM_TARGET', sourceIdx: 0, targetIdx: 1, visualEventId: event.id }]);
   });
 
   it('rejects a strict queue that omitted an action visual event', () => {
@@ -168,7 +168,7 @@ describe('animation queue policy', () => {
     }, { players });
     const previousState = { players, _visualEvents: [staleEvent] };
     const state = { players, _visualEvents: [staleEvent, freshEvent] };
-    const queue = [{ type: 'RANDOM_TARGET', visualEventId: freshEvent.id }];
+    const queue = [{ type: 'RANDOM_TARGET', sourceIdx: 1, targetIdx: 0, visualEventId: freshEvent.id }];
 
     expect(authoritativeResolvedTransitionQueueMeta(
       previousState,

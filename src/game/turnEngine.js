@@ -52,7 +52,7 @@ import {
   createTsathogguaSlimePopEvent,
   createTurnDrawVisualEvents,
 } from './visualEvents';
-import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
+import { createRuleResolutionTransaction, statEventIdentity } from './ruleResolutionTransaction';
 import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
 import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
 import { TURN_FLOW_STAGE } from './turnFlowStages';
@@ -105,10 +105,11 @@ function appendTurnDrawVisualEvents(events, draw) {
   return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
 }
 
-function collectFreshStatEventSeqs(state, afterSeq = 0) {
+function collectFreshStatEventIds(state, beforeEvents = []) {
+  const previousIds = new Set(beforeEvents.map(statEventIdentity));
   return [...new Set((Array.isArray(state?._statEvents) ? state._statEvents : [])
-    .map(event => event?.seq)
-    .filter(seq => Number.isFinite(seq) && seq > afterSeq))];
+    .filter(event => event?.id && !previousIds.has(statEventIdentity(event)))
+    .map(event => event.id))];
 }
 
 function sameDrawnCard(left, right) {
@@ -435,6 +436,7 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   const discardBeforeFaithExit = [...Disc];
   const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
   const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const statEventsBefore = inspectionMeta?._statEvents || [];
   const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
   // 信仰退出是抛弃结算的边界：先移除 Tag/神域牌，再结算 SAN 与其
   // 连带检定。这样后续任何伤害或检定快照都不可能恢复已经失去的信仰。
@@ -464,6 +466,7 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
       discardAfter: discardAfterFaithExit,
       statEventSeqBefore,
       statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      statEventIds: collectFreshStatEventIds(inspectionMeta, statEventsBefore),
       inspectionSeqBefore,
       inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
       playersAfterResolution: copyPlayers(P),
@@ -532,6 +535,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   const discardBeforeFaithExit = [...Disc];
   const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
   const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const statEventsBefore = inspectionMeta?._statEvents || [];
   const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
   if (P[targetIndex]?.godName || discardedGodCards.length) {
     clearPlayerGodZone(P[targetIndex], Disc);
@@ -567,6 +571,7 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
       discardAfter: discardAfterFaithExit,
       statEventSeqBefore,
       statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      statEventIds: collectFreshStatEventIds(inspectionMeta, statEventsBefore),
       inspectionSeqBefore,
       inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
       playersAfterResolution: playersBeforeFaithEstablished,
@@ -652,6 +657,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     const discardBeforeFaithExit = [...Disc];
     const discardedGodCards = [...(P[ci]?.godZone || [])];
     const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+    const statEventsBefore = inspectionMeta?._statEvents || [];
     const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     clearPlayerGodZone(P[ci], Disc);
     const playersAfterFaithExit = copyPlayers(P);
@@ -679,6 +685,7 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
       previousFaithExit.msgs = [convertMsg];
     }
     previousFaithExit.statEventSeqAfter = inspectionMeta?._statEventSeq || statEventSeqBefore;
+    previousFaithExit.statEventIds = collectFreshStatEventIds(inspectionMeta, statEventsBefore);
     previousFaithExit.inspectionSeqAfter = inspectionMeta?._inspectionSeq || inspectionSeqBefore;
     previousFaithExit.playersAfterResolution = copyPlayers(P);
     previousFaithExit.discardAfterResolution = [...Disc];
@@ -798,9 +805,9 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
   ].filter((event, index, events) => (
     !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
   ));
-  const priorStatKeys = new Set((gs?._statEvents || []).map(event => JSON.stringify(event)));
+  const priorStatKeys = new Set((gs?._statEvents || []).map(statEventIdentity));
   const freshSettlementStatEvents = (inspectionMeta?._statEvents || [])
-    .filter(event => !priorStatKeys.has(JSON.stringify(event)));
+    .filter(event => !priorStatKeys.has(statEventIdentity(event)));
   statePatch = {
     ...statePatch,
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
@@ -917,7 +924,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       let inspectionMeta = makeInspectionMeta(gs);
       // 同步结算路径（如黏液额外摸到邪神牌）需要把这次遭遇产出的属性/检定事件
       // 归属到本次摸牌，供回合开始动画把它们排在邪神翻牌之后、下一张摸牌之前。
-      const encounterStatSeqBefore = inspectionMeta?._statEventSeq || 0;
+      const encounterStatEventsBefore = inspectionMeta?._statEvents || [];
       const encounterInspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       let effectMsg = revealedCultist
         ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
@@ -1021,12 +1028,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, { ...gs, ...inspectionMeta }, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
       const mergedMeta = { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
-      // 本次遭遇产出的属性/检定事件序号 + 结构化的弃牌结果，供 startNextTurn
+      // 本次遭遇产出的属性身份/检定事件序号 + 结构化的弃牌结果，供 startNextTurn
       // 把对应的视觉事件归属到这次摸牌（godEncounter.visualEventIds）。
       const godEncounter = {
-        statSeqs: (mergedMeta._statEvents || [])
-          .map(event => event?.seq)
-          .filter(seq => Number.isFinite(seq) && seq > encounterStatSeqBefore),
+        statEventIds: collectFreshStatEventIds(mergedMeta, encounterStatEventsBefore),
         inspectionSeqs: (mergedMeta._visualEvents || [])
           .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
           .map(event => event?.legacySeq)
@@ -2026,7 +2031,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
-      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       // Every reveal draw re-evaluates its source. Effects such as geomagnetic
@@ -2048,7 +2053,7 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
-          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2096,7 +2101,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const playersBeforeFixedDraw = copyPlayers(P);
-    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
@@ -2114,7 +2119,7 @@ function resolveNextTurnState(gs, opts = {}) {
         // so its messages exclude those owned by the card-effect events.
         msgs: res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
-        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2281,7 +2286,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
-      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2300,7 +2305,7 @@ function resolveNextTurnState(gs, opts = {}) {
           reshuffleLog: rSlime.reshuffleLog,
           fromTsathogguaSlime: true,
           slimePop,
-          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2348,7 +2353,7 @@ function resolveNextTurnState(gs, opts = {}) {
       });
     }
     const playersBeforeFixedDraw = copyPlayers(P);
-    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
@@ -2364,7 +2369,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
-        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2455,7 +2460,7 @@ function resolveNextTurnState(gs, opts = {}) {
         });
       }
       const playersBeforeSlimeDraw = copyPlayers(P);
-      const statEventSeqBeforeSlimeDraw = maxKnownStatEventSeq(gs);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
       const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
       if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
@@ -2479,7 +2484,7 @@ function resolveNextTurnState(gs, opts = {}) {
           fromTsathogguaSlime: true,
           slimePop,
           godEncounter: rSlime.godEncounter,
-          statEventSeqs: collectFreshStatEventSeqs(rSlime.statePatch, statEventSeqBeforeSlimeDraw),
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
@@ -2531,7 +2536,7 @@ function resolveNextTurnState(gs, opts = {}) {
       preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
     });
     const playersBeforeFixedDraw = copyPlayers(P);
-    const statEventSeqBeforeFixedDraw = maxKnownStatEventSeq(gs);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
@@ -2575,7 +2580,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
         reshuffleLog: res.reshuffleLog,
-        statEventSeqs: collectFreshStatEventSeqs(res.statePatch, statEventSeqBeforeFixedDraw),
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
@@ -2654,18 +2659,18 @@ function attachTurnDrawStatEventOwnership(events = []) {
     event?.type === VISUAL_EVENT.DRAW_CARD &&
     event?.id &&
     !event?.godEncounter &&
-    Array.isArray(event?.statEventSeqs) &&
-    event.statEventSeqs.length
+    Array.isArray(event?.statEventIds) &&
+    event.statEventIds.length
   ));
 
   draws.forEach(drawEvent => {
-    const ownedSeqs = new Set(drawEvent.statEventSeqs);
+    const ownedStatIds = new Set(drawEvent.statEventIds);
     const ownedVisualEventIds = [];
     const splitEvents = [];
 
     result.forEach(visualEvent => {
       const statEvents = Array.isArray(visualEvent?.statEvents) ? visualEvent.statEvents : [];
-      const owned = statEvents.filter(statEvent => ownedSeqs.has(statEvent?.seq));
+      const owned = statEvents.filter(statEvent => statEvent?.id && ownedStatIds.has(statEvent.id));
       if (!owned.length) {
         splitEvents.push(visualEvent);
         return;
@@ -2677,7 +2682,7 @@ function attachTurnDrawStatEventOwnership(events = []) {
         return;
       }
 
-      const rest = statEvents.filter(statEvent => !ownedSeqs.has(statEvent?.seq));
+      const rest = statEvents.filter(statEvent => !statEvent?.id || !ownedStatIds.has(statEvent.id));
       const ownedHints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
       const ownedMsgs = rest.length
         ? (visualEvent.msgs || []).filter(msg => ownedHints.has(msg))
@@ -2794,7 +2799,7 @@ export function startNextTurn(gs, opts = {}) {
   visualEvents = attachTurnDrawStatEventOwnership(visualEvents);
   // 黏液额外摸到邪神牌的同步遭遇：把属于该次遭遇的视觉事件显式归属到对应的
   // 摸牌事件（godEncounter.visualEventIds）。归属信息来自规则层结算时记录的
-  // 序号，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、
+  // 属性事件 ID，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、
   // 下一张摸牌之前，不再按步骤类型/队列位置启发式猜测。
   const godEncounterDraws = visualEvents
     .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.id && event?.godEncounter);
@@ -2803,10 +2808,10 @@ export function startNextTurn(gs, opts = {}) {
     godEncounterDraws.forEach(drawEvent => {
       const encounter = drawEvent.godEncounter;
       const ownedIds = [];
-      const ownedStatSeqs = new Set((encounter.statSeqs || []).filter(seq => seq != null));
-      if (ownedStatSeqs.size) {
+      const ownedStatIds = new Set((encounter.statEventIds || []).filter(Boolean));
+      if (ownedStatIds.size) {
         // 遭遇的 SAN 扣减可能与本次摸牌阶段的其它属性事件打包在同一个
-        // STAT_EVENTS 事件里；按规则层记录的序号拆出独立事件，才能整体随遭遇块移动。
+        // STAT_EVENTS 事件里；按规则层记录的身份拆出独立事件，才能整体随遭遇块移动。
         const splitEvents = [];
         visualEvents.forEach(visualEvent => {
           if (visualEvent?.type !== VISUAL_EVENT.STAT_EVENTS || visualEvent?.turnStartStage !== 'draw'
@@ -2814,12 +2819,12 @@ export function startNextTurn(gs, opts = {}) {
             splitEvents.push(visualEvent);
             return;
           }
-          const owned = visualEvent.statEvents.filter(statEvent => ownedStatSeqs.has(statEvent?.seq));
+          const owned = visualEvent.statEvents.filter(statEvent => statEvent?.id && ownedStatIds.has(statEvent.id));
           if (!owned.length) {
             splitEvents.push(visualEvent);
             return;
           }
-          const rest = visualEvent.statEvents.filter(statEvent => !ownedStatSeqs.has(statEvent?.seq));
+          const rest = visualEvent.statEvents.filter(statEvent => !statEvent?.id || !ownedStatIds.has(statEvent.id));
           const hints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
           const ownedMsgs = (visualEvent.msgs || []).filter(msg => hints.has(msg));
           const restMsgs = (visualEvent.msgs || []).filter(msg => !ownedMsgs.includes(msg));

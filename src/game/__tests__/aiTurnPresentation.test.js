@@ -212,13 +212,13 @@ describe('AI turn presentation helpers', () => {
     const state = {
       _visualEvents: [
         { id: 'swap-event', type: 'swapCards' },
-        { id: 'god-event', type: 'godStatusChanged' },
+        { id: 'god-event', type: 'godStatusChanged', playerIdx: 0, godKey: 'CTH' },
         { id: 'next-draw', type: 'drawCard', turnStartStage: 'draw' },
       ],
     };
     const queue = [
       { type: 'SKILL_SWAP', visualEventId: 'swap-event' },
-      { type: 'GOD_HIGHLIGHT', visualEventId: 'god-event' },
+      { type: 'GOD_HIGHLIGHT', visualEventId: 'god-event', targetPid: 0, godKey: 'CTH' },
     ];
 
     expect(getAiActionQueueCoverage(
@@ -254,11 +254,11 @@ describe('AI turn presentation helpers', () => {
     const state = {
       _visualEvents: [
         { id: 'faith-before-hunt', type: 'godStatusChanged' },
-        { id: 'current-hunt-result', type: 'huntResult' },
+        { id: 'current-hunt-result', type: 'huntResult', hunterIdx: 1, targetIdx: 2 },
         { id: 'next-turn-draw', type: 'drawCard', turnStartStage: 'draw' },
       ],
     };
-    const queue = [{ type: 'HP_DAMAGE', visualEventId: 'current-hunt-result' }];
+    const queue = [{ type: 'SKILL_HUNT', targetIdx: 2, visualEventId: 'current-hunt-result' }];
 
     expect(getAiActionQueueCoverage(
       state,
@@ -389,17 +389,20 @@ describe('AI turn presentation helpers', () => {
   });
 
   it('counts a suppressed stat wrapper as covered by its represented owner event', () => {
-    const statEvent = { type: 'SAN_LOSS', seq: 18 };
+    const statEvent = { id: 'san-loss', type: 'SAN_LOSS', target: 0, seq: 18, from: { san: 8 }, to: { san: 7 } };
     const state = {
       _visualEvents: [
-        { id: 'god-event', type: 'godStatusChanged', statEvents: [statEvent] },
+        { id: 'god-event', type: 'godStatusChanged', playerIdx: 0, godKey: 'CTH', statEvents: [statEvent] },
         { id: 'stat-wrapper', type: 'statEvents', statEvents: [statEvent] },
       ],
     };
 
     expect(getAiActionQueueCoverage(
       state,
-      [{ type: 'GOD_HIGHLIGHT', visualEventId: 'god-event' }],
+      [
+        { type: 'GOD_HIGHLIGHT', visualEventId: 'god-event', targetPid: 0, godKey: 'CTH' },
+        { type: 'SAN_DAMAGE', visualEventId: 'god-event', statEvents: [statEvent] },
+      ],
       steps => steps.map(step => step.visualEventId).filter(Boolean),
     ).uncoveredEventIds).toEqual([]);
   });
@@ -696,9 +699,9 @@ describe('AI turn presentation helpers', () => {
       }],
     };
     const queue = [
-      { type: 'DICE_ROLL', visualEventId: 'throw-stone-event' },
-      { type: 'RANDOM_TARGET', visualEventId: 'throw-stone-event' },
-      { type: 'THROW_STONE', visualEventId: 'throw-stone-event' },
+      { type: 'DICE_ROLL', diceMode: 'throwStone', d1: 1, d2: 0, visualEventId: 'throw-stone-event' },
+      { type: 'RANDOM_TARGET', sourceIdx: 0, targetIdx: 1, visualEventId: 'throw-stone-event' },
+      { type: 'THROW_STONE', sourceIdx: 0, targetIdx: 1, visualEventId: 'throw-stone-event' },
     ];
 
     expect(getAiActionQueueCoverage(

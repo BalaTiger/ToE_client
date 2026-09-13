@@ -11,6 +11,7 @@ const legacyVisualStateFields = [
   '_turnDrawEvents',
 ];
 const legacyVisualFieldPattern = new RegExp(`\\b(?:${legacyVisualStateFields.join('|')})\\b`);
+const retiredStatOwnershipPattern = /\b(?:ownedStatSeqs|coveredStatSeqs|excludedStatEventSeqs|_aiHandLimitStatEventSeqs|claimStatSeq|statEventSeqs|statSeqs)\b/;
 const migrationBaselines = [
   {
     label: 'buildAnimQueue call',
@@ -63,6 +64,7 @@ const legacyStatTargetProducers = [];
 const legacySphinxHintProducers = [];
 const legacyVisualFieldReferences = [];
 const presentationStatDiffFallbacks = [];
+const statIdentityOwnershipIssues = [];
 const migrationCounts = migrationBaselines.map(guard => ({ guard, actual: new Map() }));
 for (const file of collectSourceFiles(sourceRoot)) {
   const relative = path.relative(sourceRoot, file).split(path.sep).join('/');
@@ -77,6 +79,13 @@ for (const file of collectSourceFiles(sourceRoot)) {
     if (count) counts.set(relative, count);
   });
   source.split(/\r?\n/).forEach((line, index) => {
+    if (relative !== 'game/statEventIdentity.js' && retiredStatOwnershipPattern.test(line)) {
+      statIdentityOwnershipIssues.push(`${relative}:${index + 1}: numeric stat ownership is retired; use stable event identities`);
+    }
+    if (relative === 'hooks/useAnimationQueue.js'
+      && /\b(?:normalizeApophisQueueForPlayback|mergeApophisTargetQueue|dedupeInferredDiscardTransfers|getAnimationQueueVisualEventIds)\s*\(/.test(line)) {
+      statIdentityOwnershipIssues.push(`${relative}:${index + 1}: prepare order and event coverage before playback; the player must not infer them`);
+    }
     if (legacyVisualFieldPattern.test(line)) {
       legacyVisualFieldReferences.push(`${relative}:${index + 1}: ${line.trim()}`);
     }
@@ -93,6 +102,7 @@ for (const file of collectSourceFiles(sourceRoot)) {
 }
 
 const issues = [];
+issues.push(...statIdentityOwnershipIssues);
 legacyVisualFieldReferences.forEach(location => {
   issues.push(`${location}: legacy visual fields are forbidden; emit and consume canonical _visualEvents`);
 });

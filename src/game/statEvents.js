@@ -1,3 +1,5 @@
+import { ensureStatEventId } from './statEventIdentity';
+
 const STAT_EVENT_TYPES = new Set([
   'HP_LOSS',
   'HP_GAIN',
@@ -120,6 +122,7 @@ function findDamageLinkBreakTimeline(beforePlayers = [], afterPlayers = [], logs
 }
 
 export function createPlayerDefeatedStatEvent({
+  id,
   target,
   cause = 'hpDepleted',
   from = {},
@@ -150,7 +153,8 @@ export function createPlayerDefeatedStatEvent({
       roleRevealed: true,
     };
   }
-  return {
+  return ensureStatEventId({
+    ...(id != null ? { id } : {}),
     type: 'PLAYER_DEFEATED',
     target: Number(target),
     cause,
@@ -171,7 +175,7 @@ export function createPlayerDefeatedStatEvent({
       ...(beforePlayer?.hand || []),
       ...(beforePlayer?.godZone || []),
     ],
-  };
+  });
 }
 
 function buildExplicitDamageLinkTimeline(beforePlayers = [], afterPlayers = [], options = {}) {
@@ -218,9 +222,7 @@ function buildExplicitDamageLinkTimeline(beforePlayers = [], afterPlayers = [], 
 }
 
 export function buildStatEvents(beforePlayers = [], afterPlayers = [], logs = [], options = {}) {
-  const withEventIds = list => options.eventIdPrefix
-    ? list.map((event, index) => ({ ...event, id: event.id || `${options.eventIdPrefix}:${index}` }))
-    : list;
+  const withEventIds = list => list.map(event => ensureStatEventId(event, { prefix: options.eventIdPrefix || 'stat' }));
   const damageLinkTimeline = buildExplicitDamageLinkTimeline(beforePlayers, afterPlayers, options)
     || findDamageLinkBreakTimeline(beforePlayers, afterPlayers, logs, options);
 
@@ -507,7 +509,7 @@ export function validateStatAnimationContinuity(queue = []) {
 }
 
 export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) {
-  const events = statEvents.map(normalizeStatEvent).filter(Boolean);
+  const events = statEvents.map(event => normalizeStatEvent(ensureStatEventId(event))).filter(Boolean);
   if (!events.length) return [];
   const seqs = [...new Set(events.map(event => event.seq).filter(seq => seq != null))];
   if (seqs.length > 1 && !events.some(event => event.type === 'DAMAGE_LINK_BREAK' || event.phaseOrder != null)) {
@@ -548,8 +550,9 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
         queue.push(...statEventsToAnimQueue(statOnly, players, order === 0 ? preBreakMsgs : []));
       }
       if (breakEvent) {
-        queue.push({ type: 'STATE_PATCH', players: breakEvent.players, _logChunk: breakEvent._logChunk || [] });
-        queue.push({ type: 'TURN_BOUNDARY_PAUSE', durationMs: breakEvent.durationMs || 560 });
+        const sourceStatEventIds = [breakEvent.id];
+        queue.push({ type: 'STATE_PATCH', sourceStatEventIds, players: breakEvent.players, _logChunk: breakEvent._logChunk || [] });
+        queue.push({ type: 'TURN_BOUNDARY_PAUSE', sourceStatEventIds, durationMs: breakEvent.durationMs || 560 });
       }
     });
     return queue;
@@ -605,6 +608,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
         const reveal = event.vritraImmortalReveal;
         queue.push({
           type: 'VRI_IMMORTAL_REVEAL',
+          sourceStatEventIds: [event.id],
           targetPid: reveal.targetIdx,
           cards: reveal.cards || [],
           succeeded: !!reveal.succeeded,
@@ -665,6 +669,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     const committedPlayers = clonePlayersForStatPatch(deathCursorPlayers);
     queue.push({
       type: event.cause === 'petrification' ? 'PETRIFY_DEATH' : 'GUILLOTINE',
+      sourceStatEventIds: [event.id],
       msgs: event.cause === 'petrification'
         ? []
         : (deathMsgs.length ? deathMsgs : (event.logHint ? [event.logHint] : [])),
@@ -672,6 +677,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     });
     queue.push({
       type: 'DEATH',
+      sourceStatEventIds: [event.id],
       msgs: deathMsgs.length ? deathMsgs : (event.logHint ? [event.logHint] : ['死亡降临']),
       hitIndices: [target],
       visualSetupTiming: 'stepStart',
@@ -699,6 +705,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     if (deathCards.length) {
       queue.push({
         type: 'DISCARD',
+        sourceStatEventIds: [event.id],
         card: deathCards[0],
         cards: deathCards,
         count: deathCards.length,
@@ -726,6 +733,7 @@ export function statEventsToAnimQueue(statEvents = [], players = [], msgs = []) 
     const finalAfterPlayers = ordinarySettlements.at(-1).afterPlayers;
     queue.push({
       type: 'STATE_PATCH',
+      sourceStatEventIds: ordinarySettlements.map(({ event }) => event.id),
       players: finalAfterPlayers,
       ...(Array.isArray(settlementDiscard) ? { discard: [...settlementDiscard] } : {}),
     });

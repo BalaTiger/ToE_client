@@ -1,4 +1,4 @@
-import { orderRuleResolutionEvents } from './ruleResolutionTransaction';
+import { orderRuleResolutionEvents, statEventIdentity } from './ruleResolutionTransaction';
 
 const EXECUTION_ONLY_FIELDS = [
   '_aiDrawnCard',
@@ -28,7 +28,7 @@ const PRESENTATION_ONLY_FIELDS = [
   '_aiHandLimitBeforePlayers',
   '_aiHandLimitBeforeDiscard',
   '_aiHandLimitBeforeLog',
-  '_aiHandLimitStatEventSeqs',
+  '_aiHandLimitStatEvents',
 ];
 
 function omitFields(value, fields) {
@@ -79,37 +79,39 @@ export function buildRoseThornSnapshot(players) {
 // action replay; they are presented by the queued turn-start transaction.
 export function scopeAiActionReplayMetadata(state, {
   excludedVisualEventIds = null,
-  excludedStatEventSeqs = null,
+  excludedStatEventIds = null,
+  excludedStatEvents = null,
 } = {}) {
   const visualEvents = Array.isArray(state?._visualEvents) ? state._visualEvents : [];
   const excludedVisualIds = new Set(excludedVisualEventIds instanceof Set
     ? [...excludedVisualEventIds]
     : (Array.isArray(excludedVisualEventIds) ? excludedVisualEventIds : []));
-  const excludedStatSeqSet = new Set(excludedStatEventSeqs instanceof Set
-    ? [...excludedStatEventSeqs]
-    : (Array.isArray(excludedStatEventSeqs) ? excludedStatEventSeqs : []));
+  const excludedStatKeys = new Set((excludedStatEventIds instanceof Set
+    ? [...excludedStatEventIds]
+    : (Array.isArray(excludedStatEventIds) ? excludedStatEventIds : []))
+    .map(id => statEventIdentity({ id })));
+  (Array.isArray(excludedStatEvents) ? excludedStatEvents : []).forEach(event => {
+    if (event) excludedStatKeys.add(statEventIdentity(event));
+  });
   const explicitlyExcludedEvents = visualEvents.filter(event => event?.id && excludedVisualIds.has(event.id));
   explicitlyExcludedEvents.forEach(event => {
     (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(statEvent => {
-      if (statEvent?.seq != null) excludedStatSeqSet.add(statEvent.seq);
+      if (statEvent) excludedStatKeys.add(statEventIdentity(statEvent));
     });
   });
-  const turnStartStatSeqs = new Set(
+  const turnStartStatKeys = new Set(
     visualEvents
       .filter(event => !!event?.turnStartStage)
       .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
-      .map(event => event?.seq)
-      .filter(seq => seq != null)
+      .map(statEventIdentity)
   );
   const actionVisualEvents = visualEvents.filter(event => (
     !event?.turnStartStage
     && (!event?.id || !excludedVisualIds.has(event.id))
   ));
   const actionStatEvents = (Array.isArray(state?._statEvents) ? state._statEvents : [])
-    .filter(event => event?.seq == null || (
-      !turnStartStatSeqs.has(event.seq)
-      && !excludedStatSeqSet.has(event.seq)
-    ));
+    .filter(event => !turnStartStatKeys.has(statEventIdentity(event))
+      && !excludedStatKeys.has(statEventIdentity(event)));
   const actionStatEventSeq = actionStatEvents.reduce(
     (max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max,
     0
@@ -221,16 +223,21 @@ export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
   const transactionVisualEvents = orderRuleResolutionEvents(actionTransactionId
     ? unscopedAction.visualEvents.filter(event => event?.transactionId === actionTransactionId)
     : unscopedAction.visualEvents);
-  const transactionStatSeqs = new Set(transactionVisualEvents
-    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
-    .map(event => event?.seq)
-    .filter(seq => seq != null));
+  const transactionStatKeys = new Set(transactionVisualEvents
+    .flatMap(event => [
+      ...(Array.isArray(event?.statEvents) ? event.statEvents : []),
+      ...[
+        event?.faithSettlement?.previousFaithExit,
+        ...(event?.faithSettlement?.abandonedFollowers || []),
+      ].flatMap(transition => (transition?.statEventIds || []).map(id => ({ id }))),
+    ])
+    .map(statEventIdentity));
   const action = actionTransactionId
     ? {
         ...unscopedAction,
         visualEvents: transactionVisualEvents,
         statEvents: unscopedAction.statEvents.filter(event => (
-          event?.seq != null && transactionStatSeqs.has(event.seq)
+          transactionStatKeys.has(statEventIdentity(event))
         )),
       }
     : { ...unscopedAction, visualEvents: transactionVisualEvents };
@@ -252,34 +259,22 @@ export function scopeAiPreHuntReplayMetadata(state, rawResult = {}) {
   const visualEvents = action.visualEvents
     .slice(0, firstHuntEventIndex)
     .filter(event => !ownedEventIds.has(event?.id));
-  const ownedStatSeqs = new Set(visualEvents.flatMap(event => [
+  const ownedStatKeys = new Set(visualEvents.flatMap(event => [
     ...(Array.isArray(event?.statEvents) ? event.statEvents : []),
     ...(Array.isArray(event?.faithSettlement?.abandonedFollowers)
-      ? event.faithSettlement.abandonedFollowers.flatMap(transition => {
-          const before = Number(transition?.statEventSeqBefore);
-          const after = Number(transition?.statEventSeqAfter);
-          if (!Number.isFinite(before) || !Number.isFinite(after)) return [];
-          return action.statEvents.filter(statEvent => (
-            Number.isFinite(statEvent?.seq)
-            && statEvent.seq > before
-            && statEvent.seq <= after
-          ));
+        ? event.faithSettlement.abandonedFollowers.flatMap(transition => {
+          const ids = new Set(transition?.statEventIds || []);
+          return action.statEvents.filter(statEvent => statEvent?.id && ids.has(statEvent.id));
         })
       : []),
     ...(() => {
       const transition = event?.faithSettlement?.previousFaithExit;
-      const before = Number(transition?.statEventSeqBefore);
-      const after = Number(transition?.statEventSeqAfter);
-      if (!Number.isFinite(before) || !Number.isFinite(after)) return [];
-      return action.statEvents.filter(statEvent => (
-        Number.isFinite(statEvent?.seq)
-        && statEvent.seq > before
-        && statEvent.seq <= after
-      ));
+      const ids = new Set(transition?.statEventIds || []);
+      return action.statEvents.filter(statEvent => statEvent?.id && ids.has(statEvent.id));
     })(),
-  ]).map(statEvent => statEvent?.seq).filter(seq => seq != null));
-  const statEvents = ownedStatSeqs.size
-    ? action.statEvents.filter(event => ownedStatSeqs.has(event?.seq))
+  ]).map(statEventIdentity));
+  const statEvents = ownedStatKeys.size
+    ? action.statEvents.filter(event => ownedStatKeys.has(statEventIdentity(event)))
     : [];
 
   return {
@@ -353,7 +348,7 @@ export function shouldPrependAiSkillSnapshot({
 export function getAiActionQueueCoverage(
   state,
   queue,
-  getQueueEventIds,
+  _getQueueEventIds,
   consumedEventIds = null,
   { previousState = null, eventIds: ownedEventIds = null } = {},
 ) {
@@ -387,26 +382,12 @@ export function getAiActionQueueCoverage(
   const eventIds = visualEvents
     .map(event => event?.id)
     .filter(Boolean);
-  const coveredEventIds = typeof getQueueEventIds === 'function'
-    ? getQueueEventIds(queue)
-    : [];
-  const coveredSet = new Set(coveredEventIds);
-  // A statEvents wrapper can be intentionally suppressed when another visual
-  // event owns the same stat sequence. Treat it as covered only when that
-  // owning event is actually represented in the submitted queue.
-  visualEvents
-    .filter(event => event?.type === 'statEvents' && event?.id)
-    .forEach(statEvent => {
-      const seqs = (statEvent.statEvents || []).map(event => event?.seq).filter(seq => seq != null);
-      const owner = visualEvents.find(event => (
-        event?.type !== 'statEvents'
-        && event?.id
-        && coveredSet.has(event.id)
-        && seqs.length
-        && seqs.every(seq => (event.statEvents || []).some(owned => owned?.seq === seq))
-      ));
-      if (owner) coveredSet.add(statEvent.id);
-    });
+  // The compiler proves complete stat projection coverage (including both
+  // impacts of HP_SAN loss) and required non-stat steps. A caller's list of
+  // observed visual ids is membership evidence, never proof of completion.
+  const coveredSet = new Set(getVisualEventIdsCoveredByAnimationQueue(
+    { ...state, _visualEvents: visualEvents }, queue,
+  ));
   return {
     eventIds,
     coveredEventIds: eventIds.filter(id => coveredSet.has(id)),
@@ -831,6 +812,7 @@ import {
   compileFreshVisualEventReplay,
   compileRuleVisualEventsToAnimTransaction,
   getAnimationQueueVisualEventIds,
+  getVisualEventIdsCoveredByAnimationQueue,
 } from './visualEventTransactionCompiler';
 
 // A custom hunt queue owns its nested animations, while rule notices between

@@ -44,6 +44,7 @@ export function resolveApophisTarget({
   let targetIdx = selectedIdx;
   let statPatch = {};
   let statSeq = null;
+  let nightStatEvents = [];
   let inspectionPatch = {};
   let playersAfterNightSan = null;
   const alternatives = legalTargets.filter(i => i !== selectedIdx && P[i] && !P[i].isDead);
@@ -61,9 +62,9 @@ export function resolveApophisTarget({
     });
     L = [...L, eventLog];
     statSeq = statEventSeq;
-    const statEvents = damage.statEvents;
-    if (statEvents.length) {
-      statPatch = { _statEvents: [...(gs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq };
+    nightStatEvents = damage.statEvents;
+    if (nightStatEvents.length) {
+      statPatch = { _statEvents: [...(gs?._statEvents || []), ...nightStatEvents], _statEventSeq: statEventSeq };
     }
     playersAfterNightSan = copyPlayers(P);
     let inspectionMeta = {
@@ -141,7 +142,9 @@ export function resolveApophisTarget({
   };
   const apophisVisualEvent = createApophisTargetVisualEvent(apophisTargetEvent, {
     playersAfter: playersAfterNightSan || P,
-    statEvents: statPatch._statEvents?.filter(event => event?.seq === statSeq) || [],
+    // The damage submission owns this batch. A legacy state's reused seq is
+    // insufficient to claim unrelated losses from the accumulated journal.
+    statEvents: nightStatEvents,
   });
   const priorVisualEvents = gs?._visualEvents || [];
   const inspectionVisualEvents = (inspectionPatch._visualEvents || []).slice(priorVisualEvents.length);

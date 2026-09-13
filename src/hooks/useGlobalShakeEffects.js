@@ -5,6 +5,7 @@ const BURROWING_WORM_GLOBAL_SHAKE_MS = 1620;
 
 export function useGlobalShakeEffects({
   anim,
+  guillotineReady = true,
   localDebugMode,
   visibleLogRef,
   visibleLogCountRef,
@@ -56,7 +57,7 @@ export function useGlobalShakeEffects({
       return () => setScreenShake(false);
     }
 
-    if (anim?.type === 'GUILLOTINE' && anim.hitIndices?.length) {
+    if (anim?.type === 'GUILLOTINE' && anim.hitIndices?.length && guillotineReady) {
       addTimer(() => {
         setDeathShake(true);
         addTimer(() => setDeathShake(false), 220);
@@ -65,7 +66,7 @@ export function useGlobalShakeEffects({
     }
 
     return undefined;
-  }, [anim, localDebugMode, setVisibleLog, visibleLogCountRef, visibleLogRef, addTimer, clearTimers]);
+  }, [anim, guillotineReady, localDebugMode, setVisibleLog, visibleLogCountRef, visibleLogRef, addTimer, clearTimers]);
 
   return {
     screenShake,

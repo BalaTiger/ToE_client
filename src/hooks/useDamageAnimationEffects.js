@@ -1,71 +1,11 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
+import { captureDeathPanelSnapshot, DEATH_SNAPSHOT_TIMEOUT_MS } from '../utils/deathPanelSnapshot';
 import { useTimerSet } from './useTimerSet';
 
 const PETRIFY_PANEL_CLEAR_MS = 3800;
 
-async function captureDeathPanelSnapshot(idx) {
-  const el = document.querySelector(`[data-death-panel="${idx}"]`);
-  if (!el) return null;
-  const r = _getZoomCompensatedRect(el);
-  const panelStyle = window.getComputedStyle(el);
-  const panelBackground = panelStyle.background;
-  const panelBorderColor = panelStyle.borderTopColor;
-  const panelBoxShadow = panelStyle.boxShadow;
-  let snapshotUrl = null;
-  try {
-    const { default: html2canvas } = await import('html2canvas');
-    const inZoomContainer = !!el.closest?.('[data-zoom-container]');
-    const canvas = await html2canvas(el, {
-      backgroundColor: null,
-      useCORS: true,
-      logging: false,
-      scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
-      width: el.offsetWidth || undefined,
-      height: el.offsetHeight || undefined,
-      windowWidth: inZoomContainer ? 1200 : window.innerWidth,
-      windowHeight: window.innerHeight,
-      ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),
-      onclone: (doc, cloneEl) => {
-        const zoomContainer = doc.querySelector('[data-zoom-container]');
-        if (zoomContainer?.style) {
-          zoomContainer.style.zoom = 'normal';
-          zoomContainer.style.transform = 'none';
-        }
-        const root = cloneEl || doc.querySelector(`[data-death-panel="${idx}"]`);
-        if (!root?.style) return;
-        root.style.zoom = 'normal';
-        root.style.transform = 'none';
-        root.style.background = 'transparent';
-        root.style.backgroundColor = 'transparent';
-        root.style.borderColor = 'transparent';
-        root.style.boxShadow = 'none';
-      },
-    });
-    snapshotUrl = canvas.toDataURL('image/png');
-  } catch (err) {
-    console.warn('[death-snapshot] capture failed for pid', idx, err);
-  }
-  const snapX = r.left;
-  const snapY = r.top;
-  const snapW = r.width;
-  const snapH = r.height;
-  return {
-    pi: idx,
-    x: snapX,
-    y: snapY,
-    w: snapW,
-    h: snapH,
-    cx: snapX + snapW / 2,
-    cy: snapY + snapH / 2,
-    snapshotUrl,
-    panelBackground,
-    panelBorderColor,
-    panelBoxShadow,
-  };
-}
-
-export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound }) {
+export function useDamageAnimationEffects({ anim, paused = false, onGuillotineReady, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound }) {
   const [hitIndices, setHitIndices] = useState([]);
   const [knifeTargets, setKnifeTargets] = useState([]);
   const [sanHitIndices, setSanHitIndices] = useState([]);
@@ -74,9 +14,15 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
   const [petrifyTargets, setPetrifyTargets] = useState([]);
   const [hpHealIndices, setHpHealIndices] = useState([]);
   const [sanHealIndices, setSanHealIndices] = useState([]);
+  const [preparedGuillotine, setPreparedGuillotine] = useState(null);
+  const deathCaptureAbortRef = useRef(null);
+  const guillotineStartedRef = useRef(null);
   const { addTimer, clearTimers } = useTimerSet();
 
   const clearDamageAnimations = useCallback(() => {
+    deathCaptureAbortRef.current?.abort();
+    deathCaptureAbortRef.current = null;
+    guillotineStartedRef.current = null;
     clearTimers();
     setHitIndices([]);
     setKnifeTargets([]);
@@ -86,6 +32,7 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     setPetrifyTargets([]);
     setHpHealIndices([]);
     setSanHealIndices([]);
+    setPreparedGuillotine(null);
   }, [clearTimers]);
 
   useEffect(() => clearDamageAnimations, [clearDamageAnimations]);
@@ -194,13 +141,21 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     }
 
     if (anim.type === 'GUILLOTINE' && anim.hitIndices?.length) {
-      playGuillotineDeathSound?.();
+      const abort = new AbortController();
+      deathCaptureAbortRef.current = abort;
       schedule(async () => {
-        const pts = await Promise.all(anim.hitIndices.map(idx => captureDeathPanelSnapshot(idx)));
-        if (!cancelled) setGuillotineTargets(pts.filter(Boolean));
+        const pts = await Promise.all(anim.hitIndices.map(idx => captureDeathPanelSnapshot(idx, {
+          signal: abort.signal,
+          timeoutMs: DEATH_SNAPSHOT_TIMEOUT_MS,
+        })));
+        if (!cancelled && !abort.signal.aborted) {
+          setPreparedGuillotine({ anim, targets: pts.filter(Boolean), signal: abort.signal });
+        }
       });
       return () => {
         cleanupRaf();
+        abort.abort();
+        if (deathCaptureAbortRef.current === abort) deathCaptureAbortRef.current = null;
       };
     }
 
@@ -223,7 +178,26 @@ export function useDamageAnimationEffects({ anim, playHpDamageSound, playSanDama
     }
 
     return cleanupRaf;
-  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound, addTimer, clearDamageAnimations]);
+  }, [anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playPetrifyDeathSound, addTimer, clearDamageAnimations]);
+
+  useEffect(() => {
+    if (anim?.type !== 'GUILLOTINE' || preparedGuillotine?.anim !== anim || paused) return;
+    if (guillotineStartedRef.current === anim || preparedGuillotine.signal.aborted) return;
+    // The panel stays visible during capture. Start the cut, sound and queue
+    // clock together only after the image (or bounded failure fallback) exists.
+    const frame = requestAnimationFrame(() => {
+      if (preparedGuillotine.signal.aborted) return;
+      guillotineStartedRef.current = anim;
+      setGuillotineTargets(preparedGuillotine.targets);
+      try {
+        playGuillotineDeathSound?.();
+      } catch (err) {
+        console.warn('[death-snapshot] death sound failed', err);
+      }
+      onGuillotineReady?.(anim);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [anim, preparedGuillotine, paused, playGuillotineDeathSound, onGuillotineReady]);
 
   return {
     hitIndices,

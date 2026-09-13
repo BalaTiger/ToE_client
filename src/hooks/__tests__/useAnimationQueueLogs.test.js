@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { useAnimationQueue } from '../useAnimationQueue';
 import { prepareAnimQueueLogs } from '../../game/animLogs';
 import { createQueueAnimationTransaction } from '../../game/animationTransaction';
+import { prepareAnimationTransaction } from '../../game/animationTransaction';
+import { createStatEventsEvent } from '../../game/visualEvents';
+import { compileRuleVisualEventsToAnimTransaction } from '../../game/visualEventTransactionCompiler';
 
 // Drive the hook's public queue controls synchronously; animation timers are
 // irrelevant to the log ordering at transaction/continuation boundaries.
@@ -15,6 +18,7 @@ vi.mock('react', () => ({
 function playback(gs) {
   const visibleLogRef = { current: [...gs.log] };
   const updates = [];
+  const consumedVisualEventIdsRef = { current: new Set() };
   const restoreVisibleLog = vi.fn(log => {
     visibleLogRef.current = [...log];
     updates.push([...log]);
@@ -39,17 +43,37 @@ function playback(gs) {
     visualStateLocks: { lock: vi.fn(), clear: vi.fn() },
     suppressNextBroadcastRef: { current: false },
     receivedGsRef: { current: false },
-    consumedVisualEventIdsRef: { current: new Set() },
+    consumedVisualEventIdsRef,
     ANIM_DURATION: {},
     ANIM_SPEED_SCALE: 1,
   });
   const play = (queue, nextState, callback) => hook.playAnimationTransaction(
     createQueueAnimationTransaction({ queue, nextState, callback, preserveQueueOrder: true }),
   );
-  return { ...hook, play, visibleLogRef, updates, restoreVisibleLog, appendVisibleLog };
+  return { ...hook, play, visibleLogRef, updates, restoreVisibleLog, appendVisibleLog, consumedVisualEventIdsRef };
 }
 
 describe('animation log continuation boundaries', () => {
+  it('preserves the prepared empty consumption set after an incomplete HP/SAN presentation', () => {
+    const event = createStatEventsEvent({ statEvents: [{
+      id: 'incomplete-loss', type: 'HP_SAN_LOSS', target: 0,
+      from: { hp: 6, san: 6 }, to: { hp: 5, san: 5 },
+    }] });
+    const nextState = { players: [], log: [], _visualEvents: [event] };
+    const queue = compileRuleVisualEventsToAnimTransaction(nextState).queue;
+    const p = playback({ players: [], log: [] });
+    const submit = steps => p.playAnimationTransaction(prepareAnimationTransaction({
+      queue: steps, nextState,
+      transactionMeta: { authority: 'queue', eventIds: [event.id] },
+    }));
+    submit(queue.slice(0, 1));
+    p.advanceQueue();
+    expect(p.consumedVisualEventIdsRef.current.has(event.id)).toBe(false);
+    submit(queue);
+    p.advanceQueue();
+    p.advanceQueue();
+    expect(p.consumedVisualEventIdsRef.current.has(event.id)).toBe(true);
+  });
   it.each(['贝拉', '你'])('reveals %s turn logs once, after the previous AI action', name => {
     const oldBanner = '── 艾伦 的回合开始 ──';
     const action = '艾伦 对 贝拉 【掉包】';

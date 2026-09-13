@@ -12,14 +12,22 @@ import { prepareAnimQueueLogs } from '../animLogs';
 import { consumeVisualLogEntries } from '../visualEventLogs';
 import { makeGs, makeStandardPlayers, makeZoneCard } from './factory';
 
-const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8');
-const queueSource = readFileSync(new URL('../../hooks/useAnimationQueue.js', import.meta.url), 'utf8');
+// Source-extraction fixtures must behave the same on LF and Windows CRLF checkouts.
+const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
+const queueSource = readFileSync(new URL('../../hooks/useAnimationQueue.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const extract = name => {
   const start = source.indexOf(`  function ${name}(`);
   const closing = /\n {2}}\r?\n/.exec(source.slice(start));
+  if (start < 0 || !closing) throw new Error(`Missing App handler boundary: ${name}`);
   return source.slice(start, start + closing.index + closing[0].length);
 };
 const handlers = names => names.map(extract).join('\n');
+const extractBetween = (input, startMarker, endMarker) => {
+  const start = input.indexOf(startMarker);
+  const end = input.indexOf(endMarker, start);
+  if (start < 0 || end < 0) throw new Error(`Missing source fixture boundary: ${startMarker} / ${endMarker}`);
+  return input.slice(start, end);
+};
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
@@ -153,7 +161,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
     const oldCallback = vi.fn();
     const context = {
       ...queueMachine, ...animationTiming,
-      isMultiplayer: false, paused: false,
+      isMultiplayer: false, paused: false, guillotineReady: true,
       anim: { type: 'HP_DAMAGE', _playbackId: 17, durationMs: 100, impactAtMs: 50,
         visualTimeline: [{ atMs: 50, patch: { players: pending.players } }] },
       ANIM_STEP_GAP: 0, Date, setTimeout, clearTimeout,
@@ -167,7 +175,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
       endTurnSeqRef: { current: { events: ['old'] } }, latestGsRef: { current: pending },
       roseThornPrevRef: { current: {} },
       useCallback: callback => callback, useEffect: callback => { context.cleanup = callback(); },
-      setAnim: vi.fn(), setAnimExiting: vi.fn(), setRoleRevealAnim: vi.fn(),
+      setAnim: vi.fn(), setAnimExiting: vi.fn(), setReadyGuillotineId: vi.fn(), setRoleRevealAnim: vi.fn(),
       setIsSoloPaused: vi.fn(), setPendingRoleSelection: vi.fn(), setGs: vi.fn(),
       clearSkillAnimations: vi.fn(), clearCardTransferAnimations: vi.fn(), clearDamageAnimations: vi.fn(),
       setEarthquakeVisualPlayers: vi.fn(), visualStateLocks: { clear: vi.fn() },
@@ -177,13 +185,10 @@ describe('single-player shared handlers after multiplayer synchronization', () =
         context.queueLifecycleRef.current = queueMachine.transitionAnimationQueue(context.queueLifecycleRef.current, type);
       },
     };
-    const resetStart = queueSource.indexOf('  const resetAnimationQueue = useCallback(');
-    const resetEnd = queueSource.indexOf('\n\n  function sendQueueLifecycleEvent', resetStart);
-    const effectStart = queueSource.indexOf('  useEffect(() => {\n    if (!anim) return;');
-    const effectEnd = queueSource.indexOf('\n\n  function playAnimationTransaction', effectStart);
-    const clearStart = source.indexOf('  const clearBattleAnimationState=useCallback(');
-    const clearEnd = source.indexOf('\n\n  const applyTutorialStateSnapshot', clearStart);
-    runInNewContext(`${queueSource.slice(resetStart, resetEnd)}\n${source.slice(clearStart, clearEnd)}\n${extract('returnToMainMenu')}\n${queueSource.slice(effectStart, effectEnd)}`, context);
+    const reset = extractBetween(queueSource, '  const resetAnimationQueue = useCallback(', '\n\n  function sendQueueLifecycleEvent');
+    const effect = extractBetween(queueSource, '  useEffect(() => {\n    if (!anim) return;', '\n\n  function playAnimationTransaction');
+    const clear = extractBetween(source, '  const clearBattleAnimationState=useCallback(', '\n\n  const applyTutorialStateSnapshot');
+    runInNewContext(`${reset}\n${clear}\n${extract('returnToMainMenu')}\n${effect}`, context);
     expect(vi.getTimerCount()).toBeGreaterThan(0);
     context.returnToMainMenu();
     expect(context.setGs).toHaveBeenCalledWith(null);

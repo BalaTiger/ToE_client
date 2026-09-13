@@ -9,7 +9,8 @@ import { prepareAnimQueueLogs } from '../animLogs';
 import { consumeVisualLogEntries } from '../visualEventLogs';
 import { makeGs, makeStandardPlayers, makeZoneCard } from './factory';
 
-const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8');
+// Normalize checkout line endings before locating whole handler/effect blocks.
+const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const handlers = [
   'autoDiscardFromRight', 'kickoffEndTurnSeq', 'stepEndTurnSeq',
   'dispatchEndTurnEvent', 'runTsgSlimeGrantEvent', 'advanceEndTurnSeq',
@@ -17,10 +18,13 @@ const handlers = [
 ].map(name => {
   const start = source.indexOf(`  function ${name}(`);
   const closing = /\n {2}}\r?\n/.exec(source.slice(start));
+  if (start < 0 || !closing) throw new Error(`Missing App handler boundary: ${name}`);
   return source.slice(start, start + closing.index + closing[0].length);
 }).join('\n');
 const effectStart = source.indexOf('  // 执行自动从右侧弃牌');
-const discardEffect = source.slice(effectStart, source.indexOf('\n\n  useEffect', effectStart));
+const effectEnd = source.indexOf('\n\n  useEffect', effectStart);
+if (effectStart < 0 || effectEnd < 0) throw new Error('Missing automatic-discard effect boundary');
+const discardEffect = source.slice(effectStart, effectEnd);
 
 function makeContext(initial) {
   const packets = [];

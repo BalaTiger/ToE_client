@@ -23,6 +23,7 @@ import {
   cardContainsFireText,
 } from './coreUtils';
 import { buildStatEvents, createPlayerDefeatedStatEvent } from './statEvents';
+import { ensureStatEventId, statEventIdentity } from './statEventIdentity';
 import { submitRecoveryEvents } from './statChangeEngine';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
@@ -890,7 +891,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       linkEtherealizeDecision = reaction.etherealizeDecision || null;
     }
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
-    let statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
+    let statEvents = explicitStatEvents || directStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
       reason: card?.name || card?.type || '',
       seq: statEventSeq,
       discardBefore: initialDiscard,
@@ -898,6 +899,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       defeatPlayersBefore: beforeDamageSettlementPlayers,
       defeatDiscardBefore: beforeDamageSettlementDiscard,
     });
+    statEvents = statEvents.map(event => ensureStatEventId(event));
     const vritraVisualEvents = takeVritraImmortalRevealEvents(result.P || P);
     statEvents = attachVritraRevealsToStatEvents(statEvents, vritraVisualEvents);
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
@@ -907,11 +909,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     // stat events to gs. Preserve that history: replacing it here made an AI
     // drawing 地下泉 erase the preceding 黑山羊幼仔 HP/SAN animation metadata.
     const priorStatEvents = Array.isArray(gs?._statEvents) ? gs._statEvents : [];
-    const statEventKey = event => JSON.stringify(event);
     const seenStatEvents = new Set();
     const mergedStatEvents = [...priorStatEvents, ...statEvents, ...patchedStatEvents]
+      .map(event => ensureStatEventId(event))
       .filter(event => {
-        const key = statEventKey(event);
+        const key = statEventIdentity(event);
         if (seenStatEvents.has(key)) return false;
         seenStatEvents.add(key);
         return true;
@@ -1254,6 +1256,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       allLiving.forEach(i => healHP(i, card.val));
       msgs.push(`全体存活角色回复 ${card.val} HP`);
       if (card?.name === '地下泉') {
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
         const event = createCardEffectEvent({
           effectKey: 'undergroundSpring',
           card,
@@ -1262,7 +1265,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
-          statEvents: buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          statEvents: directStatEvents,
           msgs: msgs.slice(-1),
         });
         if (event) {
@@ -1496,6 +1499,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       applyAOEDamage(adjacent, 'hp', card.val);
       if (card?.name === '惊扰蝙蝠') {
         settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
         const event = createCardEffectEvent({
           effectKey: 'startledBats',
           card,
@@ -1504,7 +1508,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
-          statEvents: buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          statEvents: directStatEvents,
           msgs: msgs.slice(-1),
         });
         if (event) {
@@ -1522,6 +1526,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       applyGlobalAOEDamage('hp', card.val);
       if (card?.name === '活火山') {
         settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
         const event = createCardEffectEvent({
           effectKey: 'volcano',
           card,
@@ -1530,7 +1535,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
-          statEvents: directStatEvents || buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          statEvents: directStatEvents,
           msgs: msgs.slice(-1),
         });
         if (event) {
@@ -1547,6 +1552,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       applyGlobalAOEDamage('both', card.val);
       if (card?.name === '夜风呼啸') {
         settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
         const event = createCardEffectEvent({
           effectKey: 'nightWind',
           card,
@@ -1555,7 +1561,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
-          statEvents: buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          statEvents: directStatEvents,
           msgs: msgs.slice(-1),
         });
         if (event) {
@@ -2479,6 +2485,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const directEffectMsgs = [...msgs];
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
+  directStatEvents = directStatEvents.map(event => ensureStatEventId(event));
   const inspectionStartMeta = directStatEvents.length
     ? {
       ...inspectionMeta,

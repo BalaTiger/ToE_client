@@ -3,6 +3,8 @@ import { localDisplayName } from './rotateState';
 import { statEventsToAnimQueue } from './statEvents';
 import { cardIdentity } from './cardIdentity';
 import { createVisualLogEntries } from './visualEventLogs';
+import { statEventIdentity } from './ruleResolutionTransaction';
+import { ensureStatEventId } from './statEventIdentity';
 
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
@@ -131,6 +133,7 @@ function withVisualEventMeta(event, scope = 'action', generateUniqueId = true) {
   if (!event) return null;
   const scoped = {
     ...event,
+    ...(Array.isArray(event.statEvents) ? { statEvents: event.statEvents.map(ensureStatEventId) } : {}),
     scope: event.scope || scope,
   };
   const id = event.id || (generateUniqueId
@@ -213,7 +216,7 @@ export function createDrawCardEvent({
   playersAfterDiscard = null,
   discardAfter = null,
   playersAfterResolution = null,
-  statEventSeqs = [],
+  statEventIds = [],
   effectVisualEventIds = [],
 } = {}) {
   if (!card) return null;
@@ -238,8 +241,8 @@ export function createDrawCardEvent({
     ...(Array.isArray(playersAfterDiscard) ? { playersAfterDiscard } : {}),
     ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
     ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
-    ...(Array.isArray(statEventSeqs) && statEventSeqs.length
-      ? { statEventSeqs: [...new Set(statEventSeqs.filter(seq => seq != null))] }
+    ...(Array.isArray(statEventIds) && statEventIds.length
+      ? { statEventIds: [...new Set(statEventIds.filter(Boolean))] }
       : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
@@ -456,9 +459,9 @@ export function createOrderedSettlementEvents({ events = [], statEvents = [] } =
   }));
   const ownedStatKeys = new Set(explicitEvents
     .flatMap(event => event?.statEvents || [])
-    .map(event => JSON.stringify(event)));
+    .map(statEventIdentity));
   const remaining = (Array.isArray(statEvents) ? statEvents : [])
-    .filter(event => event && !ownedStatKeys.has(JSON.stringify(event)));
+    .filter(event => event && !ownedStatKeys.has(statEventIdentity(event)));
   const result = [];
   const emitted = new Set();
   const emitThrough = threshold => {
@@ -1461,19 +1464,17 @@ export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
       (ev.seq == null || ev.seq > (previousStatSeq || 0))
     ))
     : [];
-  // 归属判断只认规范事件内嵌的 statEvents（按 seq / 对象引用）。此前用 _statLogs
+  // 归属判断只认规范事件内嵌的 statEvents。此前用 _statLogs
   // 文本匹配收窄，但黏液额外摸牌等路径不把效果日志写进 _statLogs，收窄会把这些
   // 事件挤出规范归属，随后被上一回合 AI 行动队列的旧式差分捡走抢播。
-  const ownedStatSeqs = new Set();
-  const ownedStatRefs = new Set();
+  const ownedStatKeys = new Set();
   (Array.isArray(state?._visualEvents) ? state._visualEvents : []).forEach(event => {
     (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(statEvent => {
-      if (statEvent?.seq != null) ownedStatSeqs.add(statEvent.seq);
-      else if (statEvent) ownedStatRefs.add(statEvent);
+      if (statEvent) ownedStatKeys.add(statEventIdentity(statEvent));
     });
   });
   const freshStatEvents = allFreshStatEvents.filter(event => (
-    event?.seq != null ? !ownedStatSeqs.has(event.seq) : !ownedStatRefs.has(event)
+    !ownedStatKeys.has(statEventIdentity(event))
   ));
   const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
   const msgsFor = events => {

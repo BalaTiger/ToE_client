@@ -2,6 +2,8 @@ import {
   compileFreshVisualEventQueue,
   compileRuleVisualEventsToAnimTransaction,
 } from './visualEventTransactionCompiler';
+import { statEventIdentity } from './ruleResolutionTransaction';
+import { adaptLegacyApophisTargetOwnership } from './statEventIdentity';
 
 function getFreshApophisTargetEvent(oldState, nextState) {
   const previousIds = new Set((oldState?._visualEvents || []).map(event => event?.id).filter(Boolean));
@@ -21,6 +23,28 @@ function getFreshApophisTargetEvent(oldState, nextState) {
     return { ...visualEvent, seq: visualEvent.legacySeq ?? visualEvent.seq };
   }
   return nextState?._apophisTargetEvent || null;
+}
+
+function apophisTargetOwnership(targetEvent) {
+  const ownedStats = new Set([
+    ...(targetEvent?.statEventIds || []).map(id => `id:${id}`),
+    ...(targetEvent?.statEvents || []).map(statEventIdentity),
+  ]);
+  const explicitOwner = step => {
+    if (targetEvent?.id && step?.visualEventId) return step.visualEventId === targetEvent.id;
+    if (step?._apophisTargetSeq != null) return step._apophisTargetSeq === targetEvent?.seq;
+    return null;
+  };
+  const isTargetStatStep = step => {
+    if (!Array.isArray(step?.statEvents) || !step.statEvents.length) return false;
+    const owned = explicitOwner(step);
+    if (owned != null) return owned;
+    return step.statEvents.every(event => ownedStats.has(statEventIdentity(event)));
+  };
+  return {
+    isTargetStatStep,
+    isTargetStep: step => explicitOwner(step) ?? isTargetStatStep(step),
+  };
 }
 
 export function attachApophisNightTimeline(queue = [], initialNight = null, finalNight = null) {
@@ -48,15 +72,19 @@ export function attachApophisNightTimeline(queue = [], initialNight = null, fina
   });
 }
 
-export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = compileFreshVisualEventQueue) {
-  const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
+function buildApophisTargetQueueContext(oldState, nextState, buildQueue, queue = []) {
+  let targetEvent = getFreshApophisTargetEvent(oldState, nextState);
   const seq = targetEvent?.seq;
-  if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return [];
-  const statSeq = targetEvent?.statSeq;
-  return buildQueue(oldState, nextState).filter(step => (
-    step?._apophisTargetSeq === seq ||
-    (statSeq != null && Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq))
-  ));
+  if (!seq || seq <= (oldState?._apophisTargetSeq || 0)) return { targetEvent, queue: [] };
+  const builtQueue = buildQueue(oldState, nextState);
+  const adapted = adaptLegacyApophisTargetOwnership({ targetEvent, builtQueue, queue });
+  if (adapted.issues.length) throw new TypeError(`[legacy black-night ownership] ${JSON.stringify(adapted.issues)}`);
+  targetEvent = adapted.targetEvent;
+  return { targetEvent, queue: builtQueue.filter(apophisTargetOwnership(targetEvent).isTargetStep) };
+}
+
+export function buildApophisTargetQueueForState(oldState, nextState, buildQueue = compileFreshVisualEventQueue) {
+  return buildApophisTargetQueueContext(oldState, nextState, buildQueue).queue;
 }
 
 export function compileApophisTargetPrelude(nextState, oldState) {
@@ -78,31 +106,25 @@ export function compileApophisTargetPrelude(nextState, oldState) {
 }
 
 export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQueue = compileFreshVisualEventQueue) {
-  const builtApophisQueue = buildApophisTargetQueueForState(oldState, nextState, buildQueue);
+  const { queue: builtApophisQueue, targetEvent } = buildApophisTargetQueueContext(oldState, nextState, buildQueue, queue);
   if (!builtApophisQueue.length) return queue || [];
-  const targetEvent = getFreshApophisTargetEvent(oldState, nextState);
   const seq = targetEvent?.seq;
-  const statSeq = targetEvent?.statSeq;
-  const isTargetStatStep = step => statSeq != null && (
-    Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)
-  );
-  // Keep the transaction canonical even when a legacy builder emitted the
-  // skill lock before the roll's SAN consequence.
+  const { isTargetStatStep, isTargetStep } = apophisTargetOwnership(targetEvent);
+  // Move legacy skill locks after the night settlement, preserving its own
+  // internal phases (damage -> immortal reveal -> heal/death, for example).
+  // Pulling every stat step forward would reorder those phases as well.
   const apophisQueue = [
     ...builtApophisQueue.filter(step => step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight'),
-    ...builtApophisQueue.filter(isTargetStatStep),
     ...builtApophisQueue.filter(step => !(
-      (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight') || isTargetStatStep(step)
+      (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight') || step?.type?.startsWith('SKILL_')
     )),
+    ...builtApophisQueue.filter(step => step?.type?.startsWith('SKILL_')),
   ];
   const hasEarlierTargetTransaction = (queue || []).some(step => (
     step?._apophisTargetSeq != null && step._apophisTargetSeq !== seq
   ));
   const canonicalDice = apophisQueue.find(step => step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight');
   const canonicalLog = canonicalDice?._logChunk?.[0] || canonicalDice?.msgs?.[0] || null;
-  const queueHasTargetStat = statSeq != null && (queue || []).some(step => (
-    Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)
-  ));
   const queuedTargetDiceIndex = (queue || []).findIndex(step => (
     step?.type === 'DICE_ROLL'
     && step?.diceMode === 'apophisNight'
@@ -144,8 +166,13 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
         && queued?._apophisTargetSeq === seq
       ));
     }
-    if (Array.isArray(step?.statEvents) && step.statEvents.some(event => event?.seq === statSeq)) {
-      return queueHasTargetStat;
+    if (isTargetStatStep(step)) {
+      return (queue || []).some(queued => (
+        isTargetStatStep(queued) && queued.type === step.type
+        && step.statEvents.every(event => queued.statEvents.some(candidate => (
+          statEventIdentity(candidate) === statEventIdentity(event)
+        )))
+      ));
     }
     if (step?.type?.startsWith('SKILL_')) {
       return (queue || []).some(queued => (
@@ -153,7 +180,7 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
         && (queued?._apophisTargetSeq === seq || queued?.targetIdx === step.targetIdx)
       ));
     }
-    return false;
+    return (queue || []).some(queued => queued?.type === step?.type && isTargetStep(queued));
   });
   // AI hunt presentation already embeds the target-selection transaction in
   // the composed queue. Rebuilding that same transaction at the final playback
@@ -176,24 +203,21 @@ export function mergeApophisTargetQueue(queue = [], oldState, nextState, buildQu
     // canonical ownership id. Preserve its established order, but bind every
     // step owned by this target transaction so strict coverage can consume it.
     return (queue || []).map(step => (
-      step?._apophisTargetSeq === seq || isTargetStatStep(step)
+      isTargetStep(step)
         ? { ...step, visualEventId: targetEvent.id }
         : step
     ));
   }
   let insertionIndex = null;
   const baseQueue = (queue || []).filter((step, index) => {
-    if (step?._apophisTargetSeq === seq) {
-      if (insertionIndex == null) insertionIndex = index;
-      return false;
-    }
-    if (isTargetStatStep(step)) {
+    if (isTargetStep(step)) {
       if (insertionIndex == null) insertionIndex = index;
       return false;
     }
     // AI 回合可能先把同一黑夜事件放进追捕事件队列，随后又从权威状态
     // 补入一次。旧路径有时丢失 seq，因此再按唯一的黑夜日志去重。
-    if (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight' && canonicalLog) {
+    if (step?.type === 'DICE_ROLL' && step?.diceMode === 'apophisNight' && canonicalLog
+      && step._apophisTargetSeq == null && !step.visualEventId) {
       const stepLog = step?._logChunk?.[0] || step?.msgs?.[0] || null;
       return stepLog !== canonicalLog;
     }

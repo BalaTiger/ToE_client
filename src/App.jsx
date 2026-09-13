@@ -79,6 +79,7 @@ import {
   tryVritraImmortal,
   applyHpDamageWithLink,
   submitLossEvents,
+  statEventIdentity,
   buildStatChangeStatePatch,
   resolvePendingDamageLinkBreak,
   applyFx,
@@ -1155,6 +1156,8 @@ export default function Game(){
     anim,
     setAnim,
     animExiting,
+    guillotineReady,
+    markGuillotineReady,
     setAnimExiting,
     animQueueRef,
     pendingGsRef,
@@ -1227,6 +1230,7 @@ export default function Game(){
   }={})=>submitAnimationPresentation({
       playTransaction:playAnimationTransaction,
       queue,
+      previousState:gs,
       nextState,
       callback,
       authority,
@@ -1238,7 +1242,7 @@ export default function Game(){
       preserveQueueOrder,
       consumedEventIds:consumedVisualEventIdsRef.current,
       context,
-    }),[playAnimationTransaction]);
+    }),[gs,playAnimationTransaction]);
   // Compatibility facade retained while older call sites are migrated to the
   // descriptor-based presentation boundary above.
   const triggerAnimQueue=useCallback((queue,nextState,callback,transactionMeta=null)=>{
@@ -1438,6 +1442,7 @@ export default function Game(){
   },[gs?.houndsOfTindalosActive,anim?.type,anim?.card,anim?.inspectionSeq,latestHoundsInspectionSeq,houndsRevealedSeq]);
   const {earthquakeShake,screenShake,deathShake}=useGlobalShakeEffects({
     anim,
+    guillotineReady,
     localDebugMode,
     visibleLogRef,
     visibleLogCountRef,
@@ -1465,7 +1470,7 @@ export default function Game(){
     hpHealIndices,
     sanHealIndices,
     clearDamageAnimations,
-  } = useDamageAnimationEffects({ anim, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound });
+  } = useDamageAnimationEffects({ anim, paused:isSoloPaused, onGuillotineReady:markGuillotineReady, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
   const { connectSocket } = useMultiplayerConnection({
     isArtifact,
@@ -2355,7 +2360,7 @@ export default function Game(){
           _aiHandLimitBeforePlayers,
           _aiHandLimitBeforeDiscard,
           _aiHandLimitBeforeLog,
-          _aiHandLimitStatEventSeqs,
+          _aiHandLimitStatEvents,
         }=rawResult;
         newGs=stripAiPresentationFields(rawResult);
         const oldLog=Array.isArray(gs.log)?gs.log:[];
@@ -2467,14 +2472,14 @@ export default function Game(){
           ? newGs._aiEndTurnReplayQueue
           : [];
         const endTurnReplayEventIds=new Set(getVisualEventIdsCoveredByAnimationQueue(newGs,aiEndTurnReplayQueue));
-        const endTurnReplayStatSeqs=new Set(aiEndTurnReplayQueue.flatMap(step=>(
-          Array.isArray(step?.statEvents)
-            ?step.statEvents.map(event=>event?.seq).filter(seq=>seq!=null)
-            :[]
-        )));
+        const collectReplayStats=steps=>steps.flatMap(step=>[
+          ...(Array.isArray(step?.statEvents)?step.statEvents:[]),
+          ...collectReplayStats(Array.isArray(step?.steps)?step.steps:[]),
+        ]);
+        const endTurnReplayStatEvents=collectReplayStats(aiEndTurnReplayQueue);
         const fullActionReplayMetadata=scopeAiActionReplayMetadata(newGs,{
           excludedVisualEventIds:endTurnReplayEventIds,
-          excludedStatEventSeqs:endTurnReplayStatSeqs,
+          excludedStatEvents:endTurnReplayStatEvents,
         });
         const restVisualEvent=fullActionReplayMetadata.visualEvents.find(event=>(
           event?.type===VISUAL_EVENT.DICE_RESULT&&event?.mode==='rest'
@@ -2541,9 +2546,9 @@ export default function Game(){
           // 绕过邪神高亮、旧信徒弃神牌和被抛弃 SAN 结算直接开播。
           discard:newGs.discard,
           _visualEvents:actionReplayMetadata.visualEvents,
-          _statEvents:!_aiHandLimitStatEventSeqs?.length
+          _statEvents:!_aiHandLimitStatEvents?.length
             ?actionReplayMetadata.statEvents
-            :actionReplayMetadata.statEvents.filter(event=>!_aiHandLimitStatEventSeqs.includes(event?.seq)),
+            :actionReplayMetadata.statEvents.filter(event=>!_aiHandLimitStatEvents.some(owned=>statEventIdentity(owned)===statEventIdentity(event))),
           _statEventSeq:actionReplayMetadata.statEventSeq,
         };
         const preHuntReplayMetadata=scopeAiPreHuntReplayMetadata(newGs,rawResult);

@@ -375,8 +375,8 @@ describe('statEvents', () => {
     const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 9, san: 8 })]);
 
     expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'HP_HEAL']);
-    expect(queue[0].statEvents).toEqual([events[0]]);
-    expect(queue[1].statEvents).toEqual([events[1]]);
+    expect(queue[0].statEvents).toEqual([{ ...events[0], id: expect.any(String) }]);
+    expect(queue[1].statEvents).toEqual([{ ...events[1], id: expect.any(String) }]);
     const afterDamage = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
     expect(afterDamage).toEqual([{ hp: 6, san: 8 }]);
     expect(applyStatEventsToDisplayStats(afterDamage, queue[1].statEvents, queue[1].type)).toEqual([
@@ -393,8 +393,8 @@ describe('statEvents', () => {
     const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 5 })]);
 
     expect(queue.map(step => step.type)).toEqual(['SAN_HEAL', 'SAN_DAMAGE']);
-    expect(queue[0].statEvents).toEqual([events[0]]);
-    expect(queue[1].statEvents).toEqual([events[1]]);
+    expect(queue[0].statEvents).toEqual([{ ...events[0], id: expect.any(String) }]);
+    expect(queue[1].statEvents).toEqual([{ ...events[1], id: expect.any(String) }]);
     const afterHeal = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
     expect(afterHeal).toEqual([{ hp: 7, san: 8 }]);
     expect(applyStatEventsToDisplayStats(afterHeal, queue[1].statEvents, queue[1].type)).toEqual([

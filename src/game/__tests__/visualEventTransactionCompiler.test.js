@@ -895,8 +895,11 @@ describe('visualEventTransactionCompiler', () => {
     expect(prepared.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_DAMAGE']);
     expect(prepared.filter(step => step.type === 'HP_DAMAGE')).toHaveLength(1);
     expect(prepared.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(1);
-    expect(prepared.filter(step => step.type === 'HP_DAMAGE')[0].statEvents).toEqual([statEvents[0]]);
-    expect(prepared.filter(step => step.type === 'SAN_DAMAGE')[0].statEvents).toEqual([statEvents[1]]);
+    const hpEvents = prepared.find(step => step.type === 'HP_DAMAGE').statEvents;
+    const sanEvents = prepared.find(step => step.type === 'SAN_DAMAGE').statEvents;
+    expect(hpEvents).toEqual([expect.objectContaining({ ...statEvents[0], id: expect.any(String) })]);
+    expect(sanEvents).toEqual([expect.objectContaining({ ...statEvents[1], id: expect.any(String) })]);
+    expect(hpEvents[0].id).not.toBe(sanEvents[0].id);
   });
 
   it('uses the canonical event block without retaining steps from the other authority', () => {

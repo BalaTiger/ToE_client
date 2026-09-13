@@ -107,7 +107,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   const endTurnEvents = getEndTurnEvents(P, actorIndex);
   if (endTurnEvents.length) {
     const seedQueue = discarded.length
-      ? [discardStep({ cards: discarded, count: discarded.length, targetPid: actorIndex, visualEventId: handLimitDiscardEvent?.id, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+      ? [discardStep({ card: discarded[0], cards: discarded, count: discarded.length, targetPid: actorIndex, visualEventId: handLimitDiscardEvent?.id, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
       : [];
     const kickoffGs = {
       ...postDiscardGs,
@@ -131,7 +131,7 @@ export function resolvePostDiscardEndTurn(baseGs, {
   }
 
   const seedQueue = discarded.length
-    ? [discardStep({ cards: discarded, count: discarded.length, targetPid: actorIndex, visualEventId: handLimitDiscardEvent?.id, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
+    ? [discardStep({ card: discarded[0], cards: discarded, count: discarded.length, targetPid: actorIndex, visualEventId: handLimitDiscardEvent?.id, msgs: discardAnimMsgs, playersBefore: baseGs.players, discardBefore: baseGs.discard, discardAfter: Disc }), ...balanceQueue, statePatchStep({ players: P, discard: Disc })]
     : [];
   const queue = buildPlayerTurnDrawQueue(postDiscardGs, newGs, seedQueue);
 

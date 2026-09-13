@@ -85,7 +85,7 @@ import {
   createStatEventsEvent,
   createTsathogguaSlimeGrantEvent,
 } from './visualEvents';
-import { createRuleResolutionTransaction, orderRuleResolutionEvents } from './ruleResolutionTransaction';
+import { createRuleResolutionTransaction, orderRuleResolutionEvents, statEventIdentity } from './ruleResolutionTransaction';
 import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
 import {
   getBestCaveDuelCardIndex,
@@ -481,26 +481,26 @@ function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
     .filter(event => event?.id && !previousVisualEventIds.has(event.id));
   const transaction = compileRuleVisualEventsToAnimTransaction(afterGs, beforeGs);
   const queue = [...(transaction?.queue || [])];
-  const ownedStatSeqs = new Set();
-  const claimStatSeq = statEvent => {
-    if (statEvent?.seq != null) ownedStatSeqs.add(statEvent.seq);
+  const ownedStatKeys = new Set();
+  const claimStatEvent = statEvent => {
+    if (statEvent) ownedStatKeys.add(statEventIdentity(statEvent));
   };
-  const claimStepStatSeqs = (steps = []) => {
+  const claimStepStatEvents = (steps = []) => {
     steps.forEach(step => {
-      (Array.isArray(step?.statEvents) ? step.statEvents : []).forEach(claimStatSeq);
-      if (Array.isArray(step?.steps)) claimStepStatSeqs(step.steps);
+      (Array.isArray(step?.statEvents) ? step.statEvents : []).forEach(claimStatEvent);
+      if (Array.isArray(step?.steps)) claimStepStatEvents(step.steps);
     });
   };
   freshEvents.forEach(event => {
-    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatSeq);
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatEvent);
   });
-  claimStepStatSeqs(queue);
+  claimStepStatEvents(queue);
   const beforeStatSeq = Math.max(
     beforeGs?._statEventSeq || 0,
     ...(Array.isArray(beforeGs?._statEvents) ? beforeGs._statEvents : []).map(event => event?.seq || 0),
   );
   const unownedStatEvents = (Array.isArray(afterGs?._statEvents) ? afterGs._statEvents : [])
-    .filter(event => event && (event.seq == null || event.seq > beforeStatSeq) && (event.seq == null || !ownedStatSeqs.has(event.seq)));
+    .filter(event => event && (event.seq == null || event.seq > beforeStatSeq) && !ownedStatKeys.has(statEventIdentity(event)));
   if (unownedStatEvents.length) {
     const beforeLogLength = Array.isArray(beforeGs?.log) ? beforeGs.log.length : 0;
     const newMsgs = (Array.isArray(afterGs?.log) ? afterGs.log : []).slice(beforeLogLength);
@@ -1092,18 +1092,15 @@ export function aiStep(gs, opts = {}) {
         damageDecision=thornDamage;
       }
     }
-    const statEventSeqs=[];
     const discardStatEventSeq=discardResult.statEventSeq;
     const discardStatEvents=discardResult.statEvents;
     if(discardStatEvents.length){
       gs={...gs,_statEvents:[...(gs._statEvents||[]),...discardStatEvents],_statEventSeq:discardStatEventSeq};
-      statEventSeqs.push(...new Set(discardStatEvents.map(event=>event.seq)));
     }
     const thornStatEventSeq=(gs._statEventSeq||0)+1;
     const thornStatEvents=(thornDamage?.statEvents||[]).map(event=>({...event,seq:thornStatEventSeq}));
     if(thornStatEvents.length){
       gs={...gs,_statEvents:[...(gs._statEvents||[]),...thornStatEvents],_statEventSeq:thornStatEventSeq};
-      statEventSeqs.push(thornStatEventSeq);
     }
     const handLimitStatEvent=createStatEventsEvent({
       statEvents:thornStatEvents,
@@ -1124,7 +1121,7 @@ export function aiStep(gs, opts = {}) {
       _aiHandLimitBeforePlayers:beforePlayers,
       _aiHandLimitBeforeDiscard:beforeDiscard,
       _aiHandLimitBeforeLog:beforeLog,
-      ...(statEventSeqs.length?{_aiHandLimitStatEventSeqs:statEventSeqs}:{}),
+      ...((discardStatEvents.length||thornStatEvents.length)?{_aiHandLimitStatEvents:[...discardStatEvents,...thornStatEvents]}:{}),
     }:null;
     return {damageDecision,discardedCards,beforePlayers,beforeDiscard,beforeLog};
   };
@@ -1186,7 +1183,7 @@ export function aiStep(gs, opts = {}) {
     const playersBeforeGift = copyPlayers(_P);
     const discardBeforeGift = [..._Disc];
     const zhuLightBeforeGift = _gs?.zhuLight || null;
-    const statEventKeysBeforeGift = new Set((_gs?._statEvents || []).map(event => JSON.stringify(event)));
+    const statEventKeysBeforeGift = new Set((_gs?._statEvents || []).map(statEventIdentity));
     const visualEventIdsBeforeGift = new Set(
       (_gs?._visualEvents || []).map(event => event?.id).filter(Boolean),
     );
@@ -1216,7 +1213,7 @@ export function aiStep(gs, opts = {}) {
         event && (!event?.id || !visualEventIdsBeforeGift.has(event.id))
       ));
       const encounterStatEvents = (inspectionMeta?._statEvents || [])
-        .filter(event => !statEventKeysBeforeGift.has(JSON.stringify(event)));
+        .filter(event => !statEventKeysBeforeGift.has(statEventIdentity(event)));
       encounterEvents = createOrderedSettlementEvents({
         events: encounterVisualEvents,
         statEvents: encounterStatEvents,
@@ -1253,9 +1250,9 @@ export function aiStep(gs, opts = {}) {
     const settlementVisualEvents = (_gs?._visualEvents || []).filter(event => (
       event && (!event?.id || (!visualEventIdsBeforeGift.has(event.id) && !encounterEventIds.has(event.id)))
     ));
-    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(event => JSON.stringify(event)));
+    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(statEventIdentity));
     const settlementStatEvents = (_gs?._statEvents || [])
-      .filter(event => !statEventKeysBeforeGift.has(JSON.stringify(event)) && !encounterStatKeys.has(JSON.stringify(event)));
+      .filter(event => !statEventKeysBeforeGift.has(statEventIdentity(event)) && !encounterStatKeys.has(statEventIdentity(event)));
     const bewitchEvent = createBewitchGiftEvent({
       sourceIdx: _ct,
       targetIdx: _ti,
@@ -1976,6 +1973,12 @@ export function aiStep(gs, opts = {}) {
                   statEventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${ct}:${ti}:${aiHuntEvents.length}`,
                   defeatSettlementOwner:'huntResult',
                 });
+                // Hunt results own these events, but all later losses share
+                // the state cursor, including night rolls and resumed input.
+                // Advance it without adding a second generic replay owner.
+                if(huntDamageResult.statEventSeq!=null){
+                  gs={...gs,_statEventSeq:huntDamageResult.statEventSeq};
+                }
                 if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
                   aiHuntEvents.push({
                     ...targetAttemptOwnership,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { canLocalActOnTargetSelectionPhase, derotateGs, rotateGsForViewer } from '../rotateState';
 import { addDamageLink, getAllDamageLinks } from '../damageLinks';
 import { prepareAnimationQueueSteps } from '../animationStepSchema';
+import { scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand };
@@ -12,6 +13,36 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates AI hand-limit stat metadata without changing identity or excluding another same-batch loss', () => {
+    const handLimitLoss = {
+      id: 'stat:hand-limit', seq: 4, type: 'HP_LOSS', target: 2,
+      from: { hp: 7, san: 8 }, to: { hp: 6, san: 8 },
+    };
+    const actionLoss = { ...handLimitLoss, id: 'stat:action' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      abilityData: {},
+      _statEvents: [actionLoss, handLimitLoss],
+      _aiHandLimitStatEvents: [handLimitLoss],
+      _visualEvents: [],
+    };
+
+    for (const viewer of [0, 1, 2]) {
+      const rotated = rotateGsForViewer(JSON.parse(JSON.stringify(gs)), viewer);
+      const expectedTarget = (2 - viewer + 3) % 3;
+      expect(rotated._aiHandLimitStatEvents).toEqual([{ ...handLimitLoss, target: expectedTarget }]);
+      expect(rotated._statEvents[1]).toEqual(rotated._aiHandLimitStatEvents[0]);
+      const scoped = scopeAiActionReplayMetadata(rotated, { excludedStatEvents: rotated._aiHandLimitStatEvents });
+      expect(scoped.statEvents).toEqual([{ ...actionLoss, target: expectedTarget }]);
+      const restored = derotateGs(rotated, viewer);
+      expect(restored._aiHandLimitStatEvents).toEqual(gs._aiHandLimitStatEvents);
+      expect(restored._statEvents).toEqual(gs._statEvents);
+    }
+    expect(gs._aiHandLimitStatEvents[0].target).toBe(2);
+  });
+
   it('preserves optional animation fields and stat authority across a wire round trip', () => {
     const queue = [
       { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO' },

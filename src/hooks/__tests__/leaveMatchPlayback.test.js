@@ -13,15 +13,19 @@ vi.mock('react', () => ({
   useCallback: fn => fn,
 }));
 
-const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8');
+// Normalize checkout line endings before locating whole cleanup/exit blocks.
+const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const cleanupCallbacks = ['clearBattleAnimationState', 'clearMultiplayerReplayState'].map(name => {
   const start = source.indexOf(`  const ${name}=useCallback(`);
-  return source.slice(start, source.indexOf('\n\n', start));
+  const end = source.indexOf('\n\n', start);
+  if (start < 0 || end < 0) throw new Error(`Missing App cleanup callback boundary: ${name}`);
+  return source.slice(start, end);
 }).join('\n');
 const exits = ['leaveMultiplayerMatchToStart', 'resetDisconnectedToStart', 'returnToMainMenu'];
 const exitHandlers = exits.map(name => {
   const start = source.indexOf(`  function ${name}(`);
   const closing = /\n {2}}\r?\n/.exec(source.slice(start));
+  if (start < 0 || !closing) throw new Error(`Missing App exit handler boundary: ${name}`);
   return source.slice(start, start + closing.index + closing[0].length);
 }).join('\n');
 

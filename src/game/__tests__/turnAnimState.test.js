@@ -999,11 +999,11 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const goatLog = '【黑山羊幼仔】黛安娜 失去 1 HP 和 1 SAN';
     const healLog = '全体存活角色回复 1 HP';
     const goatEvents = [
-      { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 10 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
-      { type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      { id: 'goat-hp', type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 10 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      { id: 'goat-san', type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
     ];
     const healEvents = [
-      { type: 'HP_GAIN', target: 1, from: { hp: 9, san: 9 }, to: { hp: 10, san: 9 }, reason: '地下泉', logHint: healLog, seq: 2 },
+      { id: 'spring-heal', type: 'HP_GAIN', target: 1, from: { hp: 9, san: 9 }, to: { hp: 10, san: 9 }, reason: '地下泉', logHint: healLog, seq: 2 },
     ];
     const oldGs = { players: preTurnPlayers, currentTurn: 0, phase: 'ACTION', log: [], _statEventSeq: 0 };
     const newGs = {
@@ -1892,7 +1892,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
       step.type === 'CARD_TRANSFER' && (step.msgs || []).some(msg => msg.includes('交换了全部手牌'))
     ));
 
-    expect(fishDrawEvent?.statEventSeqs).toEqual([1]);
+    expect(fishDrawEvent?.statEventIds).toEqual(
+      newGs._statEvents.filter(event => event.reason === '烤盲鱼').map(event => event.id),
+    );
+    expect(fishDrawEvent?.statEventIds).toHaveLength(1);
     expect(fishDrawEvent?.statVisualEventIds).toHaveLength(1);
     expect(healSteps).toHaveLength(1);
     expect(healSteps[0].statEvents).toMatchObject([{ seq: 1, reason: '烤盲鱼' }]);

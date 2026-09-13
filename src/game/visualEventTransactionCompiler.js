@@ -28,9 +28,20 @@ import { buildBewitchForcedCardQueue, buildInspectionEventFlow, buildSphinxResul
 import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
+import { adaptLegacyStatEventGraph } from './statEventIdentity';
+import { ANIMATION_COMPILED_SCHEMA_VERSION, buildAnimationQueueStepManifest, flattenAnimationCoverageSteps, queueCoversCompiledEvent, validateAnimationQueueEventDependencies } from './animationEventCoverage';
+export { ANIMATION_COMPILED_SCHEMA_VERSION, buildAnimationQueueStepManifest, validateAnimationQueueEventDependencies } from './animationEventCoverage';
 
 function stateWithSingleEvent(state, event) {
   return { ...(state || {}), _visualEvents: event ? [event] : [] };
+}
+
+function flattenOwnedVisualEvents(events = [], seen = new Set()) {
+  return (Array.isArray(events) ? events : []).flatMap(event => {
+    if (!event || seen.has(event)) return [];
+    seen.add(event);
+    return [event, ...flattenOwnedVisualEvents(event.settlementEvents, seen)];
+  });
 }
 
 function flattenStep(step) {
@@ -167,28 +178,24 @@ export const ANIMATION_QUEUE_AUTHORITY = Object.freeze({
 });
 
 export function getAnimationQueueVisualEventIds(queue = []) {
-  return [...new Set((Array.isArray(queue) ? queue : []).map(step => step?.visualEventId).filter(Boolean))];
+  return [...new Set(flattenAnimationCoverageSteps(queue).map(step => step?.visualEventId).filter(Boolean))];
 }
 
 // Queue-authoritative orchestrators sometimes build stat steps directly from
 // canonical statEvents visual events. Resolve those wrapper ids without
 // compiling them again, preserving the orchestrator's exact order.
 export function getVisualEventIdsCoveredByAnimationQueue(state, queue = []) {
-  const steps = Array.isArray(queue) ? queue.filter(Boolean) : [];
-  const directIds = new Set(getAnimationQueueVisualEventIds(steps));
-  const coveredStatSeqs = new Set(steps.flatMap(step => (
-    Array.isArray(step?.statEvents)
-      ? step.statEvents.map(event => event?.seq).filter(seq => seq != null)
-      : []
-  )));
-  return getVisualEvents(state)
-    .filter(event => {
-      if (!event?.id) return false;
-      if (directIds.has(event.id)) return true;
-      if (event.type !== VISUAL_EVENT.STAT_EVENTS || !Array.isArray(event.statEvents) || !event.statEvents.length) return false;
-      const seqs = event.statEvents.map(statEvent => statEvent?.seq);
-      return seqs.every(seq => seq != null && coveredStatSeqs.has(seq));
-    })
+  ({ state, queue } = adaptLegacyStatEventGraph({ state, queue }));
+  const events = getVisualEvents(state);
+  const owners = flattenOwnedVisualEvents(events);
+  return events.filter(event => {
+    if (!event?.id) return false;
+    const expected = composeCanonicalFaithSettlementSteps(
+      tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, null, { _statIdentityAdapted: true, allowTargetZero: true })),
+      [event],
+    );
+    return queueCoversCompiledEvent(event, expected, queue, owners);
+  })
     .map(event => event.id);
 }
 
@@ -204,17 +211,28 @@ export function validateVisualEventTransaction(transaction, events = []) {
   const queue = Array.isArray(transaction.queue) ? transaction.queue : [];
   const eventIds = Array.isArray(transaction.eventIds) ? transaction.eventIds : [];
   const scopedEvents = (Array.isArray(events) ? events : []).filter(Boolean);
-  const knownEvents = scopedEvents.flatMap(event => [event, ...(event?.settlementEvents || [])]);
+  const knownEvents = flattenOwnedVisualEvents(scopedEvents);
+  const flatQueue = flattenAnimationCoverageSteps(queue);
   issues.push(...validateRuleResolutionEvents(scopedEvents));
+  issues.push(...validateAnimationQueueEventDependencies(queue, scopedEvents));
   const eventIndexById = new Map(
     knownEvents.map((event, index) => [event?.id, index]).filter(([id]) => !!id),
   );
   if (!transaction.id) issues.push({ code: 'MISSING_TRANSACTION_ID' });
   if (!queue.length) issues.push({ code: 'EMPTY_TRANSACTION_QUEUE' });
   if (!eventIds.length) issues.push({ code: 'MISSING_TRANSACTION_EVENT_IDS' });
+  if (transaction.compiledSchemaVersion != null) {
+    if (transaction.compiledSchemaVersion !== ANIMATION_COMPILED_SCHEMA_VERSION) {
+      issues.push({ code: 'UNSUPPORTED_COMPILED_SCHEMA_VERSION', version: transaction.compiledSchemaVersion });
+    }
+    if (JSON.stringify(transaction.stepManifest) !== JSON.stringify(buildAnimationQueueStepManifest(queue))) {
+      issues.push({ code: 'INCOMPLETE_COMPILED_STEP_MANIFEST' });
+    }
+  }
 
   scopedEvents.forEach(event => {
-    const eventQueue = queue.filter(step => step?.visualEventId === event?.id);
+    const ownedIds = new Set(flattenOwnedVisualEvents([event]).map(owned => owned.id));
+    const eventQueue = flatQueue.filter(step => ownedIds.has(step?.visualEventId));
     if (!eventQueue.length) {
       issues.push({ code: 'EMPTY_VISUAL_EVENT_QUEUE', eventId: event?.id, eventType: event?.type });
       return;
@@ -237,7 +255,7 @@ export function validateVisualEventTransaction(transaction, events = []) {
       }
     }
   });
-  queue.forEach(step => {
+  flatQueue.forEach(step => {
     if (step?.visualEventId && !eventIndexById.has(step.visualEventId)) {
       issues.push({
         code: 'UNKNOWN_STEP_VISUAL_EVENT_ID',
@@ -455,6 +473,16 @@ function assertNoEmptyVisualEventCompilations(compiled = [], options = {}, stage
 
 export function compileVisualEventToAnimSteps(event, state, previousState = null, options = {}) {
   if (!event) return [];
+  if (!options._statIdentityAdapted) {
+    const adapted = adaptLegacyStatEventGraph({
+      state: { ...(state || {}), _visualEvents: [...(state?._visualEvents || []), event] },
+      previousState,
+    });
+    state = adapted.state;
+    previousState = adapted.previousState;
+    event = state._visualEvents.at(-1);
+    options = { ...options, _statIdentityAdapted: true };
+  }
   const isolated = stateWithSingleEvent(state, event);
   switch (event.type) {
     case VISUAL_EVENT.ANIM_TRANSACTION:
@@ -783,6 +811,10 @@ function interleavePhaseOrderedVisualEvents(events = []) {
 }
 
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
+  const adapted = adaptLegacyStatEventGraph({ state, previousState });
+  state = adapted.state;
+  previousState = adapted.previousState;
+  options = { ...options, _statIdentityAdapted: true };
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const consumedIds = options.consumedEventIds;
   const freshScopedEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
@@ -821,6 +853,9 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
   );
   const transaction = {
     id: transactionIdFromEventIds(eventIds),
+    compiledSchemaVersion: ANIMATION_COMPILED_SCHEMA_VERSION,
+    stepManifest: buildAnimationQueueStepManifest(queue),
+    ...(adapted.issues.length ? { identityIssues: adapted.issues } : {}),
     context: compiled.length === 1
       ? (first.context || first.effectKey || first.type || 'ruleEvent')
       : 'ruleEventBatch',
@@ -847,6 +882,14 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
 
 export function compileVisualEventToAnimTransaction(event, state, previousState = null, options = {}) {
   if (!event) return null;
+  const adapted = adaptLegacyStatEventGraph({
+    state: { ...(state || {}), _visualEvents: [...(state?._visualEvents || []), event] },
+    previousState,
+  });
+  state = adapted.state;
+  previousState = adapted.previousState;
+  event = state._visualEvents.at(-1);
+  options = { ...options, _statIdentityAdapted: true };
   const nestedInspectionEvents = (event?.settlementEvents || [])
     .filter(settlementEvent => settlementEvent?.type === VISUAL_EVENT.INSPECTION);
   const queue = tagVisualEventSteps(
@@ -856,6 +899,9 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
   assertNoEmptyVisualEventCompilations([{ event, steps: queue }], options, 'visual event compiled to an empty queue');
   const transaction = queue.length ? {
     id: event.id || null,
+    compiledSchemaVersion: ANIMATION_COMPILED_SCHEMA_VERSION,
+    stepManifest: buildAnimationQueueStepManifest(queue),
+    ...(adapted.issues.length ? { identityIssues: adapted.issues } : {}),
     context: event.context || event.effectKey || event.type || 'visualEvent',
     barrier: state?.phase && state.phase !== 'ACTION' && state.phase !== 'AI_TURN' ? 'decision' : 'continuation',
     queue,
@@ -869,6 +915,10 @@ export function compileVisualEventToAnimTransaction(event, state, previousState 
 }
 
 export function compileFreshVisualEventsToAnimSteps(state, previousState = null, types = [], options = {}) {
+  const adapted = adaptLegacyStatEventGraph({ state, previousState });
+  state = adapted.state;
+  previousState = adapted.previousState;
+  options = { ...options, _statIdentityAdapted: true };
   const accepted = new Set(Array.isArray(types) ? types : [types]);
   const previousIds = new Set(getVisualEventIdsFromState(previousState));
   const events = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
