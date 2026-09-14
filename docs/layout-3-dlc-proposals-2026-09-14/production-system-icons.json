@@ -1,0 +1,75 @@
+{
+  "generator": "scripts/extract-coastal-system-icons.mjs",
+  "processing": {
+    "operation": "Exterior neutral-checkerboard flood fill; largest connected painted subject; boundary decontamination from adjacent original colors; no repainting or recoloring",
+    "neutralMatte": {
+      "minChannel": 130,
+      "maxChannelSpread": 22
+    },
+    "trimPadding": 2,
+    "resize": {
+      "width": 256,
+      "height": 256,
+      "fit": "contain",
+      "background": "transparent"
+    },
+    "webp": {
+      "quality": 94,
+      "alphaQuality": 100,
+      "effort": 6
+    }
+  },
+  "preview": "docs/layout-3-dlc-proposals-2026-09-14/system-icons-dark-preview.png",
+  "assets": [
+    {
+      "name": "system-pause",
+      "path": "public/img/ui/coastal/system-pause.webp",
+      "source": "exec-82bcad05-e2dd-4ecb-9e6e-b0cbff8b3e27.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-system-pause-master.png",
+      "sourceSize": [
+        1254,
+        1254
+      ],
+      "sourceSha256": "e91c2f1884d0e76933dbe4ae3f7350933fb3bf8dbe2e3957bab03f50d0833a51",
+      "trim": {
+        "left": 54,
+        "top": 48,
+        "width": 1146,
+        "height": 1131
+      },
+      "size": [
+        256,
+        256
+      ],
+      "hasAlpha": true,
+      "transparentPixels": 16228,
+      "bytes": 32084,
+      "sha256": "0694214c6108d6c5d46f3caa953e17483b88a49923edfa49ec6338f9fc57d6ab"
+    },
+    {
+      "name": "system-settings",
+      "path": "public/img/ui/coastal/system-settings.webp",
+      "source": "exec-7b4d56f8-9b97-4581-84bf-44553eef5dd0.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-system-settings-master.png",
+      "sourceSize": [
+        1254,
+        1254
+      ],
+      "sourceSha256": "99fadb4834c46d4b1e8d67837474185550814ea6cc6527dc223c65aef2ebed3c",
+      "trim": {
+        "left": 83,
+        "top": 80,
+        "width": 1080,
+        "height": 1075
+      },
+      "size": [
+        256,
+        256
+      ],
+      "hasAlpha": true,
+      "transparentPixels": 13496,
+      "bytes": 31210,
+      "sha256": "75663b02aec8bb64bb0e648dcff30f762a55d15281696bd7bc63d765d3625924"
+    }
+  ]
+}

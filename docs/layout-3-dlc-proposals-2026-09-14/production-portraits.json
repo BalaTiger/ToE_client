@@ -1,0 +1,85 @@
+{
+  "originalSource": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-58c9671a-0b0d-47d0-a6e6-157eaffe9910.png",
+  "master": "production-portraits-master.png",
+  "masterSha256": "97ead689d13a1006fbd8e6e4d256a88cf0b9a4ac211263fad46802b4940f61e5",
+  "prompt": "production-portraits-prompt.json",
+  "policy": "Decorative portraits assigned by presentation seat index only; no role or private game state influences image selection.",
+  "rerun": "node scripts/extract-coastal-portraits.mjs",
+  "slices": [
+    {
+      "file": "public/img/ui/coastal/portrait-self.webp",
+      "crop": {
+        "left": 4,
+        "top": 4,
+        "width": 504,
+        "height": 504
+      },
+      "width": 500,
+      "height": 500,
+      "quality": 86,
+      "alpha": false,
+      "bytes": 20248,
+      "sha256": "90ee978bc528bb36e7c4f8dc737702f468133a55d70f64a3348794e7f583e46f"
+    },
+    {
+      "file": "public/img/ui/coastal/portrait-1.webp",
+      "crop": {
+        "left": 516,
+        "top": 4,
+        "width": 504,
+        "height": 504
+      },
+      "width": 500,
+      "height": 500,
+      "quality": 86,
+      "alpha": false,
+      "bytes": 17720,
+      "sha256": "3d6425bc7760fd00b41f073b3f6dce8dc97b127e7f9120d154ddce6b41ec2b8b"
+    },
+    {
+      "file": "public/img/ui/coastal/portrait-2.webp",
+      "crop": {
+        "left": 1028,
+        "top": 4,
+        "width": 504,
+        "height": 504
+      },
+      "width": 500,
+      "height": 500,
+      "quality": 86,
+      "alpha": false,
+      "bytes": 22348,
+      "sha256": "deee7bf79152edee293dddc8b0800cc66b6b02d5e78a5841fa45380f1cc6929b"
+    },
+    {
+      "file": "public/img/ui/coastal/portrait-3.webp",
+      "crop": {
+        "left": 4,
+        "top": 516,
+        "width": 504,
+        "height": 504
+      },
+      "width": 500,
+      "height": 500,
+      "quality": 86,
+      "alpha": false,
+      "bytes": 23138,
+      "sha256": "27421b4401e8e0dd8ba8bdd25b9bd4ad6b6561e35404f0e6554c5ead0796cce0"
+    },
+    {
+      "file": "public/img/ui/coastal/portrait-4.webp",
+      "crop": {
+        "left": 516,
+        "top": 516,
+        "width": 504,
+        "height": 504
+      },
+      "width": 500,
+      "height": 500,
+      "quality": 86,
+      "alpha": false,
+      "bytes": 15856,
+      "sha256": "9b01b8265c1253e8d8f62adf54e6931915da5b290ff0a023be31ff27cd594cff"
+    }
+  ]
+}

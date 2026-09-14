@@ -1,12 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Children } from 'react';
 import { BattleSceneContent } from './BattleSceneContent';
+import { BattleScreen } from './BattleScreen';
 
 const hooks = vi.hoisted(() => ({ current: null }));
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
   useRef: (...args) => hooks.current.useRef(...args),
   useEffect: (...args) => hooks.current.useEffect(...args),
+  useState: (...args) => hooks.current.useState(...args),
+  useLayoutEffect: (...args) => hooks.current.useLayoutEffect(...args),
 }));
+vi.mock('react-dom', () => ({ createPortal: children => children }));
+vi.mock('../../ui/UiAppearance', () => ({ useUiAppearance: () => ({ appearance: { id: 'arcane-table', battleLayout: 'arch' } }) }));
 
 // Commit a single host element in the project's node test environment, retaining
 // hook identity and running effect cleanup before setup on subsequent renders.
@@ -95,6 +101,89 @@ afterEach(() => {
   renderer?.unmount();
   renderer = null;
   hooks.current = null;
+  vi.unstubAllGlobals();
+});
+
+describe('BattleScreen central space', () => {
+  it('reclaims and restores desktop space from layout heights while leaving mobile layouts intact', () => {
+    const hand = {};
+    const root = {};
+    const scene = { offsetHeight: 938, querySelector: () => hand };
+    const row = { offsetHeight: 248, closest: selector => selector === '.toe-battle-content' ? scene : root };
+    const ref = { current: row };
+    let height = 248;
+    let setup;
+    let onResize;
+    const observer = { observe: vi.fn(), disconnect: vi.fn() };
+    hooks.current = {
+      useRef: () => ref,
+      useState: () => [height, updater => { height = updater(height); }],
+      useLayoutEffect: effect => { setup = effect; },
+    };
+    vi.stubGlobal('window', { innerHeight: 900, addEventListener: vi.fn(), removeEventListener: vi.fn() });
+    vi.stubGlobal('document', { body: {} });
+    vi.stubGlobal('getComputedStyle', () => ({ paddingTop: '8px', paddingBottom: '8px' }));
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(callback) { onResize = callback; return observer; }
+    });
+    const props = {
+      scaleRatio: 1, compactBoardScaleRatio: 1, middleRowHeight: 248,
+      isMobile: false, isMobileLandscape: false, baseFontSizes: { body: 11 },
+      gs: { players: [], deck: [], inspectionDeck: [] }, visualPlayers: [], visualDiscard: [],
+      phase: 'ACTION', mobileCssPx: value => value, boardCssPx: value => value,
+    };
+    const findRow = node => {
+      if (!node?.props) return undefined;
+      if ('data-battle-middle-row' in node.props) return node;
+      return Children.toArray([node.props.children, node.props.middle]).map(findRow).find(Boolean);
+    };
+    const heights = overrides => Children.toArray(findRow(BattleScreen({ ...props, ...overrides })).props.children)
+      .map(child => child.props.middleRowHeight ?? child.props.baseHeight);
+
+    expect(heights()).toEqual([248, 248, 248]);
+    const cleanup = setup();
+    expect(height).toBe(192);
+    expect(heights()).toEqual([192, 192, 192]);
+    expect(observer.observe.mock.calls.map(([element]) => element)).toEqual([scene, row, hand]);
+
+    // The row's own resize leaves the remaining-content budget unchanged.
+    row.offsetHeight = 192;
+    scene.offsetHeight = 882;
+    onResize();
+    expect(height).toBe(192);
+    scene.offsetHeight += .2;
+    onResize();
+    expect(height).toBe(192);
+    onResize();
+    expect(height).toBe(192);
+
+    scene.offsetHeight = 984;
+    onResize();
+    expect(height).toBe(113);
+    row.offsetHeight = 113;
+    scene.offsetHeight = 703;
+    onResize();
+    expect(height).toBe(248);
+    expect(heights()).toEqual([248, 248, 248]);
+
+    // A viewport change can release space even when the hand itself is unchanged.
+    window.innerHeight = 700;
+    onResize();
+    expect(height).toBe(113);
+    window.innerHeight = 900;
+    onResize();
+    expect(height).toBe(248);
+    cleanup();
+    expect(observer.disconnect).toHaveBeenCalledOnce();
+    expect(window.removeEventListener).toHaveBeenCalledWith('resize', onResize);
+
+    for (const mode of [{ isMobile: true, middleRowHeight: 292 }, { isMobileLandscape: true, middleRowHeight: 150 }]) {
+      const calls = observer.observe.mock.calls.length;
+      expect(heights(mode)).toEqual(Array(3).fill(mode.middleRowHeight));
+      expect(setup()).toBeUndefined();
+      expect(observer.observe).toHaveBeenCalledTimes(calls);
+    }
+  });
 });
 
 describe('BattleSceneContent shake playback', () => {

@@ -1,14 +1,21 @@
+import { useLayoutEffect, useRef, useState } from 'react';
 import { GOD_DEFS } from '../../constants/card';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game';
 import { getRestActionBlockReason } from '../../game/interactionAvailability';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard, GodTooltip } from '../cards';
-import { ThemeEdgeRelief } from '../theme/ThemeOrnaments';
+import { useUiAppearance } from '../../ui/UiAppearance';
+import { buildPublicUrl } from '../../utils/url';
+import { HandTableDecor, HandTableSurface } from './HandTableDecor';
+import './hand-composition.css';
+import './coastal-hand.css';
 
 export function HandArea({
   handAreaRef,
   skillButtonRef,
   restButtonRef,
+  phasePrompt,
+  coastalGeometry,
   gs,
   me,
   visualMe,
@@ -63,20 +70,82 @@ export function HandArea({
   confirmBuryAliveSelection,
   confirmIgniteTorchDiscard,
   setGs,
-  getButtonStyle,
   anim,
 }) {
+  const { appearance } = useUiAppearance();
+  const coastalHand = appearance.battleLayout === 'coastal';
+  const integratedHand = appearance.battleLayout === 'arch' || coastalHand;
+  const stripRef = useRef(null);
+  const leftReliefRef = useRef(null);
+  const rightReliefRef = useRef(null);
+  const [handSpace, setHandSpace] = useState({ betweenReliefs: 620, stripWidth: 1150 });
+  const desktopHand = !isMobile && !isMobileLandscape;
+  useLayoutEffect(() => {
+    if (!desktopHand || coastalGeometry) return;
+    const strip = stripRef.current;
+    const left = leftReliefRef.current;
+    const right = rightReliefRef.current;
+    if (!strip || (!coastalHand && (!left || !right))) return;
+    const measure = () => {
+      const zoom = strip.getBoundingClientRect().width / strip.offsetWidth;
+      if (!zoom) return;
+      const betweenReliefs = coastalHand ? strip.clientWidth
+        : (right.getBoundingClientRect().left - left.getBoundingClientRect().right) / zoom;
+      const stripWidth = strip.offsetWidth;
+      setHandSpace(previous => Math.abs(previous.betweenReliefs - betweenReliefs) < .5 && previous.stripWidth === stripWidth
+        ? previous : { betweenReliefs, stripWidth });
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    (coastalHand ? [strip] : [strip, left, right]).forEach(element => observer.observe(element));
+    return () => observer.disconnect();
+  }, [desktopHand, coastalHand, coastalGeometry]);
+  const fanEnabled = desktopHand && visualMe.hand.length > 1;
+  const mobileCardScale = integratedHand && isMobileLandscape ? Math.max(selfHandCardScale, 1 / scaleRatio) : selfHandCardScale;
+  // Single/very small hands stop at a readable portrait size rather than filling the screen vertically.
+  const cardWidth = desktopHand
+    ? coastalGeometry?.hand.cardWidth ?? Math.min(coastalHand ? 200 : 240, handSpace.betweenReliefs / (1 + Math.max(0, visualMe.hand.length - 1) * .8))
+    : (mobileHandUsesCompact ? 62 : 82) * mobileCardScale;
+  const fanStep = cardWidth * .8;
+  const fanHalfSpan = Math.max(0, visualMe.hand.length - 1) * fanStep / 2;
+  // The table and card top edges share y = x² / (2R), in board pixels.
+  const fanRadius = coastalGeometry?.hand.radius ?? Math.max(900, fanHalfSpan * fanHalfSpan / 64);
+  const fanLift = coastalGeometry?.hand.lift ?? fanHalfSpan * fanHalfSpan / (2 * fanRadius);
+  const badgeX = handSpace.betweenReliefs / 2 + 20;
+  const handCount = integratedHand && (
+    <div
+      className="toe-hand-count"
+      data-over-limit={visualMe.hand.length > effectiveHandLimit}
+      role="status"
+      aria-label={`手牌 ${visualMe.hand.length} 张，上限 ${effectiveHandLimit} 张`}
+    >
+      <svg viewBox="0 0 38 24" aria-hidden="true" focusable="false">
+        <rect x="4" y="5" width="10" height="15" rx="1" transform="rotate(-21 9 12.5)" />
+        <rect x="24" y="5" width="10" height="15" rx="1" transform="rotate(21 29 12.5)" />
+        <rect x="14" y="3" width="10" height="17" rx="1" />
+      </svg>
+      <span className="toe-hand-count-label" aria-hidden="true">手牌</span>
+      <span className="toe-hand-count-value" aria-hidden="true"><strong>{visualMe.hand.length}</strong><span> / {effectiveHandLimit}</span></span>
+    </div>
+  );
   return (
     <div
       ref={handAreaRef}
-      className="toe-battle-panel toe-hand-area"
+      className="toe-hand-area"
       data-hand-area
+      data-hand-empty={visualMe.hand.length === 0}
+      data-current-turn={myTurn}
       data-main-actions={!isSpectating && phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden}
+      data-hand-layout={desktopHand ? 'desktop' : isMobileLandscape ? 'landscape' : 'portrait'}
+      data-hand-composition={coastalHand ? 'coastal' : undefined}
       style={{
-        '--toe-action-scale': 1 / scaleRatio,
-        backgroundColor: 'var(--toe-panel,#120900)',
-        border: `1.5px solid ${myTurn ? 'var(--toe-line,#3a2010)' : 'var(--toe-line-dim,#2a1a08)'}`,
-        borderRadius: 3,
+        '--toe-action-scale': coastalHand && desktopHand ? 1 : 1 / scaleRatio,
+        '--toe-hand-space': `${handSpace.betweenReliefs}px`,
+        '--toe-hand-badge-y': `${56 - fanLift + 10 + badgeX * badgeX / (2 * fanRadius) + 25}px`,
+        ...(coastalHand ? {
+          '--toe-coastal-prompt-image': `url('${buildPublicUrl('/img/ui/coastal/prompt.webp')}')`,
+          '--toe-coastal-count-image': `url('${buildPublicUrl('/img/ui/coastal/hand-count.webp')}')`,
+        } : {}),
         padding: isMobile
           ? `${mobileCssPx(10)}px ${mobileCssPx(10)}px`
           : isMobileLandscape
@@ -86,7 +155,7 @@ export function HandArea({
         overflow: 'visible',
       }}
     >
-      <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.12} style={{ height: '100%' }} />
+      {!coastalHand && <HandTableDecor hideSurface={desktopHand} leftRef={leftReliefRef} rightRef={rightReliefRef} />}
       <div
         className="toe-hand-heading"
         style={{
@@ -96,7 +165,8 @@ export function HandArea({
           gap: isMobile || isMobileLandscape ? mobileCssPx(8) : 8,
         }}
       >
-        <span
+        {integratedHand && phasePrompt && <div className="toe-hand-prompt" data-prompt-panel>{phasePrompt}</div>}
+        {!integratedHand && <span
           style={{
             fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
             color:
@@ -118,7 +188,8 @@ export function HandArea({
             : isLocalHuntRevealPrompt
             ? '⚠ 选择亮出一张手牌'
             : `手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
-        </span>
+        </span>}
+        <div className="toe-hand-controls">
         {!isSpectating && ((phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden) || cancelable) && (
           <div className="toe-turn-actions">
             {phase === 'ACTION' &&
@@ -192,56 +263,59 @@ export function HandArea({
                 );
               })()}
             {showCancelBtn && (
-              <button className="toe-button" onClick={cancelAction} style={getButtonStyle({ enabled: true })}>
-                ✕ 取消
+              <button className="toe-button toe-turn-plaque toe-turn-rest" onClick={cancelAction}>
+                <span className="toe-turn-icon" aria-hidden="true">✕</span><span className="toe-turn-label">取消</span>
               </button>
             )}
             {phase === 'HUNT_CONFIRM' && !isScriptedTutorial && decisionContext?.localCanAct && !anim && (
-              <button className="toe-button" onClick={() => huntConfirm(-1)} style={getButtonStyle({ enabled: true })}>
-                ✕ 放弃追捕
+              <button className="toe-button toe-turn-plaque toe-turn-rest toe-phase-plaque" onClick={() => huntConfirm(-1)}>
+                <span className="toe-turn-icon" aria-hidden="true">✕</span><span className="toe-turn-label">放弃追捕</span>
               </button>
             )}
           </div>
         )}
+        <div className="toe-turn-actions toe-phase-actions" role="group" aria-label="阶段确认">
         {phase === 'DISCARD_PHASE' && !isDiscardPhaseResolving && isLocalCurrentTurn(gs) && !isBlocked && (
-          <button className="toe-button toe-button-danger"
+          <button className="toe-button toe-turn-plaque toe-turn-end toe-phase-plaque"
             onClick={confirmDiscard}
             disabled={!(gs.abilityData.discardSelected || []).length}
-            style={getButtonStyle({ enabled: !!(gs.abilityData.discardSelected || []).length, tone: 'danger', marginLeft: 'auto' })}
           >
-            确认弃牌{(gs.abilityData.discardSelected || []).length > 0 ? ` (${(gs.abilityData.discardSelected || []).length})` : ''}
+            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认弃牌{(gs.abilityData.discardSelected || []).length > 0 ? ` (${(gs.abilityData.discardSelected || []).length})` : ''}</span>
           </button>
         )}
         {phase === 'BURY_ALIVE_SELECT' && canPlayerRespondWithAnyHandCard() && (
-          <button className="toe-button"
+          <button className="toe-button toe-turn-plaque toe-turn-skill toe-phase-plaque"
             onClick={confirmBuryAliveSelection}
             disabled={gs.abilityData?.buryAliveSelectedIndex == null}
-            style={getButtonStyle({ enabled: gs.abilityData?.buryAliveSelectedIndex != null, marginLeft: 'auto' })}
           >
-            确认活埋
+            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认活埋</span>
           </button>
         )}
         {phase === 'IGNITE_TORCH_DISCARD' && canPlayerRespondWithAnyHandCard() && (
-          <button className="toe-button toe-button-danger"
+          <button className="toe-button toe-turn-plaque toe-turn-end toe-phase-plaque"
             onClick={confirmIgniteTorchDiscard}
             disabled={gs.abilityData?.igniteTorchSelectedIndex == null}
-            style={getButtonStyle({ enabled: gs.abilityData?.igniteTorchSelectedIndex != null, tone: 'danger', marginLeft: 'auto' })}
           >
-            确认引燃
+            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认引燃</span>
           </button>
         )}
+        </div>
+        </div>
       </div>
       <div
         className="toe-hand-card-strip"
+        ref={stripRef}
         data-self-hand-strip
-        data-hand-fanned={!isMobile && !isMobileLandscape && visualMe.hand.length > 1 && visualMe.hand.length <= 8}
+        data-hand-fanned={fanEnabled}
         style={{
           display: 'flex',
-          gap: isMobile || isMobileLandscape ? mobileCssPx(7) : 6,
-          flexWrap: 'wrap',
-          justifyContent: !isMobile && !isMobileLandscape ? 'center' : undefined,
+          gap: 0,
+          flexWrap: 'nowrap',
+          justifyContent: desktopHand ? coastalHand ? 'flex-end' : 'center' : undefined,
         }}
       >
+        {desktopHand && !coastalHand && <HandTableSurface fan={{ radius: fanRadius, lift: fanLift, width: handSpace.stripWidth, top: 56, height: 56 + cardWidth * 590 / 392 + 8 }} />}
+        {!coastalHand && handCount}
         {visualMe.hand.map((c, i) => {
           const clickable = isMyCardClickable(c, i);
           const isMobileArmedGod = isMobile && mobileArmedGodCardIdx === i;
@@ -265,16 +339,15 @@ export function HandArea({
           const showWorshipHint = canWorshipNow && (!isMobile || isMobileArmedGod);
           const isBlackGoatPulsing = blackGoatPulsePid === 0 && isBlackGoatYoung(c);
           const visuallyDisabled = !clickable && tutorialStep !== TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD;
-          const fanEnabled = !isMobile && !isMobileLandscape && visualMe.hand.length > 1 && visualMe.hand.length <= 8;
-          const fanCenter = (visualMe.hand.length - 1) / 2;
-          const fanOffset = fanEnabled ? (i - fanCenter) / fanCenter : 0;
-          const fanAngle = fanOffset * Math.min(6, (visualMe.hand.length - 1) * 1.5);
+          const fanX = (i - (visualMe.hand.length - 1) / 2) * fanStep;
+          const fanAngle = fanEnabled ? Math.atan(fanX / fanRadius) * 180 / Math.PI : 0;
+          const cardLift = fanLift - fanX * fanX / (2 * fanRadius);
           return (
             <div
               key={c.id}
               data-self-hand-card
               data-self-hand-card-id={c.id}
-              data-hand-fan-card={fanEnabled ? '' : undefined}
+              data-hand-fan-card={desktopHand ? '' : undefined}
               ref={el => {
                 if (el) mobileGodCardRefs.current.set(i, el);
                 else mobileGodCardRefs.current.delete(i);
@@ -284,10 +357,11 @@ export function HandArea({
                 position: 'relative',
                 display: 'inline-block',
                 flexShrink: 0,
+                marginLeft: i > 0 ? fanStep - cardWidth : undefined,
                 '--toe-hand-angle': `${fanAngle}deg`,
+                '--toe-hand-rest-y': `${fanEnabled ? -cardLift : 0}px`,
                 // Individual transforms preserve the existing hop/melt animations.
                 rotate: fanEnabled ? `${fanAngle}deg` : undefined,
-                translate: fanEnabled ? `0 ${-3 * (1 - fanOffset * fanOffset)}px` : undefined,
                 zIndex: isSel ? 30 : undefined,
               }}
             >
@@ -300,8 +374,10 @@ export function HandArea({
                 godLevel={visualMe.godName === c.godKey ? visualMe.godLevel : 0}
                 compact={mobileHandUsesCompact}
                 holderId={0}
+                showCaption={false}
+                hoverPreview={false}
                 hideCssFrame={isBlackGoatYoung(c) || isTsathogguaSlime(c)}
-                frameStyle={isMobile || isMobileLandscape ? { zoom: selfHandCardScale } : { width: 82 * selfHandCardScale }}
+                frameStyle={isMobile || isMobileLandscape ? { zoom: mobileCardScale } : { width: cardWidth }}
               />
               {canUpgradeNow && (
                 <div
@@ -358,6 +434,7 @@ export function HandArea({
           </div>
         )}
       </div>
+      {coastalHand && handCount}
       {isMobile && mobileArmedGodCard?.isGod && mobileArmedGodTooltipRect && (
         <GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={1} position={mobileArmedGodTooltipRect} />
       )}

@@ -3,6 +3,8 @@ import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { normalizeLogForViewer } from '../../game/logPerspective';
+import { PanelFrame } from '../battle/PanelFrame';
+import '../battle/coastal-panels.css';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
@@ -64,6 +66,15 @@ export function BattleLogPanel({
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
 
   return (
+    <div className="toe-log-frame-shell toe-closed-panel" style={{
+      width: isMobile ? '100%' : 218,
+      flexBasis: isMobile ? '100%' : undefined,
+      flexShrink: 0,
+      height: isMobile ? mobileLogHeight : middleRowHeight,
+      '--toe-coastal-log-banner': `url('${buildPublicUrl('/img/ui/coastal/log-banner.webp')}')`,
+      '--toe-coastal-body-font': `${12 * fontZoom}px`,
+    }}>
+    <PanelFrame closed />
     <div ref={logRef} className="toe-battle-panel" data-log-panel style={{
       width: isMobile ? '100%' : 218,
       flexBasis: isMobile ? '100%' : undefined,
@@ -79,7 +90,7 @@ export function BattleLogPanel({
       overflowX: 'hidden',
       scrollbarGutter: 'stable',
     }}>
-      <div style={{
+      <div className="toe-log-relief" style={{
         position: 'sticky',
         top: 0,
         height: 0,
@@ -132,6 +143,7 @@ export function BattleLogPanel({
           }}>{display}</div>
         );
       })}
+    </div>
     </div>
   );
 }

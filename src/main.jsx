@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.jsx'
 import { buildPublicUrl } from './utils/url'
+import { UiAppearanceProvider } from './ui/UiAppearance.jsx'
 
 document.body.style.setProperty('--toe-html-bg', `url('${buildPublicUrl('/bg.webp')}')`)
 
@@ -12,7 +13,9 @@ const VisualGallery = import.meta.env.DEV && new URLSearchParams(window.location
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    {VisualGallery ? <Suspense fallback={null}><VisualGallery /></Suspense> : <App />}
+    <UiAppearanceProvider>
+      {VisualGallery ? <Suspense fallback={null}><VisualGallery /></Suspense> : <App />}
+    </UiAppearanceProvider>
   </StrictMode>,
 )
 

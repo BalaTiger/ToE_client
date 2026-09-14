@@ -21,13 +21,92 @@ const cleanupCallbacks = ['clearBattleAnimationState', 'clearMultiplayerReplaySt
   if (start < 0 || end < 0) throw new Error(`Missing App cleanup callback boundary: ${name}`);
   return source.slice(start, end);
 }).join('\n');
-const exits = ['leaveMultiplayerMatchToStart', 'resetDisconnectedToStart', 'returnToMainMenu'];
-const exitHandlers = exits.map(name => {
+function extractExitHandler(name) {
   const start = source.indexOf(`  function ${name}(`);
   const closing = /\n {2}}\r?\n/.exec(source.slice(start));
   if (start < 0 || !closing) throw new Error(`Missing App exit handler boundary: ${name}`);
   return source.slice(start, start + closing.index + closing[0].length);
-}).join('\n');
+}
+const exits = ['leaveMultiplayerMatchToStart', 'resetDisconnectedToStart', 'returnToMainMenu'];
+const exitHandlers = exits.map(extractExitHandler).join('\n');
+const confirmationHandlers = ['requestExitMatch', 'confirmExitMatch'].map(extractExitHandler).join('\n');
+const exitEscapeEffect = source.slice(
+  source.indexOf('  useEffect(', source.indexOf('const [exitMatchConfirm,setExitMatchConfirm]')),
+  source.indexOf('  function resetDisconnectedToStart('),
+);
+
+describe('shared match exit confirmation', () => {
+  it.each([
+    ['solo', {}, '返回主界面将结束本局游戏', 'returnToMainMenu'],
+    ['paused solo', { isSoloPaused: true }, '返回主界面将结束本局游戏', 'returnToMainMenu'],
+    ['multiplayer', { isMultiplayer: true }, '退出对局并离开房间', 'leaveMultiplayerMatchToStart'],
+    ['spectator', { isMultiplayer: true, isSpectating: true }, '你将离开游戏房间', 'leaveMultiplayerMatchToStart'],
+    ['reconnecting', { isMultiplayer: true, isDisconnected: true }, '放弃重连', 'resetDisconnectedToStart'],
+  ])('%s leaves only after confirmation and cancellation preserves the match', (_mode, flags, message, cleanup) => {
+    const context = {
+      isMultiplayer: false, isDisconnected: false, isSpectating: false,
+      showTutorial: false, isSoloPaused: false, exitMatchConfirm: null, ...flags,
+    };
+    context.setExitMatchConfirm = vi.fn(value => { context.exitMatchConfirm = value; });
+    exits.forEach(name => { context[name] = vi.fn(); });
+    runInNewContext(confirmationHandlers, context);
+
+    context.requestExitMatch();
+    expect(context.exitMatchConfirm.message).toContain(message);
+    exits.forEach(name => expect(context[name]).not.toHaveBeenCalled());
+    expect(context.isSoloPaused).toBe(!!flags.isSoloPaused);
+
+    // The shared dialog's cancel callback only dismisses the request.
+    context.setExitMatchConfirm(null);
+    context.confirmExitMatch();
+    exits.forEach(name => expect(context[name]).not.toHaveBeenCalled());
+    expect(context.isSoloPaused).toBe(!!flags.isSoloPaused);
+
+    context.requestExitMatch();
+    context.confirmExitMatch();
+    expect(context.exitMatchConfirm).toBeNull();
+    exits.forEach(name => expect(context[name]).toHaveBeenCalledTimes(name === cleanup ? 1 : 0));
+  });
+
+  it('keeps the tutorial exit disabled at the shared entry point', () => {
+    const context = { showTutorial: true, isMultiplayer: false, setExitMatchConfirm: vi.fn() };
+    runInNewContext(confirmationHandlers, context);
+    context.requestExitMatch();
+    expect(context.setExitMatchConfirm).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [true, { message: '确认退出' }, 'cancel'],
+    [false, { message: '确认退出' }, 'cancel'],
+    [true, null, 'resume'],
+    [false, null, 'none'],
+  ])('Escape respects the topmost dialog (paused=%s, confirmation=%j)', (isSoloPaused, exitMatchConfirm, action) => {
+    let listener, cleanup;
+    const context = {
+      isSoloPaused, exitMatchConfirm,
+      setIsSoloPaused: vi.fn(), setExitMatchConfirm: vi.fn(),
+      useEffect: setup => { cleanup = setup(); },
+      window: {
+        addEventListener: vi.fn((_name, callback) => { listener = callback; }),
+        removeEventListener: vi.fn(),
+      },
+    };
+    runInNewContext(exitEscapeEffect, context);
+    const event = { key: 'Escape', preventDefault: vi.fn() };
+    listener?.({ ...event, defaultPrevented: true });
+    listener?.({ ...event, key: 'Enter' });
+    expect(context.setIsSoloPaused).not.toHaveBeenCalled();
+    expect(context.setExitMatchConfirm).not.toHaveBeenCalled();
+    listener?.(event);
+    expect(context.setExitMatchConfirm).toHaveBeenCalledTimes(action === 'cancel' ? 1 : 0);
+    expect(context.setIsSoloPaused).toHaveBeenCalledTimes(action === 'resume' ? 1 : 0);
+    if (action === 'cancel') expect(context.setExitMatchConfirm).toHaveBeenCalledWith(null);
+    if (action === 'resume') expect(context.setIsSoloPaused).toHaveBeenCalledWith(false);
+    if (action === 'none') expect(context.window.addEventListener).not.toHaveBeenCalled();
+    cleanup?.();
+    if (listener) expect(context.window.removeEventListener).toHaveBeenCalledWith('keydown', listener);
+  });
+});
 
 describe('leaving a match during queued playback', () => {
   it.each(exits)('%s prevents a late queue commit or continuation from reopening the match', exit => {

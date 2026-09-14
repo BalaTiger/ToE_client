@@ -9,7 +9,6 @@ export const INTERFACE_STYLES = `
   --toe-action-rest-image: url('${buildPublicUrl('/img/ui/hand-table/rest.webp')}');
   --toe-action-multiply-image: url('${buildPublicUrl('/img/ui/hand-table/multiply.webp')}');
   --toe-action-end-image: url('${buildPublicUrl('/img/ui/hand-table/end.webp')}');
-  --toe-hand-table-image: url('${buildPublicUrl('/img/ui/hand-table/table.webp')}');
   --toe-ui-text: #d7ccb2;
   --toe-ui-muted: #a99b81;
   --toe-ui-accent: #c3a374;

@@ -47,7 +47,7 @@ export function BattlePhaseBar({
   const fontZoom = getFontZoomCompensate(scaleRatio);
 
   return (
-    <div className="toe-battle-panel toe-phase-bar" style={{
+    <div className="toe-battle-panel toe-phase-bar" data-phase-warning={!!isPhaseWarningText && !isSpectating} style={{
       backgroundColor: 'var(--toe-panel,#120900)',
       border: `1px solid ${myTurn && !['AI_TURN'].includes(phase) ? 'var(--toe-line,#5a3010)' : 'var(--toe-line-dim,#2a1a08)'}`,
       borderRadius: 3,

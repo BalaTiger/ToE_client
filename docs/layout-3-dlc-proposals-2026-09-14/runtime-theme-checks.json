@@ -1,0 +1,163 @@
+[
+  {
+    "theme": "群星呼唤",
+    "backgrounds": [
+      "linear-gradient(rgba(0, 4, 7, 0.13), rgba(0, 3, 5, 0.3)), url(\"http://127.0.0.1:5175/img/bg/battle/stars_call.webp\")"
+    ],
+    "backs": [
+      "url(\"http://127.0.0.1:5175/img/card/cardback_stars_call.webp\")",
+      "url(\"http://127.0.0.1:5175/img/card/cardback_sancheck.png\")"
+    ],
+    "broken": [],
+    "handIllustrations": [
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/swallow_fluorescent_mosses.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/hunted_cave_beast.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/rat_swarm.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/sprain.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/black_goat_young.webp"
+      }
+    ],
+    "scroll": [
+      1600,
+      900
+    ],
+    "viewport": [
+      1600,
+      900
+    ]
+  },
+  {
+    "theme": "地神的潜影",
+    "backgrounds": [
+      "linear-gradient(rgba(0, 4, 7, 0.13), rgba(0, 3, 5, 0.3)), url(\"http://127.0.0.1:5175/img/bg/battle/earth_shadow.webp\")"
+    ],
+    "backs": [
+      "url(\"http://127.0.0.1:5175/img/card/cardback_earth_shadow.webp\")"
+    ],
+    "broken": [],
+    "handIllustrations": [
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/swallow_fluorescent_mosses.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/hunted_cave_beast.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/rat_swarm.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/sprain.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/black_goat_young.webp"
+      }
+    ],
+    "scroll": [
+      1600,
+      900
+    ],
+    "viewport": [
+      1600,
+      900
+    ]
+  },
+  {
+    "theme": "先贤的馈赠",
+    "backgrounds": [
+      "linear-gradient(rgba(0, 4, 7, 0.13), rgba(0, 3, 5, 0.3)), url(\"http://127.0.0.1:5175/img/bg/battle/sage_gift.webp\")"
+    ],
+    "backs": [
+      "url(\"http://127.0.0.1:5175/img/card/cardback_sage_gift.webp\")"
+    ],
+    "broken": [],
+    "handIllustrations": [
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/swallow_fluorescent_mosses.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/hunted_cave_beast.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/rat_swarm.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/sprain.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/black_goat_young.webp"
+      }
+    ],
+    "scroll": [
+      1600,
+      900
+    ],
+    "viewport": [
+      1600,
+      900
+    ]
+  },
+  {
+    "theme": "析骨为柴",
+    "backgrounds": [
+      "linear-gradient(rgba(0, 4, 7, 0.13), rgba(0, 3, 5, 0.3)), url(\"http://127.0.0.1:5175/img/bg/battle/bone_fuel.webp\")"
+    ],
+    "backs": [
+      "url(\"http://127.0.0.1:5175/img/card/cardback_bone_fuel.webp\")"
+    ],
+    "broken": [],
+    "handIllustrations": [
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/swallow_fluorescent_mosses.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/hunted_cave_beast.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/rat_swarm.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/sprain.webp"
+      },
+      {
+        "loaded": true,
+        "src": "/img/card/illustration/black_goat_young.webp"
+      }
+    ],
+    "scroll": [
+      1600,
+      900
+    ],
+    "viewport": [
+      1600,
+      900
+    ]
+  }
+]

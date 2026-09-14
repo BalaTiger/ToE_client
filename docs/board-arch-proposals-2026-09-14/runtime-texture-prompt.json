@@ -1,0 +1,8 @@
+{
+  "mode": "built-in image_gen",
+  "reference": "B-refined-weathered-hand.png",
+  "source": "table-weathered-master.png",
+  "runtime": "../../public/img/ui/hand-table/table-weathered.webp",
+  "conversion": "Original 1536×1024 pixels retained; WebP quality=86 method=6",
+  "prompt": "Create a production-ready game UI MATERIAL TEXTURE asset, using the attached selected game mockup as a material reference. Reproduce the dark weathered teal stone surface visible at the very bottom of that image underneath the five hand cards: dense irregular fine cracks, shallow chipped fissures, charcoal and deep green mineral mottling, subdued rubbed pale mineral vein edges. The user specifically chose this denser cracked version rather than a clean or lightly distressed version.\n\nOutput ONLY a complete flat uninterrupted rectangular sheet of this aged teal stone texture, edge to edge, orthographic top-down, landscape 3:2. Uniform material scale across the sheet, balanced diffuse lighting, matte finish, enough visible detail to survive UI downscaling. Crack network dense but natural, some large quieter patches, no artificial repeating grid, no bright white cracks. Keep dark blue-green / charcoal with sparse muted warm mineral wear, matching the hand tabletop in the reference. No perspective, no arc or border, no vignette, no transparency, no UI, no cards, no buttons, no text, no symbols, no books, no tentacles, no other objects. This image will be clipped to the existing curved table in code."
+}

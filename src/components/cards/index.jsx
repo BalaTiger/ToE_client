@@ -246,7 +246,7 @@ function PreviewCard({card,minWidth=120,codeFontSize=51,frameStyle,desc,hideIden
   );
 }
 
-function ImageCard({card,onClick,disabled,selected,highlight,small,compact,godLevel=1,holderId,frameStyle,hideCssFrame=false,tokenFaceWidth}){
+function ImageCard({card,onClick,disabled,selected,highlight,small,compact,godLevel=1,holderId,frameStyle,hideCssFrame=false,tokenFaceWidth,showCaption=true,hoverPreview=true}){
   const { hover, tooltipPosition, cardRef, handleMouseEnter, handleMouseMove, handleMouseLeave } = useCardHoverTooltip();
   if(!card)return null;
   const def=card.isGod?GOD_DEFS[card.godKey]:null;
@@ -259,8 +259,8 @@ function ImageCard({card,onClick,disabled,selected,highlight,small,compact,godLe
   const naturalWidth=small?44:compact?62:82;
   const faceWidth=typeof frameStyle?.width==='number'?frameStyle.width:tokenFaceWidth??naturalWidth;
   const width=frameStyle?.width??faceWidth;
-  // Explicit animation/stack slots own their labels; hand cards keep readable live text below the artwork.
-  const showCaption=!small&&frameStyle?.height==null;
+  // Explicit animation/stack slots own their labels; other instances can opt out.
+  const hasCaption=showCaption&&!small&&frameStyle?.height==null;
   const canClick=!!onClick&&!disabled;
   return(
     <>
@@ -276,22 +276,23 @@ function ImageCard({card,onClick,disabled,selected,highlight,small,compact,godLe
         aria-pressed={onClick?!!selected:undefined}
         onClick={disabled?undefined:onClick}
         onKeyDown={canClick?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();onClick(event);}}:undefined}
-        onMouseEnter={handleMouseEnter}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
+        onMouseEnter={hoverPreview?handleMouseEnter:undefined}
+        onMouseMove={hoverPreview?handleMouseMove:undefined}
+        onMouseLeave={hoverPreview?handleMouseLeave:undefined}
         style={{
           flexShrink:0,
           position:'relative',
           cursor:canClick?'pointer':'default',
-          opacity:disabled?0.35:1,
+          opacity:1,
+          filter:disabled?'grayscale(.85) brightness(.48)':undefined,
           transform:selected?'translateY(-5px)':undefined,
-          transition:'transform .14s, opacity .14s, box-shadow .14s',
+          transition:'transform .14s, filter .14s, box-shadow .14s',
           userSelect:'none',
           background:'transparent',
           borderRadius:hideCssFrame?0:3,
           outline:(selected||highlight||isRoseThornMarked)?'1.5px solid '+color:'none',
-          boxShadow:selected||highlight||isRoseThornMarked?'0 0 15px '+color+'77':hover?'0 0 12px '+color+'55':'none',
-          marginBottom:showCaption?34:0,
+          boxShadow:selected||highlight||isRoseThornMarked?'0 0 15px '+color+'77':hoverPreview&&hover?'0 0 12px '+color+'55':'none',
+          marginBottom:hasCaption?34:0,
           ...frameStyle,
           width,
           minWidth:width,
@@ -306,13 +307,13 @@ function ImageCard({card,onClick,disabled,selected,highlight,small,compact,godLe
       >
         <CardFaceImage card={faceCard} godLevel={Math.max(1,godLevel||1)} width={faceWidth} style={{boxShadow:'none',borderRadius:hideCssFrame?0:3}}/>
         {isRoseThornMarked&&<span style={{position:'absolute',top:3,left:3,padding:'2px 4px',background:'#241015',border:'1px solid #b95671',color:'#ffb2c5',fontSize:small?9:11,lineHeight:1.2}}>倒刺</span>}
-        {showCaption&&(
+        {hasCaption&&(
           <div data-card-caption title={getCardDisplayKey(faceCard)+' · '+(def?.name||card.name||'')} style={{position:'absolute',top:'calc(100% + 4px)',left:0,right:0,fontSize:12,lineHeight:1.3,color:'#e5d5b4',textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', serif)",display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical',overflow:'hidden'}}>
             <strong style={{color:card.isGod?def.col:'#cbb481'}}>{getCardDisplayKey(faceCard)}</strong> · {def?.name||card.name}
           </div>
         )}
       </div>
-      {hover&&<CardFaceTooltip card={faceCard} godLevel={Math.max(1,godLevel||1)} position={tooltipPosition}/>}
+      {hoverPreview&&hover&&<CardFaceTooltip card={faceCard} godLevel={Math.max(1,godLevel||1)} position={tooltipPosition}/>}
     </>
   );
 }

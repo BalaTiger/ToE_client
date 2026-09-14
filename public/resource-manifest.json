@@ -1,6 +1,6 @@
 {
-  "version": "ae23f8f628a2c075",
-  "generatedAt": "2026-09-14T03:21:25.055Z",
+  "version": "5c4c9d55f6e9fe1d",
+  "generatedAt": "2026-09-14T12:33:58.832Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1353,6 +1353,126 @@
       "revision": "48b93d6978379bb9"
     },
     {
+      "path": "/img/ui/coastal/action-end.webp",
+      "type": "image",
+      "size": 29662,
+      "revision": "130074b0671d881e"
+    },
+    {
+      "path": "/img/ui/coastal/action-multiply.webp",
+      "type": "image",
+      "size": 27878,
+      "revision": "87cdd68f046dae80"
+    },
+    {
+      "path": "/img/ui/coastal/action-rest.webp",
+      "type": "image",
+      "size": 30846,
+      "revision": "dbe3bbeb68828d64"
+    },
+    {
+      "path": "/img/ui/coastal/action-skill.webp",
+      "type": "image",
+      "size": 29710,
+      "revision": "9b2f6cd6719cff1e"
+    },
+    {
+      "path": "/img/ui/coastal/counter.webp",
+      "type": "image",
+      "size": 32584,
+      "revision": "0b30929e3fcf572c"
+    },
+    {
+      "path": "/img/ui/coastal/faith-banner.webp",
+      "type": "image",
+      "size": 59036,
+      "revision": "32531b544ce91fba"
+    },
+    {
+      "path": "/img/ui/coastal/foreground.webp",
+      "type": "image",
+      "size": 152346,
+      "revision": "5c78665244542f2b"
+    },
+    {
+      "path": "/img/ui/coastal/hand-count.webp",
+      "type": "image",
+      "size": 41648,
+      "revision": "60728e0050b9a9f4"
+    },
+    {
+      "path": "/img/ui/coastal/log-banner.webp",
+      "type": "image",
+      "size": 69590,
+      "revision": "8dd6cadec5af5df5"
+    },
+    {
+      "path": "/img/ui/coastal/opponent-frame.webp",
+      "type": "image",
+      "size": 60562,
+      "revision": "909a73a53b93adf9"
+    },
+    {
+      "path": "/img/ui/coastal/portrait-1.webp",
+      "type": "image",
+      "size": 17720,
+      "revision": "3d6425bc7760fd00"
+    },
+    {
+      "path": "/img/ui/coastal/portrait-2.webp",
+      "type": "image",
+      "size": 22348,
+      "revision": "deee7bf79152edee"
+    },
+    {
+      "path": "/img/ui/coastal/portrait-3.webp",
+      "type": "image",
+      "size": 23138,
+      "revision": "27421b4401e8e0dd"
+    },
+    {
+      "path": "/img/ui/coastal/portrait-4.webp",
+      "type": "image",
+      "size": 15856,
+      "revision": "9b01b8265c1253e8"
+    },
+    {
+      "path": "/img/ui/coastal/portrait-self.webp",
+      "type": "image",
+      "size": 20248,
+      "revision": "90ee978bc528bb36"
+    },
+    {
+      "path": "/img/ui/coastal/prompt.webp",
+      "type": "image",
+      "size": 17994,
+      "revision": "60a847054e4a7de7"
+    },
+    {
+      "path": "/img/ui/coastal/self-frame.webp",
+      "type": "image",
+      "size": 73010,
+      "revision": "91b30d9c5b87baa0"
+    },
+    {
+      "path": "/img/ui/coastal/system-pause.webp",
+      "type": "image",
+      "size": 32084,
+      "revision": "0694214c6108d6c5"
+    },
+    {
+      "path": "/img/ui/coastal/system-settings.webp",
+      "type": "image",
+      "size": 31210,
+      "revision": "75663b02aec8bb64"
+    },
+    {
+      "path": "/img/ui/coastal/turn-dial.webp",
+      "type": "image",
+      "size": 93074,
+      "revision": "9ae2e7413d9a26f3"
+    },
+    {
       "path": "/img/ui/hand-table/end.webp",
       "type": "image",
       "size": 15150,
@@ -1363,6 +1483,18 @@
       "type": "image",
       "size": 15498,
       "revision": "9322602b5ed59847"
+    },
+    {
+      "path": "/img/ui/hand-table/relief-left.webp",
+      "type": "image",
+      "size": 107960,
+      "revision": "34abc645ccb4ed8f"
+    },
+    {
+      "path": "/img/ui/hand-table/relief-right.webp",
+      "type": "image",
+      "size": 106184,
+      "revision": "af0cb117fa0007de"
     },
     {
       "path": "/img/ui/hand-table/rest.webp",
@@ -1377,10 +1509,16 @@
       "revision": "1fbefe8adbee50f4"
     },
     {
+      "path": "/img/ui/hand-table/table-weathered.webp",
+      "type": "image",
+      "size": 487656,
+      "revision": "42a6462be03ce36a"
+    },
+    {
       "path": "/img/ui/hand-table/table.webp",
       "type": "image",
-      "size": 73720,
-      "revision": "d5066cc29f03aebb"
+      "size": 20724,
+      "revision": "1e7e2629edf5d16e"
     },
     {
       "path": "/img/ui/interface/panel-frame.webp",

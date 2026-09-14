@@ -1,0 +1,183 @@
+[
+  {
+    "scene": "battle-coastal",
+    "anchors": {
+      ".toe-coastal-roles": {
+        "bottom": 240.65625,
+        "height": 256.65625,
+        "left": 416,
+        "right": 1224,
+        "top": -16,
+        "width": 808
+      },
+      ".toe-coastal-self": {
+        "bottom": 553.203125,
+        "height": 577.203125,
+        "left": -18.65625,
+        "right": 360,
+        "top": -24,
+        "width": 378.65625
+      },
+      ".toe-coastal-turn": {
+        "bottom": 212,
+        "height": 270.65625,
+        "left": 1248,
+        "right": 1648,
+        "top": -58.65625,
+        "width": 400
+      }
+    },
+    "broken": [],
+    "clippedLabels": [],
+    "controls": [
+      {
+        "bottom": 210.65625,
+        "height": 44,
+        "label": "暂停游戏",
+        "left": 1489.671875,
+        "right": 1533.671875,
+        "top": 166.65625,
+        "width": 44
+      },
+      {
+        "bottom": 210.65625,
+        "height": 44,
+        "label": "对局菜单",
+        "left": 1542.671875,
+        "right": 1586.671875,
+        "top": 166.65625,
+        "width": 44
+      }
+    ],
+    "marker": [],
+    "minHandPileGap": 66.08056640625,
+    "viewport": [
+      1600,
+      900
+    ]
+  },
+  {
+    "scene": "battle-coastal",
+    "anchors": {
+      ".toe-coastal-roles": {
+        "bottom": 383.046875,
+        "height": 408.515625,
+        "left": 657.484375,
+        "right": 1944.203125,
+        "top": -25.46875,
+        "width": 1286.71875
+      },
+      ".toe-coastal-self": {
+        "bottom": 882.34375,
+        "height": 920.5625,
+        "left": -34.703125,
+        "right": 568.3125,
+        "top": -38.21875,
+        "width": 603.015625
+      },
+      ".toe-coastal-turn": {
+        "bottom": 337.609375,
+        "height": 431.03125,
+        "left": 1982.453125,
+        "right": 2619.4375,
+        "top": -93.421875,
+        "width": 636.984375
+      }
+    },
+    "broken": [],
+    "clippedLabels": [],
+    "controls": [
+      {
+        "bottom": 309.40625,
+        "height": 44,
+        "label": "暂停游戏",
+        "left": 2419.78125,
+        "right": 2463.78125,
+        "top": 265.40625,
+        "width": 44
+      },
+      {
+        "bottom": 309.40625,
+        "height": 44,
+        "label": "对局菜单",
+        "left": 2472.78125,
+        "right": 2516.78125,
+        "top": 265.40625,
+        "width": 44
+      }
+    ],
+    "marker": [],
+    "minHandPileGap": 105.72509765625,
+    "viewport": [
+      2548,
+      1303
+    ]
+  },
+  {
+    "scene": "battle-full",
+    "anchors": {
+      ".toe-coastal-roles": {
+        "bottom": 191.078125,
+        "height": 203.875,
+        "left": 332.796875,
+        "right": 979.1875,
+        "top": -12.796875,
+        "width": 646.390625
+      },
+      ".toe-coastal-self": {
+        "bottom": 404.09375,
+        "height": 423.28125,
+        "left": -14.921875,
+        "right": 288,
+        "top": -19.1875,
+        "width": 302.921875
+      },
+      ".toe-coastal-turn": {
+        "bottom": 169.609375,
+        "height": 216.53125,
+        "left": 998.390625,
+        "right": 1318.390625,
+        "top": -46.921875,
+        "width": 320
+      }
+    },
+    "broken": [],
+    "clippedLabels": [],
+    "controls": [
+      {
+        "bottom": 177.328125,
+        "height": 44,
+        "label": "暂停游戏",
+        "left": 1172.34375,
+        "right": 1216.34375,
+        "top": 133.328125,
+        "width": 44
+      },
+      {
+        "bottom": 177.328125,
+        "height": 44,
+        "label": "对局菜单",
+        "left": 1225.34375,
+        "right": 1269.34375,
+        "top": 133.328125,
+        "width": 44
+      }
+    ],
+    "marker": [
+      {
+        "bottom": 195.40625,
+        "height": 14.796875,
+        "label": "▸ 行动",
+        "left": 487.21875,
+        "right": 525.921875,
+        "top": 180.609375,
+        "width": 38.703125
+      }
+    ],
+    "minHandPileGap": 53.67303466796875,
+    "viewport": [
+      1280,
+      720
+    ]
+  }
+]

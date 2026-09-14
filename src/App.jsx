@@ -577,14 +577,6 @@ export default function Game(){
     userPaused:isSoloPaused,
   });
   const softGuidePauseActive=softGuideStage.blocking;
-  useEffect(()=>{
-    if(!isSoloPaused)return undefined;
-    const resumeOnEscape=e=>{
-      if(e.key==='Escape')setIsSoloPaused(false);
-    };
-    window.addEventListener('keydown',resumeOnEscape);
-    return()=>window.removeEventListener('keydown',resumeOnEscape);
-  },[isSoloPaused]);
   const [showGodResurrection,setShowGodResurrection]=useState(false);
   const [showFullLog,setShowFullLog]=useState(false);
   const [tutorialStep,setTutorialStep]=useState(1);
@@ -794,6 +786,17 @@ export default function Game(){
   },[gs]);
   const [isDisconnected,setIsDisconnected]=useState(false);
   const [exitMatchConfirm,setExitMatchConfirm]=useState(null);
+  useEffect(()=>{
+    if(!isSoloPaused&&!exitMatchConfirm)return undefined;
+    const dismissOnEscape=e=>{
+      if(e.key!=='Escape'||e.defaultPrevented)return;
+      e.preventDefault();
+      if(exitMatchConfirm)setExitMatchConfirm(null);
+      else setIsSoloPaused(false);
+    };
+    window.addEventListener('keydown',dismissOnEscape);
+    return()=>window.removeEventListener('keydown',dismissOnEscape);
+  },[isSoloPaused,exitMatchConfirm]);
   function resetDisconnectedToStart(){
     clearMultiplayerReplayState();
     endTurnSeqRef.current=null;
@@ -9737,6 +9740,23 @@ export default function Game(){
     setGs(prev=>prev?{...prev,...maskOpeningTurnStartDrawForDisplay(finalGs)}:prev);
     setRoleRevealAnim({role:finalGs.players[0].role,pendingGs:finalGs});
   }
+  function requestExitMatch(){
+    if(showTutorial&&!isMultiplayer)return;
+    setExitMatchConfirm({message:isDisconnected
+      ?'确定放弃重连并返回主界面吗？'
+      :isMultiplayer
+        ?isSpectating
+          ?'你将离开游戏房间，确定要退出吗？'
+          :'对局还在进行中，是否退出对局并离开房间？'
+        :'对局还在进行中，返回主界面将结束本局游戏。确定要退出吗？'});
+  }
+  function confirmExitMatch(){
+    if(!exitMatchConfirm)return;
+    setExitMatchConfirm(null);
+    if(isDisconnected)resetDisconnectedToStart();
+    else if(isMultiplayer)leaveMultiplayerMatchToStart();
+    else returnToMainMenu();
+  }
   function returnToMainMenu(){
     if(isMultiplayer)return;
     setIsSoloPaused(false);
@@ -10361,7 +10381,7 @@ export default function Game(){
     drawRevealKeepButtonRect,godKeepHandButtonRect,deckAreaRect,dodgeRollButtonRect,
     skillButtonRect,swapBlindHandRect,isArtifact,isH5Package,smallBtnStyle,
     // callbacks
-    handleUiSfxCapture,returnToMainMenu,setExitMatchConfirm,leaveMultiplayerMatchToStart,
+    handleUiSfxCapture,returnToMainMenu:requestExitMatch,requestExitMatch,confirmExitMatch,setExitMatchConfirm,leaveMultiplayerMatchToStart,
     handleAIClick,handleMyCardClick,useAbility,doRest,endTurn,cancelAction,huntConfirm,
     confirmDiscard,confirmBuryAliveSelection,confirmIgniteTorchDiscard,handleZhuHideDrawnCard,handleZhuHideGodCard,
     handleZhuHideTopCardDuringSphinx,handleZhuHideAiDrawCard,handleDrawKeepFromModal,
@@ -10370,7 +10390,7 @@ export default function Game(){
     resolveEtherealizeRedirect,firstComePickSelectCard,graveDigSelectGod,sameAbyssSelect,
     sphinxGuess,tortoiseOracleSelect,decipherStoneCarvingConfirm,swapSelectTargetCard,
     huntSelectCardFromPublic,handleSwapBlindDrawSelect,confirmRoleSelection,
-    resetDisconnectedToStart,setPrivatePeek,setEmojiButtonPos,setShowEmojiPicker,handleEmojiClick,
+    resetDisconnectedToStart:requestExitMatch,setPrivatePeek,setEmojiButtonPos,setShowEmojiPicker,handleEmojiClick,
     godResolvePlayer,nyaBorrow,nyaSkip,runDecision,
     setGs,setAnim,setPreparingSoftGuideId,setPendingSoftGuideId,setSoftGuideSpotlights,
     setTutorialStep,advanceTutorialStep,handleTutorialResultNext,completeTutorial,_onRoleRevealDone,

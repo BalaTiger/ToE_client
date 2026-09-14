@@ -177,6 +177,7 @@ Important extracted layers:
 - rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
 - target-action continuation state/routing -> `src/game/targetContinuation.js`
 - battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `BattleHeader.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
+- UI appearance preference and asset/layout registry -> `ui/UiAppearance.jsx`, `ui/appearances.js` (independent of expansion themes; usage in `ui/README.md`). `BattleLayouts.jsx` composes live board regions; `OpponentArc.jsx` positions rigid player frames and `PanelFrame.jsx` supplies reusable finished edges. These components never own HP/SAN or turn state; `logRef` stays on the scrolling log content.
 
 ## Remaining High-Value Refactor Targets
 

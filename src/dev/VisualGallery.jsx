@@ -24,7 +24,12 @@ const SCENES = [
   ['battle-mp', '联机行动与倒计时', '对局'],
   ['battle-spectate', '死亡旁观', '对局'],
   ['battle-status', '信仰、翻面与状态标记', '对局'],
+  ['battle-coastal', '3号布局 · 信仰、状态与五张手牌', '对局'],
+  ['battle-coastal-small', '3号布局 · 两张手牌靠近按钮', '对局'],
+  ['battle-coastal-many', '3号布局 · 八张手牌与累积区域牌', '对局'],
   ['battle-ai', '等待其他旅者行动', '对局', 'AI_TURN'],
+  ['battle-crowded', '七名其他角色 · 回合置顶', '对局', 'AI_TURN'],
+  ['battle-full', '十一名其他角色 · 满员拱形', '对局', 'AI_TURN'],
   ['battle-empty', '空手牌', '对局'],
   ['discard', '超出手牌上限 · 选择弃牌', '对局', 'DISCARD_PHASE'],
   ['hunt-reveal', '追捕 · 亮出手牌', '对局', 'PLAYER_REVEAL_FOR_HUNT'],
@@ -163,6 +168,13 @@ function makeState(scene, expansionKey) {
     godEncounterCount: 2, godName: i === 1 ? 'CTH' : null, godLevel: i === 1 ? 1 : 0,
     hasBelievedGod: i === 1, peekMemories: {}, handLimitDecrease: 0,
   }));
+  if (id === 'battle-crowded' || id === 'battle-full') {
+    const extra = ['伊芙', '芬恩', '乔安', '赫伯特', '伊莎', '杰克', '凯伦'];
+    for (const name of extra.slice(0, id === 'battle-full' ? 7 : 3)) {
+      const index = players.length;
+      players.push({ ...players[4], id: index, name, hand: ZONES.slice(1, 5).map((card, i) => ({ ...card, id: `gallery-seat-${index}-${i}` })) });
+    }
+  }
   if (id === 'god-keep') players[0].role = '邪祀者';
   if (scene[4]?.startsWith('hunter')) players[0].role = '追猎者';
   if (scene[4]?.startsWith('cultist')) players[0].role = '邪祀者';
@@ -175,17 +187,36 @@ function makeState(scene, expansionKey) {
   }
   if (id === 'battle-spectate') players[0].isDead = true;
   if (id === 'battle-empty') players[0].hand = [];
+  if (id === 'ignite-torch') players[0].hand.push({ ...ZONES[4], id: 'gallery-ignite-fifth' });
   if (id === 'battle-status') {
     players[0].hand = [...players[0].hand, { ...createBlackGoatYoungCard(), id: 'gallery-young' }, { ...createTsathogguaSlimeCard(), id: 'gallery-slime' }];
     players[1].isResting = true;
     Object.assign(players[2], { disableSkill: true, godName: 'ZHU', godLevel: 2 });
     Object.assign(players[3], { isDead: true, hp: 0, roleRevealed: true });
   }
+  if (id.startsWith('battle-coastal')) {
+    Object.assign(players[0], {
+      hp: 8, san: 6, godName: 'SHU', godLevel: 1, hasBelievedGod: true,
+      etherealizeStacks: 2, poisonStacks: 1,
+      hand: [
+        ...['A3', 'B3', 'D3', 'D4'].map(key => ZONES.find(card => card.key === key)),
+        { ...createBlackGoatYoungCard(), id: 'gallery-coastal-young-0' },
+      ],
+    });
+    players.slice(1).forEach(player => {
+      player.hand = [...player.hand.slice(0, 3), { ...createBlackGoatYoungCard(), id: `gallery-coastal-young-${player.id}` }];
+    });
+    if (id === 'battle-coastal-small') players[0].hand = players[0].hand.slice(0, 2);
+    if (id === 'battle-coastal-many') {
+      players[0].hand.push(...ZONES.slice(8, 11));
+      players[0].zoneCards = Array.from({ length: 4 }, (_, index) => ({ id: `gallery-coastal-zone-${index}`, type: 'blankZone', name: '空白区域牌' }));
+    }
+  }
   if (id === 'discard') players[0].hand.push(...ZONES.slice(8, 11));
   if (id === 'swap-public' || id === 'hunt-public') players[1].revealHand = true;
   const targetIdx = waiting ? 1 : 0;
   return {
-    players, phase, expansionKey, currentTurn: waiting || id === 'battle-ai' ? 1 : 0, turn: 3, turnDirection: 1,
+    players, phase, expansionKey, currentTurn: id === 'battle-crowded' || id === 'battle-full' ? 2 : waiting || id === 'battle-ai' ? 1 : 0, turn: 3, turnDirection: 1,
     deck: ZONES, discard: [...ZONES.slice(9, 13), GODS[1]], inspectionDeck: INSPECTION_DECK,
     inspectionDiscard: [], log: LOG, skillUsed: false, restUsed: false, multiplyUsed: false,
     huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, selectedCard: 0,
@@ -217,11 +248,18 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   }));
   const id = scene[0];
   const waiting = id.endsWith('-wait');
+  const effectiveHandLimit = id.startsWith('battle-coastal') ? 4 : 5;
+  const [sharedExitConfirm, setSharedExitConfirm] = useState(() => id === 'exit'
+    ? { message: '对局还在进行中，是否退出对局并离开房间？' } : null);
+  const [isSoloPaused, setIsSoloPaused] = useState(id === 'pause');
+  const requestExitMatch = () => setSharedExitConfirm({ message: state._isMP
+    ? '对局还在进行中，是否退出对局并离开房间？'
+    : '当前对局将结束，是否退出并返回主界面？' });
   const theme = getBattleTheme(expansionKey);
   const callbacks = Object.fromEntries(CALLBACK_NAMES.map(name => [name, () => onAction(`已确认「${scene[1]}」`)]));
   const phaseUi = buildPhaseUiState({
     gs: state, phase: state.phase, me: state.players[0], currentTurnPlayer: state.players[state.currentTurn],
-    effectiveHandLimit: 5, isSpectating: id === 'battle-spectate', isVisualPlayerTurn: !waiting,
+    effectiveHandLimit, isSpectating: id === 'battle-spectate', isVisualPlayerTurn: !waiting,
     localCurrentTurn: state.currentTurn === 0, decisionContext: { localCanAct: !waiting, ownerSeats: [state.currentTurn] },
     local: Object.fromEntries('swapGive huntConfirm huntTarget treasureDodge igniteTorch decipherStone albinoCreature slimeBalance etherealizeDecision etherealizeTarget godChoice nyaBorrow drawDecision caveDuel graveDig buryAlive sameAbyss sphinxGuess damageLinkSelect'.split(' ').map(key => [key, !waiting])),
   });
@@ -248,7 +286,7 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     visibleLog: LOG, ri: RINFO[state.players[0].role], skillRi: RINFO[state.players[0].role],
     phase: state.phase, myTurn: !waiting, isVisualPlayerTurn: !waiting, isMultiplayer: state._isMP,
     isSpectating: id === 'battle-spectate', decisionContext: { localCanAct: !waiting, presentation: waiting ? 'waiting' : 'interactive' },
-    isActionControlsHidden: waiting, canShowEndTurnButton: true, effectiveHandLimit: 5,
+    isActionControlsHidden: waiting, canShowEndTurnButton: true, effectiveHandLimit,
     effectiveSkillName: RINFO[state.players[0].role].skillName, isSelfDeadPanelDimmed: id === 'battle-spectate',
     displayPhaseLabel: scene[1], cardHintText: '选择手牌或行动按钮',
     promptWarningTextColor: '#e7a48b', promptActiveTextColor: '#e3cf9a', promptCautionTextColor: '#cfaa6b',
@@ -259,14 +297,14 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     isLocalTortoiseSelectPhase: () => !waiting, isLocalGodChoice: !waiting, isLocalDrawDecision: !waiting,
     isLocalTreasureDodgePhase: () => !waiting, isLocalTreasureAoEDodgePhase: () => !waiting,
     isLocalFirstComePicker: () => !waiting, isLocalSameAbyssTargetPhase: () => !waiting, isLocalSphinxGuessPhase: () => !waiting,
-    isTutorialActionAllowed: truth, hasHuntRevealableCard: truth, isMyCardClickable: truth,
+    isTutorialActionAllowed: truth, hasHuntRevealableCard: truth, isMyCardClickable: () => !waiting && id !== 'battle-ai',
     canPlayerRespondWithAnyHandCard: truth, canPlayerRespondWithFireHandCard: truth, cardsHuntMatch: (a, b) => a.key === b.key,
     canShowTurnDecisionModal: true, runDecision: (_key, fn) => fn(),
     selectingOther: id.startsWith('target-'), canLocalTargetSelect: id.startsWith('target-'),
     cancelable: id.startsWith('target-') || id === 'hunt-confirm', showCancelBtn: id.startsWith('target-'),
     isDiscardPhasePromptActive: id === 'discard', isLocalHuntRevealPrompt: id === 'hunt-reveal',
-    pendingRoleSelection: id === 'role', isDisconnected: id === 'reconnect', isSoloPaused: id === 'pause',
-    exitMatchConfirm: id === 'exit' ? { message: '对局还在进行中，是否退出对局并离开房间？' } : null,
+    pendingRoleSelection: id === 'role', isDisconnected: id === 'reconnect', isSoloPaused,
+    exitMatchConfirm: sharedExitConfirm,
     decisionError: id === 'draw-error' ? new Error('Gallery retry state') : null,
     pendingZhuDrawCard: id === 'zhu-hide' ? ZONES[0] : null, pendingZhuAnyCard: id === 'zhu-wait',
     privatePeek: id === 'peek' ? { card: ZONES[3], targetName: '艾伦' } : null,
@@ -285,8 +323,9 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
       backgroundImage: `linear-gradient(${theme.tintTop},${theme.tintBottom}),url('${buildPublicUrl(getBattleBackgroundImage(expansionKey))}')`,
       backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: theme.bg,
     },
-    returnToMainMenu: () => onScene('battle'), setIsSoloPaused: paused => onScene(paused ? 'pause' : 'battle'),
-    setExitMatchConfirm: value => onScene(value ? 'exit' : 'battle-mp'),
+    returnToMainMenu: requestExitMatch, requestExitMatch, setIsSoloPaused,
+    setExitMatchConfirm: setSharedExitConfirm,
+    confirmExitMatch: () => { setSharedExitConfirm(null); onAction('已确认退出对局'); },
     swapBlindDraw: ['swap-blind', 'swap-shuffle', 'tutorial-treasureStealCard'].includes(id) ? {
       targetPi: 1, phase: id === 'swap-shuffle' ? 'shuffling' : 'selecting',
       handSnapshot: state.players[1].hand.map((card, idx) => ({ idx, card, isFaceUp: false })),

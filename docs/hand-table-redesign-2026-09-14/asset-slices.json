@@ -87,11 +87,51 @@
     {
       "path": "public/img/ui/hand-table/table.webp",
       "size": [
-        1600,
-        533
+        970,
+        490
       ],
-      "bytes": 73720,
-      "sha256": "d5066cc29f03aebb0e5cd30df30016204f6824600b5d763343a737752511b4f5"
+      "bytes": 20724,
+      "sha256": "1e7e2629edf5d16ef71d630b6fdc6522ab8e0654a51855a225321d51d1aa48be"
+    },
+    {
+      "path": "public/img/ui/hand-table/relief-left.webp",
+      "trim": [
+        44,
+        6,
+        1211,
+        1242
+      ],
+      "size": [
+        604,
+        640
+      ],
+      "bytes": 107960,
+      "sha256": "34abc645ccb4ed8fb474f6112f7a6ce4c46f4c1ac05a10c79e802a8d9ccc4298"
+    },
+    {
+      "path": "public/img/ui/hand-table/relief-right.webp",
+      "trim": [
+        20,
+        11,
+        1226,
+        1242
+      ],
+      "size": [
+        627,
+        640
+      ],
+      "bytes": 106184,
+      "sha256": "af0cb117fa0007defc5a7cefdfaa83bd38d4ddf0096df4b3292384165d420de2"
+    },
+    {
+      "path": "public/img/ui/hand-table/table-weathered.webp",
+      "source": "docs/board-arch-proposals-2026-09-14/table-weathered-master.png",
+      "size": [
+        1536,
+        1024
+      ],
+      "bytes": 487656,
+      "sha256": "42a6462be03ce36acea74b103e115f6740cf535ccaca15d625e0d3282fd1a515"
     }
   ]
 }

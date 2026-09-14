@@ -1,0 +1,178 @@
+/* Five columns preserve the approved composition across desktop board sizes. */
+.toe-hand-area[data-hand-composition="coastal"] {
+  display: grid !important;
+  grid-template-columns: var(--toe-coastal-hand-start, 15%) minmax(0, 1fr) var(--toe-coastal-hand-gap, 3%) var(--toe-coastal-actions-width, 19%) var(--toe-coastal-inset-end, 4%);
+  align-items: end;
+  width: 100%;
+  height: 100%;
+  padding: 0 !important;
+  gap: 0 !important;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-heading {
+  grid-column: 4;
+  grid-row: 1;
+  display: flex !important;
+  flex-direction: column;
+  align-items: stretch !important;
+  padding: 0;
+  gap: 2px !important;
+  margin: 0 0 var(--toe-coastal-actions-bottom, 24px) !important;
+  min-width: 0;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-prompt {
+  width: 100%;
+  filter: drop-shadow(0 3px 2px #000b);
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-phase-bar {
+  padding: 10px 16px !important;
+  min-height: 42px !important;
+  justify-content: center;
+  gap: 4px !important;
+  border: 0 !important;
+  background: var(--toe-coastal-prompt-image) center / 100% 100% no-repeat !important;
+  box-shadow: none;
+  text-align: center;
+  line-height: 1.45;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-phase-bar::before { display: none; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-phase-timer {
+  padding: 1px 6px;
+  border-color: #846d49;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-controls,
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-actions,
+.toe-hand-area[data-hand-composition="coastal"] .toe-main-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 100%;
+  gap: 2px;
+  margin: 0;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-actions:empty,
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-controls:not(:has(button)) { display: none; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque {
+  width: 100%;
+  height: auto;
+  min-height: calc(44px * var(--toe-action-scale));
+  aspect-ratio: 3.75;
+  padding: 10px 16px;
+  gap: 12px;
+  filter: drop-shadow(0 3px 2px #000c);
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-label { font-size: calc(15px * var(--toe-action-scale)); }
+.toe-hand-area[data-hand-composition="coastal"] > [data-self-hand-strip] {
+  grid-column: 2;
+  grid-row: 1;
+  position: relative;
+  min-width: 0;
+  min-height: 135px;
+  padding: var(--toe-coastal-hand-top-inset, 56px) 0 var(--toe-coastal-hand-bottom-inset, 4px) !important;
+  overflow: visible;
+}
+.toe-hand-area[data-hand-composition="coastal"][data-hand-layout="desktop"] > [data-self-hand-strip] {
+  justify-content: flex-end !important;
+  min-height: 0;
+}
+.toe-hand-area[data-hand-composition="coastal"][data-hand-layout="desktop"][data-hand-empty="true"] > [data-self-hand-strip] { min-height: 110px; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count {
+  position: absolute;
+  left: var(--toe-coastal-count-left, calc(var(--toe-coastal-hand-start, 15%) - 40px));
+  bottom: 12px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 76px;
+  height: 76px;
+  background: var(--toe-coastal-count-image) center / contain no-repeat;
+  color: #e6d6b6;
+  font-family: var(--toe-ui-font, 'Noto Serif SC', serif);
+  line-height: 1.25;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 2px 3px #000;
+  pointer-events: none;
+}
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count svg { display: none; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-label { font-size: 12px; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-value { font-size: 21px; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-value strong { font-weight: 500; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count[data-over-limit="true"] strong { color: #f17a67; }
+
+/* Small screens keep complete prompts, 44px actions, and a scrolling hand. */
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  height: auto;
+  padding: calc(5px * var(--toe-action-scale)) !important;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-heading {
+  grid-column: 1;
+  grid-row: 1;
+  align-items: center !important;
+  margin-bottom: calc(6px * var(--toe-action-scale)) !important;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-prompt { max-width: calc(540px * var(--toe-action-scale)); }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-phase-bar {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-controls,
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-actions,
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-main-actions {
+  flex-direction: row;
+  flex-wrap: wrap;
+  width: auto;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-controls,
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-actions:has(.toe-main-actions) { width: 100%; }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-main-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(calc(108px * var(--toe-action-scale)), 100%), 1fr));
+  width: 100%;
+  gap: calc(4px * var(--toe-action-scale));
+}
+.toe-hand-area[data-hand-composition="coastal"][data-hand-layout="portrait"] .toe-main-actions:has(.toe-turn-multiply) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-plaque {
+  width: calc(120px * var(--toe-action-scale));
+  height: calc(44px * var(--toe-action-scale));
+  padding: calc(6px * var(--toe-action-scale));
+  gap: calc(6px * var(--toe-action-scale));
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-main-actions .toe-turn-plaque { width: 100%; }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) > [data-self-hand-strip] {
+  grid-column: 1;
+  grid-row: 2;
+  justify-content: safe center !important;
+  margin-left: calc(54px * var(--toe-action-scale));
+  padding: calc(14px * var(--toe-action-scale)) 0 calc(5px * var(--toe-action-scale)) !important;
+  min-height: 0;
+  gap: calc(8px * var(--toe-action-scale)) !important;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x proximity;
+  scrollbar-width: thin;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) [data-self-hand-card] {
+  margin-left: 0 !important;
+  scroll-snap-align: start;
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count {
+  left: calc(4px * var(--toe-action-scale));
+  bottom: calc(22px * var(--toe-action-scale));
+  width: calc(48px * var(--toe-action-scale));
+  height: calc(48px * var(--toe-action-scale));
+}
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-label { font-size: calc(9px * var(--toe-action-scale)); }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-value { font-size: calc(15px * var(--toe-action-scale)); }

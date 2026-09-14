@@ -1,4 +1,11 @@
-﻿import './battle.css';
+import './battle.css';
+import { useUiAppearance } from '../../ui/UiAppearance';
+import { getBattleBackgroundImage } from '../../constants/theme';
+import { buildPublicUrl } from '../../utils/url';
+import { OpponentArc } from './OpponentArc';
+import { ArchBattleLayout, ClassicBattleLayout } from './BattleLayouts';
+import { CoastalBattleLayout, CoastalOpponents } from './CoastalBattleLayout';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   RINFO,
@@ -210,6 +217,8 @@ export function BattleScreen(props) {
     smallBtnStyle,
     handleUiSfxCapture,
     returnToMainMenu,
+    requestExitMatch,
+    confirmExitMatch,
     setExitMatchConfirm,
     leaveMultiplayerMatchToStart,
     handleAIClick,
@@ -293,12 +302,222 @@ export function BattleScreen(props) {
     setIsSoloPaused,
   } = props;
 
+  const { appearance } = useUiAppearance();
+  const archLayout = appearance.battleLayout === 'arch';
+  const coastalLayout = appearance.battleLayout === 'coastal';
+  const coastalCompact = isMobile || isMobileLandscape;
+  const coastalScale = coastalCompact ? 1 : vw / DESIGN_WIDTH;
+  const boardZoom = coastalLayout ? coastalScale : scaleRatio;
+  const compositionFonts = coastalLayout ? { ...fontSizes, body: 12, small: 11, tiny: 10 } : fontSizes;
+  const coastalBoardHeight = coastalLayout ? Math.max(620, (props.vh || 620) / coastalScale) : undefined;
+  const sceneBackgroundStyle = coastalLayout ? {
+    ...battleBackgroundStyle,
+    backgroundImage: `linear-gradient(rgba(0, 4, 7, .13), rgba(0, 3, 5, .3)), url('${buildPublicUrl(getBattleBackgroundImage(gs.expansionKey))}')`,
+  } : battleBackgroundStyle;
+  const OpponentLayout = coastalLayout ? CoastalOpponents : archLayout ? OpponentArc : 'div';
+  const BoardLayout = appearance.BattleLayout || (coastalLayout ? CoastalBattleLayout : archLayout ? ArchBattleLayout : ClassicBattleLayout);
+  const middleRowRef = useRef(null);
+  const [measuredCentralHeight, setMeasuredCentralHeight] = useState(middleRowHeight);
+  const desktopLayout = !isMobile && !isMobileLandscape;
+  const centralHeight = desktopLayout ? Math.min(middleRowHeight, measuredCentralHeight) : middleRowHeight;
+  useLayoutEffect(() => {
+    if (!desktopLayout || coastalLayout) return;
+    const row = middleRowRef.current;
+    const scene = row?.closest('.toe-battle-content');
+    const root = row?.closest('.toe-battle-root');
+    const hand = scene?.querySelector('[data-hand-area]');
+    if (!row || !scene || !root || !hand) return;
+    const measure = () => {
+      const rootStyle = getComputedStyle(root);
+      const padding = parseFloat(rootStyle.paddingTop) + parseFloat(rootStyle.paddingBottom);
+      // Layout sizes exclude fan lifts and scene shake. Subtract the current row
+      // so shrinking it cannot feed back into the next available-space budget.
+      const otherHeight = scene.offsetHeight - row.offsetHeight * scaleRatio;
+      const pileFontZoom = compactBoardScaleRatio < 1 ? 1 / compactBoardScaleRatio : 1;
+      const available = (window.innerHeight - padding - otherHeight - 2) / (scaleRatio * pileFontZoom);
+      const next = Math.max(113, Math.min(middleRowHeight, available));
+      setMeasuredCentralHeight(previous => Math.abs(previous - next) < 1 ? previous : next);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    [scene, row, hand].forEach(element => observer?.observe(element));
+    window.addEventListener('resize', measure);
+    return () => {
+      observer?.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [desktopLayout, middleRowHeight, scaleRatio, compactBoardScaleRatio, appearance.id, coastalLayout]);
+
   const getButtonStyle = (opts) =>
     getPhaseActionButtonStyle({ isMobile, isMobileLandscape, mobileCssPx, interactionFontSizes, ...opts });
 
+  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} {...(archLayout || coastalLayout ? { currentTurn: visualCurrentTurn, compact: isMobile || isMobileLandscape } : { style: {
+          display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
+          gap: isMobile ? boardCssPx(6) : isMobileLandscape ? boardCssPx(4) : 8,
+          justifyContent: 'center', width: '100%',
+        } })}>
+          {visualPlayers.slice(1).map((p,i)=>{
+            const pi=i+1;
+            const isTutorialTargetAllowed=!isScriptedTutorial||isTutorialActionAllowed({type:'selectTarget',pid:pi});
+            const isEtherealizeTargetAllowed=phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
+            const isSel=selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
+            // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
+            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
+            // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
+            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
+            const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
+            const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
+              return(
+                <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={coastalLayout ? 1 : boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
+                </div>
+              );
+            })}
+        </OpponentLayout>);
+  const middlePanel = (<div ref={middleRowRef} data-battle-middle-row style={{display:'flex',gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(6):10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
+          <SelfPlayerPanel
+            selfPanelRef={selfPanelRef}
+            roleTextRef={roleTextRef}
+            emojiButtonRef={emojiButtonRef}
+            player={visualMe}
+            displayStats={displayStats}
+            ri={ri}
+            phase={phase}
+            isBlocked={isBlocked}
+            canLocalTargetSelect={canLocalTargetSelect}
+            suppressAnim={suppressAnim}
+            tutorialStep={tutorialStep}
+            isMobile={isMobile}
+            isMobileLandscape={isMobileLandscape}
+            boardCssPx={boardCssPx}
+            middleRowHeight={centralHeight}
+            fontSizes={compositionFonts}
+            boardScaleRatio={coastalLayout ? 1 : boardScaleRatio}
+            vw={vw}
+            expansionKey={gs.expansionKey}
+            hitIndices={hitIndices}
+            sanHitIndices={sanHitIndices}
+            hpHealIndices={hpHealIndices}
+            sanHealIndices={sanHealIndices}
+            guillotinedPids={guillotinedPids}
+            godHighlightPanelBursts={godHighlightPanelBursts}
+            isSelfDeadPanelDimmed={isSelfDeadPanelDimmed}
+            isMultiplayer={isMultiplayer}
+            showEmojiPicker={showEmojiPicker}
+            setShowEmojiPicker={setShowEmojiPicker}
+            setEmojiButtonPos={setEmojiButtonPos}
+            handleAIClick={handleAIClick}
+          />
+          {/* Center: deck/discard piles */}
+        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={coastalLayout ? 170 : centralHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={coastalLayout ? 1 : compactBoardScaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
+          {/* Log — narrow, right-aligned */}
+          <BattleLogPanel
+            logRef={logRef}
+            visibleLog={visibleLog}
+            players={gs.players}
+            isMultiplayer={!!gs._isMP}
+            expansionKey={gs.expansionKey}
+            isMobile={isMobile}
+            middleRowHeight={centralHeight}
+            fontSizes={compositionFonts}
+            scaleRatio={coastalLayout ? 1 : layoutScaleRatio}
+          />
+        </div>);
+  const phasePrompt = (<div data-prompt-panel>
+          <BattlePhaseBar
+            myTurn={myTurn}
+            phase={phase}
+            isMobile={isMobile}
+            baseFontSizes={coastalLayout ? { ...interactionFontSizes, body: 12, small: 11 } : interactionFontSizes}
+            scaleRatio={layoutScaleRatio}
+            displayPhaseLabel={coastalLayout && phase === 'ACTION' && myTurn ? '你的回合 · 请选择行动' : (archLayout || coastalLayout) && typeof displayPhaseLabel === 'string' ? displayPhaseLabel.replace(/(手牌超限)\s*[（(]\d+\/\d+[)）]/, '$1') : displayPhaseLabel}
+            cardHintText={coastalLayout && phase === 'ACTION' ? '' : cardHintText === '鼠标悬停查看卡牌详情（移动端请点击卡牌）' ? '点击手牌选择行动' : cardHintText}
+            isPhaseWarningText={isPhaseWarningText}
+            isSpectating={isSpectating}
+            isMultiplayer={isMultiplayer}
+            isMpCthDecisionPhase={isMpCthDecisionPhase}
+            isLocalMpDecisionActive={isLocalMpDecisionActive}
+            isDiscardPhaseResolving={isDiscardPhaseResolving}
+            isBlocked={isBlocked}
+            mpCthSec={mpCthSec}
+            mpTurnSec={mpTurnSec}
+            mpDiscardSec={mpDiscardSec}
+            mpHuntSec={mpHuntSec}
+            mpDecisionSec={mpDecisionSec}
+            colors={{
+              warning: promptWarningTextColor,
+              active: promptActiveTextColor,
+              caution: promptCautionTextColor,
+              safe: promptSafeTextColor,
+              muted: promptMutedTextColor,
+            }}
+          />
+        </div>);
+  const handPanel = (<HandArea
+          handAreaRef={handAreaRef}
+          skillButtonRef={skillButtonRef}
+          restButtonRef={restButtonRef}
+          gs={gs}
+          me={me}
+          visualMe={visualMe}
+          ri={ri}
+          phase={phase}
+          myTurn={myTurn}
+          decisionContext={decisionContext}
+          isSpectating={isSpectating}
+          isVisualPlayerTurn={isVisualPlayerTurn}
+          isActionControlsHidden={isActionControlsHidden}
+          cancelable={cancelable}
+          showCancelBtn={showCancelBtn}
+          canShowEndTurnButton={canShowEndTurnButton}
+          isDiscardPhaseResolving={isDiscardPhaseResolving}
+          isDiscardPhasePromptActive={isDiscardPhasePromptActive}
+          isLocalHuntRevealPrompt={isLocalHuntRevealPrompt}
+          isLocalCurrentTurn={isLocalCurrentTurn}
+          currentTurnPlayer={currentTurnPlayer}
+          isBlocked={isBlocked}
+          isScriptedTutorial={isScriptedTutorial}
+          isTutorialActionAllowed={isTutorialActionAllowed}
+          tutorialStep={tutorialStep}
+          effectiveHandLimit={effectiveHandLimit}
+          skillLimited={skillLimited}
+          skillRi={skillRi}
+          effectiveSkillName={effectiveSkillName}
+          isMyCardClickable={isMyCardClickable}
+          canPlayerRespondWithAnyHandCard={canPlayerRespondWithAnyHandCard}
+          canPlayerRespondWithFireHandCard={canPlayerRespondWithFireHandCard}
+          cardsHuntMatch={cardsHuntMatch}
+          mobileArmedGodCardIdx={mobileArmedGodCardIdx}
+          mobileArmedGodCard={mobileArmedGodCard}
+          mobileArmedGodTooltipRect={mobileArmedGodTooltipRect}
+          mobileGodCardRefs={mobileGodCardRefs}
+          blackGoatPulsePid={blackGoatPulsePid}
+          promptWarningTextColor={promptWarningTextColor}
+          promptActiveTextColor={promptActiveTextColor}
+          isMobile={isMobile}
+          isMobileLandscape={isMobileLandscape}
+          mobileCssPx={mobileCssPx}
+          interactionFontSizes={interactionFontSizes}
+          mobileHandUsesCompact={mobileHandUsesCompact}
+          selfHandCardScale={coastalLayout && coastalCompact ? 2 : selfHandCardScale}
+          scaleRatio={boardZoom}
+          handleMyCardClick={handleMyCardClick}
+          useAbility={useAbility}
+          doRest={doRest}
+          endTurn={endTurn}
+          cancelAction={cancelAction}
+          huntConfirm={huntConfirm}
+          confirmDiscard={confirmDiscard}
+          confirmBuryAliveSelection={confirmBuryAliveSelection}
+          confirmIgniteTorchDiscard={confirmIgniteTorchDiscard}
+          setGs={setGs}
+          getButtonStyle={getButtonStyle}
+          anim={anim}
+        />);
+
   return (
     <>
-    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...battleBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+    <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...sceneBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     }}>
       {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
       {/* Global vignette */}
@@ -354,15 +573,15 @@ export function BattleScreen(props) {
         </div>
       )}
       {exitMatchConfirm&&(
-        <div style={{position:'fixed',inset:0,zIndex:10020,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div role="dialog" aria-modal="true" aria-label="退出对局确认" style={{position:'fixed',inset:0,zIndex:10040,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div className="toe-dialog" style={{width:'min(420px,92vw)',padding:'22px 24px',textAlign:'center'}}>
             <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:15,color:'#c8a96e',letterSpacing:2,marginBottom:14}}>退出对局</div>
             <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:14,color:'#b89858',lineHeight:1.6,marginBottom:20}}>
               {exitMatchConfirm.message}
             </div>
             <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
-              <button className="toe-button toe-button-danger" onClick={leaveMultiplayerMatchToStart} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>确认退出</button>
-              <button className="toe-button" onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>取消</button>
+              <button className="toe-button toe-button-danger" onClick={confirmExitMatch || leaveMultiplayerMatchToStart} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>确认退出</button>
+              <button className="toe-button" autoFocus onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>取消</button>
             </div>
           </div>
         </div>
@@ -451,7 +670,7 @@ export function BattleScreen(props) {
       {/* Shake only the board content: transforming the root reanchors and clips its fixed backgrounds/overlays. */}
       <BattleSceneContent shake={sceneShake} paused={isSoloPaused} style={{position:'relative',zIndex:2,width:'100%',maxWidth:DESIGN_WIDTH*scaleRatio,alignSelf:'center',display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
         {/* Header */}
-        <BattleHeader
+        {!coastalLayout && <BattleHeader
           isMultiplayer={isMultiplayer}
           isSpectating={isSpectating}
           showTutorial={showTutorial}
@@ -463,196 +682,29 @@ export function BattleScreen(props) {
           setExitMatchConfirm={setExitMatchConfirm}
           returnToMainMenu={returnToMainMenu}
           pauseGame={()=>setIsSoloPaused(true)}
-        />
+        />}
 
         {/* Scaled player areas wrapper */}
         <div style={{overflow:'visible',width:'100%',display:'flex',justifyContent:'center'}}>
           <div data-zoom-container style={{
-            zoom:scaleRatio!==1?scaleRatio:'normal',
-            width:DESIGN_WIDTH,
+            zoom:boardZoom!==1?boardZoom:'normal',
+            width:coastalLayout && coastalCompact ? vw : DESIGN_WIDTH,
             flexShrink:0,
-            transformOrigin:'top center'
+            transformOrigin:'top center',
+            '--toe-coastal-height': coastalLayout ? `${coastalBoardHeight}px` : undefined,
           }}>
-            <div style={{width:'100%',boxSizing:'border-box',padding:`0 ${(isMobile||isMobileLandscape)?boardCssPx(scaledAreaSafeInsetX):scaledAreaSafeInsetX}px`}}>
+            <div style={{width:'100%',boxSizing:'border-box',padding:coastalLayout ? 0 : `0 ${(isMobile||isMobileLandscape)?boardCssPx(scaledAreaSafeInsetX):scaledAreaSafeInsetX}px`}}>
 
-        {/* AI panels */}
-        <div ref={aiPanelAreaRef} style={{
-          display:'grid',
-          gridTemplateColumns:'repeat(4,1fr)',
-          gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(4):8,
-          justifyContent:'center',
-          width:'100%'
-        }}>
-          {visualPlayers.slice(1).map((p,i)=>{
-            const pi=i+1;
-            const isTutorialTargetAllowed=!isScriptedTutorial||isTutorialActionAllowed({type:'selectTarget',pid:pi});
-            const isEtherealizeTargetAllowed=phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
-            const isSel=selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
-            // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
-            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
-            // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
-            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
-            const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
-            const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
-              return(
-                <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
-                </div>
-              );
-            })}
-        </div>
-
-        {/* Middle: self info + deck/discard piles + log */}
-        <div style={{display:'flex',gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(6):10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
-          <SelfPlayerPanel
-            selfPanelRef={selfPanelRef}
-            roleTextRef={roleTextRef}
-            emojiButtonRef={emojiButtonRef}
-            player={visualMe}
-            displayStats={displayStats}
-            ri={ri}
-            phase={phase}
-            isBlocked={isBlocked}
-            canLocalTargetSelect={canLocalTargetSelect}
-            suppressAnim={suppressAnim}
-            tutorialStep={tutorialStep}
-            isMobile={isMobile}
-            isMobileLandscape={isMobileLandscape}
-            boardCssPx={boardCssPx}
-            middleRowHeight={middleRowHeight}
-            fontSizes={fontSizes}
-            boardScaleRatio={boardScaleRatio}
-            vw={vw}
-            expansionKey={gs.expansionKey}
-            hitIndices={hitIndices}
-            sanHitIndices={sanHitIndices}
-            hpHealIndices={hpHealIndices}
-            sanHealIndices={sanHealIndices}
-            guillotinedPids={guillotinedPids}
-            godHighlightPanelBursts={godHighlightPanelBursts}
-            isSelfDeadPanelDimmed={isSelfDeadPanelDimmed}
-            isMultiplayer={isMultiplayer}
-            showEmojiPicker={showEmojiPicker}
-            setShowEmojiPicker={setShowEmojiPicker}
-            setEmojiButtonPos={setEmojiButtonPos}
-            handleAIClick={handleAIClick}
-          />
-          {/* Center: deck/discard piles */}
-        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={middleRowHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={compactBoardScaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
-          {/* Log — narrow, right-aligned */}
-          <BattleLogPanel
-            logRef={logRef}
-            visibleLog={visibleLog}
-            players={gs.players}
-            isMultiplayer={!!gs._isMP}
-            expansionKey={gs.expansionKey}
-            isMobile={isMobile}
-            middleRowHeight={middleRowHeight}
-            fontSizes={fontSizes}
-            scaleRatio={layoutScaleRatio}
-          />
-        </div>
-
-        {/* Phase bar */}
-        <div data-prompt-panel>
-          <BattlePhaseBar
-            myTurn={myTurn}
-            phase={phase}
-            isMobile={isMobile}
-            baseFontSizes={interactionFontSizes}
-            scaleRatio={layoutScaleRatio}
-            displayPhaseLabel={displayPhaseLabel}
-            cardHintText={cardHintText}
-            isPhaseWarningText={isPhaseWarningText}
-            isSpectating={isSpectating}
-            isMultiplayer={isMultiplayer}
-            isMpCthDecisionPhase={isMpCthDecisionPhase}
-            isLocalMpDecisionActive={isLocalMpDecisionActive}
-            isDiscardPhaseResolving={isDiscardPhaseResolving}
-            isBlocked={isBlocked}
-            mpCthSec={mpCthSec}
-            mpTurnSec={mpTurnSec}
-            mpDiscardSec={mpDiscardSec}
-            mpHuntSec={mpHuntSec}
-            mpDecisionSec={mpDecisionSec}
-            colors={{
-              warning: promptWarningTextColor,
-              active: promptActiveTextColor,
-              caution: promptCautionTextColor,
-              safe: promptSafeTextColor,
-              muted: promptMutedTextColor,
-            }}
-          />
-        </div>
-
+        <BoardLayout opponents={opponentPanels} middle={middlePanel} prompt={phasePrompt} hand={handPanel}
+          turn={gs.turn} turnLabel={visualCurrentTurn === 0 ? '你的回合' : `${visualPlayers[visualCurrentTurn]?.name || '其他角色'}的回合`}
+          counts={{ inspection: gs.inspectionDeck.length, deck: gs.deck.length, discard: visualDiscard.length }}
+          compact={coastalCompact} width={coastalCompact ? vw : DESIGN_WIDTH} height={coastalBoardHeight} />
         <DamageLinkOverlay
           visualPlayers={visualPlayers}
           damageLinkGhosts={damageLinkGhosts}
           damageLinkEstablishAnims={damageLinkEstablishAnims}
         />
 
-        {/* Hand area */}
-        <HandArea
-          handAreaRef={handAreaRef}
-          skillButtonRef={skillButtonRef}
-          restButtonRef={restButtonRef}
-          gs={gs}
-          me={me}
-          visualMe={visualMe}
-          ri={ri}
-          phase={phase}
-          myTurn={myTurn}
-          decisionContext={decisionContext}
-          isSpectating={isSpectating}
-          isVisualPlayerTurn={isVisualPlayerTurn}
-          isActionControlsHidden={isActionControlsHidden}
-          cancelable={cancelable}
-          showCancelBtn={showCancelBtn}
-          canShowEndTurnButton={canShowEndTurnButton}
-          isDiscardPhaseResolving={isDiscardPhaseResolving}
-          isDiscardPhasePromptActive={isDiscardPhasePromptActive}
-          isLocalHuntRevealPrompt={isLocalHuntRevealPrompt}
-          isLocalCurrentTurn={isLocalCurrentTurn}
-          currentTurnPlayer={currentTurnPlayer}
-          isBlocked={isBlocked}
-          isScriptedTutorial={isScriptedTutorial}
-          isTutorialActionAllowed={isTutorialActionAllowed}
-          tutorialStep={tutorialStep}
-          effectiveHandLimit={effectiveHandLimit}
-          skillLimited={skillLimited}
-          skillRi={skillRi}
-          effectiveSkillName={effectiveSkillName}
-          isMyCardClickable={isMyCardClickable}
-          canPlayerRespondWithAnyHandCard={canPlayerRespondWithAnyHandCard}
-          canPlayerRespondWithFireHandCard={canPlayerRespondWithFireHandCard}
-          cardsHuntMatch={cardsHuntMatch}
-          mobileArmedGodCardIdx={mobileArmedGodCardIdx}
-          mobileArmedGodCard={mobileArmedGodCard}
-          mobileArmedGodTooltipRect={mobileArmedGodTooltipRect}
-          mobileGodCardRefs={mobileGodCardRefs}
-          blackGoatPulsePid={blackGoatPulsePid}
-          promptWarningTextColor={promptWarningTextColor}
-          promptActiveTextColor={promptActiveTextColor}
-          isMobile={isMobile}
-          isMobileLandscape={isMobileLandscape}
-          mobileCssPx={mobileCssPx}
-          interactionFontSizes={interactionFontSizes}
-          mobileHandUsesCompact={mobileHandUsesCompact}
-          selfHandCardScale={selfHandCardScale}
-          scaleRatio={scaleRatio}
-          handleMyCardClick={handleMyCardClick}
-          useAbility={useAbility}
-          doRest={doRest}
-          endTurn={endTurn}
-          cancelAction={cancelAction}
-          huntConfirm={huntConfirm}
-          confirmDiscard={confirmDiscard}
-          confirmBuryAliveSelection={confirmBuryAliveSelection}
-          confirmIgniteTorchDiscard={confirmIgniteTorchDiscard}
-          setGs={setGs}
-          getButtonStyle={getButtonStyle}
-          anim={anim}
-        />
             </div>
           </div>
         </div>
@@ -745,7 +797,9 @@ export function BattleScreen(props) {
     </div>
     {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
          so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
-    <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
+    <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}
+      battleControls={coastalLayout ? { onPause: () => setIsSoloPaused(true), onExit: requestExitMatch || returnToMainMenu, isMultiplayer, showTutorial,
+        style: { top: coastalCompact ? 8 : 125 * coastalScale, right: coastalCompact ? 8 : 10 * coastalScale } } : undefined} />
     {isLocalTestMode&&(
       <button
         type="button"

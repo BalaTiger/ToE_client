@@ -1,0 +1,8 @@
+{
+  "mode": "built-in image_gen",
+  "references": [
+    "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-b951c984-82d6-47bb-b3f1-67604002db02.png",
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-proposals-2026-09-14/layout-3A-piles-controls.png"
+  ],
+  "prompt": "Make ONE tiny localized correction to IMAGE 1, the full screenshot with the compact menu open.\nRestore the small PAUSE button that was accidentally lost. Copy the Pause control from IMAGE 2 (the closed-menu version): a small dark aged-metal round badge with the engraved \"Ⅱ\" icon, and the tiny label \"暂停\" below. Place it immediately to the LEFT of the existing gear/menu badge, mounted on the star dial's bottom rim, centered approximately x=1570,y=163 at this 1672×941 size. The gear is centered near x=1635,y=163. Both separate controls must be visible ABOVE the floating menu. Keep the circle about38px across and label small, matching image 2.\nChange NOTHING ELSE in IMAGE 1. Preserve the compact open menu and all its content/position, all scene/background pixels, every card and UI element, color and lighting. Do not move or enlarge anything. Only add the missing Pause badge and label. Output the same entire landscape screenshot."
+}

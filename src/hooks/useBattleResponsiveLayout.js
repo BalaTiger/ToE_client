@@ -48,7 +48,7 @@ export function buildBattleResponsiveLayout(vw, vh) {
   // fan clearance and captions before assigning space to the central piles.
   const desktopHandWidth = Math.max(90, Math.min(120, 90 + (vh / scaleRatio - 720) / 6));
   const extraHandHeight = (desktopHandWidth - 90) * 590 / 392;
-  const desktopMiddleRowHeight = Math.max(145, Math.min(282, vh / scaleRatio - 575 - extraHandHeight));
+  const desktopMiddleRowHeight = Math.max(113, Math.min(282, vh / scaleRatio - 607 - extraHandHeight));
   const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : desktopMiddleRowHeight;
   const desktopBoardScaleRatio = scaleRatio < 1 ? Math.sqrt(scaleRatio) : scaleRatio;
 

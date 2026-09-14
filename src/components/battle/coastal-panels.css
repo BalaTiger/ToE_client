@@ -1,0 +1,131 @@
+.toe-self-faith, .toe-faith-status { display: contents; }
+.toe-coastal-portrait { display: none; }
+
+[data-ui-layout='coastal'] {
+  --toe-coastal-panel-font: 'IM Fell English', var(--font-serif-sc, 'SimSun', serif);
+  --toe-coastal-ink: #d0c4aa;
+  --toe-coastal-ink-strong: #dfd1b4;
+  --toe-coastal-ink-muted: #ada58f;
+}
+/* Limit the text treatment to UI labels; card faces keep their own type. */
+[data-ui-layout='coastal'] :is(.toe-self-name, .toe-self-role, .toe-opponent-name, .toe-opponent-role, .toe-stat-value, .toe-faith-heading, .toe-faith-empty, .toe-faith-god-name, .toe-faith-power-name, .toe-faith-power-description, .toe-log-heading, .toe-log-line, .toe-turn-label, .toe-hand-count, .toe-coastal-turn, .toe-coastal-counts) {
+  font-family: var(--toe-coastal-panel-font) !important;
+  font-weight: 400 !important;
+  color: var(--toe-coastal-ink) !important;
+  text-shadow: 0 1px 2px #000b !important;
+}
+[data-ui-layout='coastal'] .toe-stat-value { letter-spacing: .3px !important; line-height: 1.15; }
+[data-ui-layout='coastal'] [data-stat-label] > .toe-stat-value:first-child { color: var(--toe-coastal-ink-muted) !important; }
+[data-ui-layout='coastal'] [data-stat-low='true'] > .toe-stat-value:last-child { color: #cd9585 !important; }
+
+[data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel) {
+  box-sizing: border-box;
+  background: transparent !important;
+  border-color: transparent !important;
+  border-radius: 0 !important;
+  isolation: isolate;
+}
+[data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel)::before,
+[data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel) > :is(.toe-panel-frame, [data-theme-ornament]),
+[data-ui-layout='coastal'] .toe-log-frame-shell > .toe-panel-frame { display: none; }
+[data-ui-layout='coastal'] .toe-coastal-portrait { display: block; min-width: 0; align-self: stretch; overflow: hidden; background: #090d0e; }
+[data-ui-layout='coastal'] .toe-coastal-portrait img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 38%; }
+[data-ui-layout='coastal'] [data-stat-label] { width: 100% !important; }
+[data-ui-layout='coastal'] [data-stat-label='SAN'] .toe-stat-fill { background-color: #3e9195 !important; }
+[data-ui-layout='coastal'] .toe-san-threshold { top: -2px !important; bottom: -2px !important; background: #b3aa87; opacity: .85; }
+[data-ui-layout='coastal'] .toe-san-threshold > div { display: none; }
+
+[data-ui-layout='coastal'] .toe-self-player-panel { width: 100% !important; min-width: 0 !important; flex-basis: auto !important; min-height: 0 !important; padding: 0 !important; box-shadow: none; }
+[data-ui-layout='coastal'] .toe-self-content { display: grid; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 51px 43px auto; gap: 3px 8px; position: relative; }
+[data-ui-layout='coastal'] .toe-self-content::before { content: ''; position: absolute; top: -5px; left: -8px; width: calc(100% + 16px); height: auto; aspect-ratio: 806 / 364; background: var(--toe-coastal-self-frame) center / contain no-repeat; pointer-events: none; z-index: -1; }
+[data-ui-layout='coastal'] .toe-self-content > .toe-coastal-portrait { grid-column: 1; grid-row: 1 / span 2; width: 54px; height: 54px; margin: 27px 0 15px 16px; border-radius: 50%; }
+[data-ui-layout='coastal'] .toe-self-details { display: contents; }
+[data-ui-layout='coastal'] .toe-self-title { grid-column: 2; grid-row: 1; display: block !important; padding: 22px 15px 0 0; }
+[data-ui-layout='coastal'] .toe-self-name { font-size: 13px !important; color: var(--toe-coastal-ink-strong) !important; letter-spacing: .6px !important; line-height: 1.2; margin-bottom: 1px !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+[data-ui-layout='coastal'] .toe-self-role { font-size: 10px !important; color: var(--toe-coastal-ink-muted) !important; line-height: 1.25; letter-spacing: .5px !important; }
+[data-ui-layout='coastal'] .toe-self-goal { display: none; }
+[data-ui-layout='coastal'] .toe-self-stats { grid-column: 2; grid-row: 2; border: 0 !important; padding: 0 14px 7px 0 !important; }
+[data-ui-layout='coastal'] .toe-self-stats [data-stat-label] { grid-template-columns: 26px minmax(0, 1fr) 16px !important; column-gap: 5px !important; }
+[data-ui-layout='coastal'] .toe-self-stats .toe-stat-value { font-size: 11px !important; }
+[data-ui-layout='coastal'] .toe-self-stats .toe-stat-track { height: 8px !important; }
+[data-ui-layout='coastal'] .toe-self-faith { display: flex; flex-direction: column; gap: 6px; grid-column: 1 / -1; grid-row: 3; margin: 20px 4px 0; padding: 30px 34px 60px; min-height: 276px; box-sizing: border-box; position: relative; background: var(--toe-coastal-faith-banner) center / 100% 100% no-repeat; }
+[data-ui-layout='coastal'] .toe-self-content .toe-self-faith { padding: 27px 33px 56px; min-width: 0; }
+[data-ui-layout='coastal'] .toe-self-faith > *,
+[data-ui-layout='coastal'] .toe-self-faith [data-god-power-badge] { min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; white-space: normal; }
+[data-ui-layout='coastal'] .toe-faith-heading { color: var(--toe-coastal-ink-strong) !important; font-size: 13px; line-height: 1.4; text-align: center; letter-spacing: 1.5px; margin-bottom: 2px; }
+[data-ui-layout='coastal'] .toe-faith-empty { color: var(--toe-coastal-ink-muted) !important; font-size: 11px; line-height: 1.6; text-align: center; }
+[data-ui-layout='coastal'] .toe-faith-status { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; scrollbar-color: #73684d transparent; }
+[data-ui-layout='coastal'] .toe-faith-status > * { flex-shrink: 0; }
+[data-ui-layout='coastal'] .toe-faith-status > :is([data-resting-marker], [data-etherealize-badge], [title^='中毒']),
+[data-ui-layout='coastal'] .toe-faith-status > div:not([data-god-power-badge]),
+[data-ui-layout='coastal'] [data-player-god-status] > span,
+[data-ui-layout='coastal'] [data-player-god-status] [data-god-power-badge] {
+  font-family: var(--toe-coastal-panel-font) !important;
+  color: var(--toe-coastal-ink-muted) !important;
+  font-weight: 400 !important;
+  text-shadow: 0 1px 2px #000b !important;
+  line-height: 1.5;
+}
+[data-ui-layout='coastal'] .toe-faith-status > :is(div, [data-etherealize-badge], [title^='中毒']) { font-size: 11px !important; }
+[data-ui-layout='coastal'] .toe-faith-status [data-resting-marker] { filter: none !important; }
+[data-ui-layout='coastal'] .toe-self-faith [data-god-power-badge] { width: 100%; background: transparent !important; border: 0 !important; padding: 0 !important; text-align: center; }
+[data-ui-layout='coastal'] .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-god-name { font-size: 12px !important; color: var(--toe-coastal-ink-strong) !important; line-height: 1.5; letter-spacing: .5px !important; }
+[data-ui-layout='coastal'] .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-power-name { font-size: 10.5px !important; color: var(--toe-coastal-ink-muted) !important; line-height: 1.5; letter-spacing: 0; }
+[data-ui-layout='coastal'] .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-power-description { font-size: 11.5px !important; color: var(--toe-coastal-ink) !important; line-height: 1.6 !important; margin-top: 7px !important; text-align: left; }
+[data-ui-layout='coastal'] .toe-self-faith :is([data-etherealize-badge], [title^='中毒']) { background: transparent !important; border-color: transparent !important; box-shadow: none !important; }
+
+[data-ui-layout='coastal'] .toe-coastal-opponent-seat { align-self: stretch !important; display: flex; }
+[data-ui-layout='coastal'] .toe-opponent-panel { display: grid; grid-template-columns: 47px minmax(0, 1fr); grid-template-rows: 18px 27px 27px minmax(20px, auto) auto 1fr; align-content: start; gap: 2px 5px; padding: 13px 10px 12px !important; height: 100%; }
+[data-ui-layout='coastal'] .toe-opponent-panel::after { content: ''; position: absolute; inset: -2px; background: var(--toe-coastal-opponent-frame) center / 100% 100% no-repeat; z-index: -1; pointer-events: none; }
+[data-ui-layout='coastal'] .toe-opponent-panel > .toe-coastal-portrait { grid-column: 1; grid-row: 1 / span 3; border-radius: 2px; }
+[data-ui-layout='coastal'] .toe-opponent-heading { grid-column: 2; grid-row: 1; flex-wrap: nowrap; gap: 2px !important; margin-bottom: 0 !important; padding-bottom: 0 !important; min-width: 0; height: 18px; border-bottom: 0 !important; }
+[data-ui-layout='coastal'] .toe-opponent-name { flex: 1; min-width: 0; width: auto; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px !important; color: var(--toe-coastal-ink-strong) !important; letter-spacing: .4px !important; line-height: 1.25; }
+[data-ui-layout='coastal'] .toe-opponent-role { flex: 0 0 auto; font-size: 10px !important; margin-left: 0 !important; color: var(--toe-coastal-ink-muted) !important; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label='HP'] { grid-column: 2; grid-row: 2; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label='SAN'] { grid-column: 2; grid-row: 3; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label] { grid-template-columns: minmax(0, 1fr) auto !important; grid-template-rows: 13px 8px; gap: 3px 0 !important; margin-bottom: 0 !important; align-content: start; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label] > span:first-child { grid-column: 1; grid-row: 1; padding: 0 !important; font-size: 10px !important; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label] > span:last-child { grid-column: 2; grid-row: 1; font-size: 10px !important; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-stat-label] > .toe-stat-track { grid-column: 1 / -1; grid-row: 2; height: 7px !important; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-player-god-status] { grid-column: 1 / -1; grid-row: 4; }
+[data-ui-layout='coastal'] .toe-opponent-zones { grid-column: 1 / -1; grid-row: 5; }
+[data-ui-layout='coastal'] .toe-opponent-panel > [data-player-hand-strip] { grid-column: 1 / -1; grid-row: 6; }
+[data-ui-layout='coastal'] .toe-opponent-panel[data-current-turn='true']::after { filter: drop-shadow(0 0 5px #c9a853); }
+[data-ui-layout='coastal'] .toe-opponent-panel .toe-turn-marker { position: absolute; top: -17px; right: 10px; padding: 1px 5px; border: 1px solid #9f8250; color: var(--toe-coastal-ink) !important; background: #15201b; font-family: var(--toe-coastal-panel-font); font-weight: 400; white-space: nowrap; }
+
+[data-ui-layout='coastal'] .toe-pile-display { min-height: 220px !important; height: 100%; display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-around !important; gap: 14px; }
+[data-ui-layout='coastal'] .toe-pile-display > [data-theme-ornament] { display: none; }
+[data-ui-layout='coastal'] .toe-pile-display > :is([data-inspection-pile], [data-deck-pile]) { position: relative !important; inset: auto !important; flex-shrink: 0; }
+[data-ui-layout='coastal'] .toe-pile-display > [data-inspection-pile] { order: 0; }
+[data-ui-layout='coastal'] .toe-pile-display > [data-discard-pile] { order: 1; flex-shrink: 0; }
+[data-ui-layout='coastal'] .toe-pile-display > [data-deck-pile] { order: 2; }
+
+[data-ui-layout='coastal'] .toe-log-frame-shell { display: block; box-sizing: border-box; width: 100% !important; min-height: 220px; height: 100% !important; position: relative; padding: 25px 22px 61px; background: var(--toe-coastal-log-banner) center / 100% 100% no-repeat; }
+[data-ui-layout='coastal'] .toe-log-frame-shell > [data-log-panel] { width: 100% !important; min-height: 0 !important; max-height: none !important; height: 100%; padding: 0 3px !important; border: 0 !important; background: transparent !important; box-shadow: none; box-sizing: border-box; }
+[data-ui-layout='coastal'] .toe-log-frame-shell > [data-log-panel]::before,
+[data-ui-layout='coastal'] .toe-log-relief { display: none; }
+[data-ui-layout='coastal'] .toe-coastal-log .toe-log-frame-shell { padding: 17px 24px 44px; }
+[data-ui-layout='coastal'] .toe-coastal-log .toe-log-heading { font-size: 13px !important; color: var(--toe-coastal-ink-strong) !important; text-align: center; margin: 0 0 5px !important; padding: 0 !important; border: 0 !important; letter-spacing: 1.5px !important; line-height: 1.4; }
+[data-ui-layout='coastal'] .toe-log-line { font-size: 11px !important; line-height: 1.45 !important; padding: 0 !important; margin: 0 !important; border: 0 !important; letter-spacing: .1px; overflow-wrap: anywhere; }
+[data-ui-layout='coastal'] .toe-log-line[data-turn-heading='true'] { color: var(--toe-coastal-ink-strong) !important; }
+
+/* Match the surrounding cloth and brass without changing plates or placement. */
+[data-ui-layout='coastal'] .toe-coastal-turn strong { color: var(--toe-coastal-ink-strong); font-weight: 400; letter-spacing: 1px; line-height: 1.2; }
+[data-ui-layout='coastal'] .toe-coastal-turn span { color: var(--toe-coastal-ink-muted); line-height: 1.4; }
+[data-ui-layout='coastal'] .toe-coastal-counts strong { color: var(--toe-coastal-ink-strong); font-weight: 400; }
+[data-ui-layout='coastal'] .toe-coastal-counts span { color: var(--toe-coastal-ink-muted); }
+[data-ui-layout='coastal'] .toe-hand-count-value strong { font-weight: 400 !important; }
+[data-ui-layout='coastal'] .toe-hand-count-label,
+[data-ui-layout='coastal'] .toe-hand-count-value > span { color: var(--toe-coastal-ink-muted); }
+[data-ui-layout='coastal'] .toe-hand-count[data-over-limit='true'] strong { color: #cd9585 !important; }
+[data-ui-layout='coastal'] .toe-turn-label { letter-spacing: 1px; line-height: 1.2; }
+[data-ui-layout='coastal'] .toe-turn-label small { color: var(--toe-coastal-ink-muted); font-weight: 400; }
+[data-ui-layout='coastal'] .toe-turn-plaque:disabled .toe-turn-label { color: #979382 !important; }
+[data-ui-layout='coastal'] .toe-phase-bar > div {
+  font-family: var(--toe-coastal-panel-font) !important;
+  font-weight: 400;
+  text-shadow: 0 1px 2px #000b;
+}
+[data-ui-layout='coastal'] .toe-phase-bar > div:first-child { color: var(--toe-coastal-ink) !important; font-size: calc(12px * var(--toe-action-scale, 1)) !important; letter-spacing: .5px !important; line-height: 1.5; }
+[data-ui-layout='coastal'] .toe-phase-bar > div:first-child > div + div { color: var(--toe-coastal-ink-muted) !important; font-size: calc(10px * var(--toe-action-scale, 1)) !important; letter-spacing: .25px; }
+[data-ui-layout='coastal'] .toe-phase-bar[data-phase-warning='true'] > div:first-child { color: #cd9585 !important; }

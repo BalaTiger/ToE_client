@@ -58,14 +58,14 @@ describe('buildBattleResponsiveLayout', () => {
     expect(layout.scaleRatio).toBe(1);
     expect(layout.mobileZoomCompensate).toBe(1);
     expect(layout.boardScaleRatio).toBe(1);
-    expect(layout.middleRowHeight).toBeCloseTo(204.93197);
+    expect(layout.middleRowHeight).toBeCloseTo(172.93197);
     expect(layout.selfHandCardScale * 82).toBeCloseTo(103.33333);
   });
 
   it('reserves visible space for the full-ratio hand and captions on 720p desktops', () => {
     const layout = buildBattleResponsiveLayout(1280, 720);
 
-    expect(layout.middleRowHeight).toBe(145);
+    expect(layout.middleRowHeight).toBe(113);
     expect(layout.scaleRatio).toBe(1);
     expect(layout.mobileHandUsesCompact).toBe(false);
     expect(layout.selfHandCardScale * 82).toBe(90);

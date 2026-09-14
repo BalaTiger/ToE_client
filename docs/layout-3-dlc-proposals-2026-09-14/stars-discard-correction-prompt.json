@@ -1,0 +1,8 @@
+{
+  "mode": "built-in image_gen",
+  "references": [
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-dlc-proposals-2026-09-14/iterations/stars_call-initial.png",
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-proposals-2026-09-14/layout-3A-piles-controls-no-captions.png"
+  ],
+  "prompt": "Precise localized correction. IMAGE 1 is the complete Stars Call theme game screenshot and must remain unchanged except the TOP FACE-UP CARD of the CENTER discard pile.\nThat top card is \"拉莱耶之主\". Its lower RULES TEXT AREA was mistakenly replaced with bright blue star card-back artwork. Restore the ENTIRE real face from IMAGE 2's center discard top: title at top, dark Cthulhu illustration, and a DARK text panel with cream rule lines plus the small bottom flavor line, all enclosed by its normal bronze front border. Copy the complete front from image 2. There must be NO blue compass/card-back pattern anywhere on this face-up top card, including its bottom third.\nOnly the staggered UNDERLYING cards in the discard stack retain Stars Call backs, visible narrowly around the edges. Preserve the other visible Stars Call backs in the RIGHT draw pile and all hidden opponent mini-hands. Preserve the LEFT purple inspection pile.\nChange nothing else: existing starfield environment, exact layout, all player hand cards, UI panels, frames, button colors, text and icons stay as in image 1. No new captions or SAN threshold numbers. Full same landscape screenshot."
+}

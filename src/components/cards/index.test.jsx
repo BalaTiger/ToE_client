@@ -5,10 +5,12 @@ import { CardFaceTooltip, DDCard, DDCardBack, GodDDCard, MiniCardFace } from './
 import { CardFaceImage } from './CardFaceImage';
 import { CARD_FACE_RATIO } from './CardFaceAssets';
 
+const hoverFixture = vi.hoisted(() => ({ active: false }));
+
 vi.mock('react-dom', () => ({ createPortal: children => children }));
 vi.mock('./useCardHoverTooltip', () => ({
   useCardHoverTooltip: () => ({
-    hover: false,
+    hover: hoverFixture.active,
     tooltipPosition: null,
     cardRef: { current: null },
     handleMouseEnter: () => {},
@@ -26,7 +28,10 @@ function imageCard(props, Component = DDCard) {
   return React.Children.toArray(tree.props.children)[0];
 }
 
-beforeEach(() => vi.stubGlobal('window', { innerWidth: 1440, innerHeight: 900, __PUBLIC_BASE__: '/' }));
+beforeEach(() => {
+  hoverFixture.active = false;
+  vi.stubGlobal('window', { innerWidth: 1440, innerHeight: 900, __PUBLIC_BASE__: '/' });
+});
 afterEach(() => vi.unstubAllGlobals());
 
 describe('image hand cards', () => {
@@ -58,6 +63,8 @@ describe('image hand cards', () => {
     const disabled = imageCard({ card, onClick, disabled: true, holderId: 1 });
     expect(disabled.props.onClick).toBeUndefined();
     expect(disabled.props['aria-disabled']).toBe(true);
+    expect(disabled.props.style.opacity).toBe(1);
+    expect(disabled.props.style.filter).toContain('grayscale');
     expect(renderToStaticMarkup(disabled)).not.toContain('倒刺');
   });
 
@@ -68,6 +75,41 @@ describe('image hand cards', () => {
     expect(renderToStaticMarkup(element)).toContain('data-card-caption');
     expect(renderToStaticMarkup(element)).toContain('克苏鲁');
     expect(renderToStaticMarkup(imageCard({ card: zone, small: true }))).not.toContain('data-card-caption');
+  });
+
+  it.each([
+    ['normal', DDCard, zone],
+    ['god', GodDDCard, god],
+  ])('isolates caption and preview preferences per %s card instance', (_, Component, card) => {
+    hoverFixture.active = true;
+    const onClick = vi.fn();
+    const accessibleName = imageCard({ card }, Component).props['aria-label'];
+    for (const preferences of [
+      { showCaption: false, hoverPreview: false },
+      { showCaption: false },
+      { hoverPreview: false },
+      {},
+    ]) {
+      const element = Component({ card, onClick, selected: true, ...preferences });
+      const tree = element.type(element.props);
+      const [face, tooltip] = React.Children.toArray(tree.props.children);
+      const captionExpected = preferences.showCaption !== false;
+      const previewExpected = preferences.hoverPreview !== false;
+      expect(renderToStaticMarkup(face).includes('data-card-caption')).toBe(captionExpected);
+      expect(face.props.style.marginBottom).toBe(captionExpected ? 34 : 0);
+      expect(tooltip?.type).toBe(previewExpected ? CardFaceTooltip : undefined);
+      for (const event of ['onMouseEnter', 'onMouseMove', 'onMouseLeave']) {
+        expect(typeof face.props[event]).toBe(previewExpected ? 'function' : 'undefined');
+      }
+      expect(face.props['aria-label']).toBe(accessibleName);
+      expect(face.props['aria-pressed']).toBe(true);
+      expect(face.props.onClick).toBe(onClick);
+      expect(face.props.tabIndex).toBe(0);
+      expect(face.props.style.transform).toBe('translateY(-5px)');
+      expect(face.props.style.outline).not.toBe('none');
+    }
+    expect(imageCard({ card, hoverPreview: false }, Component).props.style.boxShadow).toBe('none');
+    expect(imageCard({ card, hoverPreview: false, highlight: true }, Component).props.style.boxShadow).not.toBe('none');
   });
 
   it('derives card backs and moving-card dimensions from their width', () => {
