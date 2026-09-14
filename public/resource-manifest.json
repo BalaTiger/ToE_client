@@ -1,6 +1,6 @@
 {
-  "version": "a78d12e8ffae4e3c",
-  "generatedAt": "2026-09-12T10:17:59.706Z",
+  "version": "ae23f8f628a2c075",
+  "generatedAt": "2026-09-14T03:21:25.055Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -1351,6 +1351,36 @@
       "type": "image",
       "size": 19544,
       "revision": "48b93d6978379bb9"
+    },
+    {
+      "path": "/img/ui/hand-table/end.webp",
+      "type": "image",
+      "size": 15150,
+      "revision": "96d1ab5991203a9f"
+    },
+    {
+      "path": "/img/ui/hand-table/multiply.webp",
+      "type": "image",
+      "size": 15498,
+      "revision": "9322602b5ed59847"
+    },
+    {
+      "path": "/img/ui/hand-table/rest.webp",
+      "type": "image",
+      "size": 15314,
+      "revision": "d00286448411ddc5"
+    },
+    {
+      "path": "/img/ui/hand-table/skill.webp",
+      "type": "image",
+      "size": 15418,
+      "revision": "1fbefe8adbee50f4"
+    },
+    {
+      "path": "/img/ui/hand-table/table.webp",
+      "type": "image",
+      "size": 73720,
+      "revision": "d5066cc29f03aebb"
     },
     {
       "path": "/img/ui/interface/panel-frame.webp",

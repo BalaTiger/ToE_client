@@ -52,6 +52,7 @@ export function HandArea({
   interactionFontSizes,
   mobileHandUsesCompact,
   selfHandCardScale,
+  scaleRatio = 1,
   handleMyCardClick,
   useAbility,
   doRest,
@@ -70,7 +71,9 @@ export function HandArea({
       ref={handAreaRef}
       className="toe-battle-panel toe-hand-area"
       data-hand-area
+      data-main-actions={!isSpectating && phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden}
       style={{
+        '--toe-action-scale': 1 / scaleRatio,
         backgroundColor: 'var(--toe-panel,#120900)',
         border: `1.5px solid ${myTurn ? 'var(--toe-line,#3a2010)' : 'var(--toe-line-dim,#2a1a08)'}`,
         borderRadius: 3,
@@ -85,6 +88,7 @@ export function HandArea({
     >
       <ThemeEdgeRelief expansionKey={gs.expansionKey} side="right" opacity={0.12} style={{ height: '100%' }} />
       <div
+        className="toe-hand-heading"
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -116,7 +120,7 @@ export function HandArea({
             : `手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
         </span>
         {!isSpectating && ((phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden) || cancelable) && (
-          <div style={{ display: 'flex', gap: 8, marginLeft: 'auto', flexWrap: 'wrap', position: 'relative', zIndex: 200 }}>
+          <div className="toe-turn-actions">
             {phase === 'ACTION' &&
               isVisualPlayerTurn &&
               !isActionControlsHidden &&
@@ -135,86 +139,55 @@ export function HandArea({
                 const showTutorialMultiplyButton = !isScriptedTutorial;
                 return (
                   <>
-                    {hasBgy && showTutorialMultiplyButton && (
-                      <button className="toe-button"
-                        onClick={() => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
-                        disabled={multiplyLimited}
-                        style={{
-                          padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 14px',
-                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                          fontWeight: 700,
-                          fontSize: interactionFontSizes.body,
-                          cursor: multiplyLimited ? 'not-allowed' : 'pointer',
-                          letterSpacing: isMobile ? 0.5 : 1,
-                          opacity: multiplyLimited ? 0.4 : 1,
-                        }}
-                      >
-                        ☣ 繁衍
-                        {multiplyLimited && <span style={{ fontSize: 9, marginLeft: 4, color: 'var(--toe-muted,#7a5a2a)' }}>(已用)</span>}
-                      </button>
-                    )}
-                    {showTutorialSkillButton && (
-                      <button className="toe-button toe-button-primary"
-                        ref={skillButtonRef}
-                        onClick={useAbility}
-                        disabled={skillRestLimited}
-                        style={{
-                          padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 16px',
-                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                          fontWeight: 700,
-                          fontSize: interactionFontSizes.body,
-                          cursor: skillRestLimited ? 'not-allowed' : 'pointer',
-                          letterSpacing: isMobile ? 0.5 : 1,
-                          opacity: skillRestLimited ? 0.4 : 1,
-                          position: 'relative',
-                        }}
-                      >
-                        {skillRi.icon || ri.icon} {effectiveSkillName}
-                        {skillRestLimited && (
-                          <span style={{ fontSize: 9, marginLeft: 4, color: 'var(--toe-muted,#5a3020)' }}>
-                            {gs.restUsed ? '(已休息)' : '(已用)'}
+                    <div className="toe-main-actions" role="group" aria-label="回合行动">
+                      {showTutorialSkillButton && (
+                        <button className="toe-button toe-turn-plaque toe-turn-skill"
+                          ref={skillButtonRef}
+                          onClick={useAbility}
+                          disabled={skillRestLimited}
+                        >
+                          <span className="toe-turn-icon" aria-hidden="true">{skillRi.icon || ri.icon}</span>
+                          <span className="toe-turn-label">{effectiveSkillName}
+                            {skillRestLimited && (
+                              <small>{skillDisabled ? '技能受限' : gs.restUsed ? '已休息' : '已用'}</small>
+                            )}
                           </span>
-                        )}
-                      </button>
-                    )}
-                    {showTutorialRestButton && (
-                      <button className="toe-button toe-button-primary"
-                        ref={restButtonRef}
-                        onClick={doRest}
-                        disabled={restLimited}
-                        style={{
-                          padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 14px',
-                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                          fontWeight: 700,
-                          fontSize: interactionFontSizes.body,
-                          cursor: restLimited ? 'not-allowed' : 'pointer',
-                          letterSpacing: isMobile ? 0.5 : 1,
-                          opacity: restLimited ? 0.4 : 1,
-                        }}
-                      >
-                        ♥ 休息
-                        {restLimited && (
-                          <span style={{ fontSize: 9, marginLeft: 4, color: 'var(--toe-muted,#7a5a2a)' }}>
-                            {restBlockReason === 'disableRest' ? '(失眠)' : '(已用)'}
+                        </button>
+                      )}
+                      {showTutorialRestButton && (
+                        <button className="toe-button toe-turn-plaque toe-turn-rest"
+                          ref={restButtonRef}
+                          onClick={doRest}
+                          disabled={restLimited}
+                        >
+                          <span className="toe-turn-icon" aria-hidden="true">☕︎</span>
+                          <span className="toe-turn-label">休息
+                            {restLimited && (
+                              <small>{restBlockReason === 'disableRest' ? '失眠' : '已用'}</small>
+                            )}
                           </span>
-                        )}
-                      </button>
-                    )}
-                    {canShowEndTurnButton && (
-                      <button className="toe-button"
-                        onClick={endTurn}
-                        style={{
-                          padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 16px',
-                          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                          fontWeight: 700,
-                          fontSize: interactionFontSizes.body,
-                          cursor: 'pointer',
-                          letterSpacing: isMobile ? 0.5 : 1,
-                        }}
-                      >
-                        结束回合
-                      </button>
-                    )}
+                        </button>
+                      )}
+                      {hasBgy && showTutorialMultiplyButton && (
+                        <button className="toe-button toe-turn-plaque toe-turn-multiply"
+                          onClick={() => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
+                          disabled={multiplyLimited}
+                        >
+                          <span className="toe-turn-icon" aria-hidden="true">☣︎</span>
+                          <span className="toe-turn-label">繁衍
+                            {multiplyLimited && <small>已用</small>}
+                          </span>
+                        </button>
+                      )}
+                      {canShowEndTurnButton && (
+                        <button className="toe-button toe-turn-plaque toe-turn-end"
+                          onClick={endTurn}
+                        >
+                          <span className="toe-turn-icon" aria-hidden="true">⌛︎</span>
+                          <span className="toe-turn-label">结束回合</span>
+                        </button>
+                      )}
+                    </div>
                   </>
                 );
               })()}
@@ -258,7 +231,17 @@ export function HandArea({
           </button>
         )}
       </div>
-      <div data-self-hand-strip style={{ display: 'flex', gap: isMobile || isMobileLandscape ? mobileCssPx(7) : 7, flexWrap: 'wrap' }}>
+      <div
+        className="toe-hand-card-strip"
+        data-self-hand-strip
+        data-hand-fanned={!isMobile && !isMobileLandscape && visualMe.hand.length > 1 && visualMe.hand.length <= 8}
+        style={{
+          display: 'flex',
+          gap: isMobile || isMobileLandscape ? mobileCssPx(7) : 6,
+          flexWrap: 'wrap',
+          justifyContent: !isMobile && !isMobileLandscape ? 'center' : undefined,
+        }}
+      >
         {visualMe.hand.map((c, i) => {
           const clickable = isMyCardClickable(c, i);
           const isMobileArmedGod = isMobile && mobileArmedGodCardIdx === i;
@@ -282,17 +265,31 @@ export function HandArea({
           const showWorshipHint = canWorshipNow && (!isMobile || isMobileArmedGod);
           const isBlackGoatPulsing = blackGoatPulsePid === 0 && isBlackGoatYoung(c);
           const visuallyDisabled = !clickable && tutorialStep !== TUTORIAL_FLOW.CULTIST_ZONE_SELECT_CARD;
+          const fanEnabled = !isMobile && !isMobileLandscape && visualMe.hand.length > 1 && visualMe.hand.length <= 8;
+          const fanCenter = (visualMe.hand.length - 1) / 2;
+          const fanOffset = fanEnabled ? (i - fanCenter) / fanCenter : 0;
+          const fanAngle = fanOffset * Math.min(6, (visualMe.hand.length - 1) * 1.5);
           return (
             <div
               key={c.id}
               data-self-hand-card
               data-self-hand-card-id={c.id}
+              data-hand-fan-card={fanEnabled ? '' : undefined}
               ref={el => {
                 if (el) mobileGodCardRefs.current.set(i, el);
                 else mobileGodCardRefs.current.delete(i);
               }}
               className={isBlackGoatPulsing ? 'black-goat-card-pulse' : ''}
-              style={{ position: 'relative', display: 'inline-block' }}
+              style={{
+                position: 'relative',
+                display: 'inline-block',
+                flexShrink: 0,
+                '--toe-hand-angle': `${fanAngle}deg`,
+                // Individual transforms preserve the existing hop/melt animations.
+                rotate: fanEnabled ? `${fanAngle}deg` : undefined,
+                translate: fanEnabled ? `0 ${-3 * (1 - fanOffset * fanOffset)}px` : undefined,
+                zIndex: isSel ? 30 : undefined,
+              }}
             >
               <DDCard
                 card={c}
@@ -304,10 +301,11 @@ export function HandArea({
                 compact={mobileHandUsesCompact}
                 holderId={0}
                 hideCssFrame={isBlackGoatYoung(c) || isTsathogguaSlime(c)}
-                frameStyle={isMobile || isMobileLandscape ? { zoom: selfHandCardScale } : undefined}
+                frameStyle={isMobile || isMobileLandscape ? { zoom: selfHandCardScale } : { width: 82 * selfHandCardScale }}
               />
               {canUpgradeNow && (
                 <div
+                  data-hand-card-hint
                   style={{
                     position: 'absolute',
                     top: -7,
@@ -330,6 +328,7 @@ export function HandArea({
               )}
               {showWorshipHint && (
                 <div
+                  data-hand-card-hint
                   style={{
                     position: 'absolute',
                     top: -7,

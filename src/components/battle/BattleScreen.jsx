@@ -639,6 +639,7 @@ export function BattleScreen(props) {
           interactionFontSizes={interactionFontSizes}
           mobileHandUsesCompact={mobileHandUsesCompact}
           selfHandCardScale={selfHandCardScale}
+          scaleRatio={scaleRatio}
           handleMyCardClick={handleMyCardClick}
           useAbility={useAbility}
           doRest={doRest}

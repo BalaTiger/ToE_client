@@ -58,19 +58,21 @@ describe('buildBattleResponsiveLayout', () => {
     expect(layout.scaleRatio).toBe(1);
     expect(layout.mobileZoomCompensate).toBe(1);
     expect(layout.boardScaleRatio).toBe(1);
-    expect(layout.middleRowHeight).toBe(250);
+    expect(layout.middleRowHeight).toBeCloseTo(204.93197);
+    expect(layout.selfHandCardScale * 82).toBeCloseTo(103.33333);
   });
 
   it('reserves visible space for the full-ratio hand and captions on 720p desktops', () => {
     const layout = buildBattleResponsiveLayout(1280, 720);
 
-    expect(layout.middleRowHeight).toBe(170);
+    expect(layout.middleRowHeight).toBe(145);
     expect(layout.scaleRatio).toBe(1);
     expect(layout.mobileHandUsesCompact).toBe(false);
-    expect(layout.selfHandCardScale).toBe(1);
+    expect(layout.selfHandCardScale * 82).toBe(90);
   });
 
   it('keeps the spacious central board on taller desktop displays', () => {
     expect(buildBattleResponsiveLayout(1920, 1080).middleRowHeight).toBe(282);
+    expect(buildBattleResponsiveLayout(1920, 1080).selfHandCardScale * 82).toBe(120);
   });
 });

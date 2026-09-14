@@ -44,9 +44,11 @@ export function buildBattleResponsiveLayout(vw, vh) {
   });
   const fontSizes = scaleFontSet(baseFontSizes);
   const interactionFontSizes = scaleFontSet(interactionBaseFontSizes);
-  // Reserve room for the player row, action bar, and full-ratio hand cards with
-  // their captions. The central piles can shrink without shrinking hand text.
-  const desktopMiddleRowHeight = Math.max(166, Math.min(282, vh / scaleRatio - 550));
+  // Give taller screens larger hand cards while reserving their full height,
+  // fan clearance and captions before assigning space to the central piles.
+  const desktopHandWidth = Math.max(90, Math.min(120, 90 + (vh / scaleRatio - 720) / 6));
+  const extraHandHeight = (desktopHandWidth - 90) * 590 / 392;
+  const desktopMiddleRowHeight = Math.max(145, Math.min(282, vh / scaleRatio - 575 - extraHandHeight));
   const middleRowHeight = isMobile ? 292 : isMobileLandscape ? 150 : desktopMiddleRowHeight;
   const desktopBoardScaleRatio = scaleRatio < 1 ? Math.sqrt(scaleRatio) : scaleRatio;
 
@@ -65,7 +67,7 @@ export function buildBattleResponsiveLayout(vw, vh) {
     boardScaleRatio: isMobileLandscape ? layoutScaleRatio : isMobile ? scaleRatio : desktopBoardScaleRatio,
     compactBoardScaleRatio: isMobile && !isMobileLandscape ? 1 : isMobileLandscape ? layoutScaleRatio : desktopBoardScaleRatio,
     mobileHandUsesCompact: isMobileLandscape,
-    selfHandCardScale: (isMobile || isMobileLandscape) ? mobileZoomCompensate : 1,
+    selfHandCardScale: (isMobile || isMobileLandscape) ? mobileZoomCompensate : desktopHandWidth / 82,
   };
 }
 

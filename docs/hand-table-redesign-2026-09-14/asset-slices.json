@@ -1,0 +1,97 @@
+{
+  "runtime": [
+    {
+      "path": "public/img/ui/hand-table/skill.webp",
+      "sourceCell": [
+        0,
+        0,
+        887,
+        443
+      ],
+      "trim": [
+        50,
+        140,
+        837,
+        374
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15418,
+      "sha256": "1fbefe8adbee50f40176e9b51b8481e9455fd9b1e4478b24b13b41ddc742cab3"
+    },
+    {
+      "path": "public/img/ui/hand-table/rest.webp",
+      "sourceCell": [
+        887,
+        0,
+        1774,
+        443
+      ],
+      "trim": [
+        50,
+        139,
+        837,
+        373
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15314,
+      "sha256": "d00286448411ddc5c843516d6139229710109d1e673338dff74066bbd750d7c2"
+    },
+    {
+      "path": "public/img/ui/hand-table/multiply.webp",
+      "sourceCell": [
+        0,
+        443,
+        887,
+        887
+      ],
+      "trim": [
+        50,
+        72,
+        837,
+        306
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15498,
+      "sha256": "9322602b5ed59847b3add12948bbfc72777e542baf713af7ce27cf7e7f264163"
+    },
+    {
+      "path": "public/img/ui/hand-table/end.webp",
+      "sourceCell": [
+        887,
+        443,
+        1774,
+        887
+      ],
+      "trim": [
+        50,
+        73,
+        837,
+        306
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15150,
+      "sha256": "96d1ab5991203a9f9f1852acd2feba8b4e5709aca355253e1bd43e907485518a"
+    },
+    {
+      "path": "public/img/ui/hand-table/table.webp",
+      "size": [
+        1600,
+        533
+      ],
+      "bytes": 73720,
+      "sha256": "d5066cc29f03aebb0e5cd30df30016204f6824600b5d763343a737752511b4f5"
+    }
+  ]
+}

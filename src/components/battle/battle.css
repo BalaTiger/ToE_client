@@ -26,8 +26,60 @@
 
 .toe-battle-header { min-width: 0; }
 .toe-battle-header button, .toe-hand-area button { text-shadow: 0 1px 2px #000; }
-.toe-hand-area { background-position: center; }
-.toe-hand-area > [data-self-hand-strip] { padding-top: 4px; }
+.toe-hand-area { background-image: linear-gradient(#06121440, #02070820), var(--toe-hand-table-image); background-size: 100% 100%; background-position: center; }
+.toe-hand-area > [data-self-hand-strip] { padding: 12px 8px 8px; }
+[data-hand-fan-card] [data-card-caption], [data-hand-fan-card] [data-hand-card-hint] { rotate: calc(-1 * var(--toe-hand-angle)); transform-origin: center top; }
+.toe-turn-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; position: relative; z-index: 200; }
+.toe-hand-area[data-main-actions="true"] { padding-block: calc(6px * var(--toe-action-scale)) !important; }
+.toe-hand-area[data-main-actions="true"] .toe-hand-heading { flex-wrap: wrap; gap: calc(12px * var(--toe-action-scale)) !important; margin-bottom: calc(3px * var(--toe-action-scale)) !important; }
+.toe-hand-area[data-main-actions="true"] .toe-turn-actions { margin-left: 0; flex: 0 0 auto; max-width: 100%; }
+.toe-main-actions { display: flex; align-items: center; justify-content: flex-start; gap: calc(8px * var(--toe-action-scale)); }
+/* Actual hit sizes are independent of board zoom. The bitmap carries only the frame and material. */
+.toe-button.toe-turn-plaque {
+  position: relative; display: flex; flex: 0 0 auto; align-items: center; justify-content: center;
+  width: calc(132px * var(--toe-action-scale)); height: calc(44px * var(--toe-action-scale));
+  padding: calc(7px * var(--toe-action-scale)) calc(10px * var(--toe-action-scale)); gap: calc(8px * var(--toe-action-scale));
+  font-size: calc(15px * var(--toe-action-scale)); font-weight: 700; letter-spacing: .03em; line-height: 1.1;
+  color: #e6ddc6; background: transparent; border: 0; border-radius: calc(5px * var(--toe-action-scale)); box-shadow: none;
+}
+.toe-turn-plaque::before { content: ''; position: absolute; inset: 0; background: var(--toe-action-image) center / 100% 100% no-repeat; pointer-events: none; }
+.toe-turn-skill { --toe-action-image: var(--toe-action-skill-image); --toe-action-accent: #9ed3cf; }
+.toe-turn-rest { --toe-action-image: var(--toe-action-rest-image); --toe-action-accent: #e3c49b; }
+.toe-turn-multiply { --toe-action-image: var(--toe-action-multiply-image); --toe-action-accent: #cfb2db; }
+.toe-turn-end { --toe-action-image: var(--toe-action-end-image); --toe-action-accent: #e7aca3; }
+.toe-turn-icon { position: relative; font-family: 'Segoe UI Symbol', serif; font-size: calc(21px * var(--toe-action-scale)); line-height: 1; color: var(--toe-action-accent); }
+.toe-turn-label { position: relative; display: flex; flex-direction: column; gap: 1px; line-height: 1.15; white-space: nowrap; }
+.toe-turn-label small { font-size: calc(9px * var(--toe-action-scale)); font-weight: 400; letter-spacing: 0; }
+.toe-turn-end .toe-turn-label { font-size: calc(13px * var(--toe-action-scale)); }
+.toe-button.toe-turn-plaque:hover:not(:disabled) { color: #fff4dc; border: 0; box-shadow: none; }
+.toe-turn-plaque:hover:not(:disabled)::before { filter: brightness(1.2); }
+.toe-turn-plaque:active:not(:disabled)::before { filter: brightness(.85); }
+.toe-button.toe-turn-plaque:disabled { opacity: 1; color: #aaa89d; text-shadow: 0 1px 2px #000; }
+.toe-turn-plaque:disabled::before { filter: grayscale(.85) brightness(.6); }
+.toe-turn-plaque:disabled .toe-turn-icon { color: #92968d; }
+.toe-button.toe-turn-plaque:focus-visible { outline: calc(2px * var(--toe-action-scale)) solid var(--toe-action-accent); outline-offset: calc(2px * var(--toe-action-scale)); }
+@media (min-width: 580px) and (max-height: 579px) {
+  .toe-hand-area[data-main-actions="true"] { display: flex; align-items: center; gap: calc(10px * var(--toe-action-scale)); padding-block: calc(3px * var(--toe-action-scale)) !important; }
+  .toe-hand-area[data-main-actions="true"] .toe-hand-heading { display: contents !important; }
+  .toe-hand-area[data-main-actions="true"] .toe-hand-heading > span { flex: 0 0 calc(46px * var(--toe-action-scale)); font-size: calc(11px * var(--toe-action-scale)) !important; }
+  .toe-hand-area[data-main-actions="true"] .toe-turn-actions { order: 1; }
+  .toe-hand-area[data-main-actions="true"] [data-self-hand-strip] { order: 2; flex: 1; min-width: 0; justify-content: flex-start !important; flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden; padding: 10px 0 0; }
+  .toe-hand-area[data-main-actions="true"] [data-self-hand-card] { flex-shrink: 0; }
+  .toe-main-actions { gap: calc(6px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) { display: grid; grid-template-columns: repeat(2, auto); gap: calc(4px * var(--toe-action-scale)); }
+  .toe-button.toe-turn-plaque { width: calc(104px * var(--toe-action-scale)); gap: calc(5px * var(--toe-action-scale)); font-size: calc(13px * var(--toe-action-scale)); }
+  .toe-turn-end .toe-turn-label { font-size: calc(11px * var(--toe-action-scale)); }
+}
+@media (max-width: 579px) {
+  .toe-hand-area { background-size: auto 100%; }
+  .toe-hand-area > [data-self-hand-strip] { flex-wrap: nowrap !important; justify-content: safe center !important; overflow-x: auto; overflow-y: hidden; padding-top: 10px; }
+  .toe-hand-area[data-main-actions="true"] .toe-hand-heading { flex-direction: column; align-items: flex-start !important; gap: calc(8px * var(--toe-action-scale)) !important; }
+  .toe-main-actions { display: grid; grid-template-columns: repeat(3, auto); gap: calc(6px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) { grid-template-columns: repeat(2, auto); }
+  .toe-button.toe-turn-plaque { width: calc(100px * var(--toe-action-scale)); gap: calc(5px * var(--toe-action-scale)); font-size: calc(13px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) .toe-turn-plaque { width: calc(132px * var(--toe-action-scale)); }
+  .toe-turn-end .toe-turn-label { font-size: calc(11px * var(--toe-action-scale)); }
+}
 .toe-phase-bar { box-shadow: inset 3px 0 0 var(--toe-line, #796749), inset 0 1px 0 rgba(192, 166, 115, .08); }
 .toe-phase-timer { border: 1px solid currentColor; padding: 3px 8px; font-variant-numeric: tabular-nums; }
 .toe-log-heading { border-bottom: 1px solid var(--toe-line-dim, #3a3527); padding-bottom: 6px; }
