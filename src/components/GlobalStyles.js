@@ -11,6 +11,7 @@ import { DAMAGE_ANIMATION_STYLES } from './anim/damageStyles';
 import { APOPHIS_ANIMATION_STYLES } from './anim/apophisStyles';
 import { SNAKE_TRAP_ANIMATION_STYLES } from './anim/snakeTrapStyles';
 import { ENDLESS_CORRIDOR_ANIMATION_STYLES } from './anim/endlessCorridorStyles';
+import { CARD_FLIGHT_POSE } from './anim/cardSizing';
 
 export const GLOBAL_STYLES = `
   @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@400;600;700&family=IM+Fell+English:ital@0;1&display=swap');
@@ -25,10 +26,19 @@ export const GLOBAL_STYLES = `
   .toe-battle-root {
     background-color:var(--toe-bg,#0a0705);
   }
-  .toe-battle-root::before,
-  .toe-battle-root::after {
-    content:"";
+  /* Clip camera transforms before they can enlarge the board's scroll area.
+     Keep the root untransformed so fixed controls and decision masks stay viewport-based. */
+  .toe-battle-root > .toe-battle-background {
     position:fixed;
+    inset:0;
+    overflow:clip;
+    pointer-events:none;
+    z-index:0;
+  }
+  .toe-battle-background::before,
+  .toe-battle-background::after {
+    content:"";
+    position:absolute;
     inset:-5vmax;
     pointer-events:none;
     background-image:var(--toe-battle-bg-image);
@@ -40,10 +50,10 @@ export const GLOBAL_STYLES = `
     transform-origin:50% 48%;
     will-change:transform, opacity;
   }
-  .toe-battle-root::before {
+  .toe-battle-background::before {
     z-index:0;
   }
-  .toe-battle-root::after {
+  .toe-battle-background::after {
     z-index:1;
     opacity:0;
   }
@@ -51,7 +61,7 @@ export const GLOBAL_STYLES = `
     position:relative;
     z-index:2;
   }
-  .toe-battle-root.toe-draw-camera-active::after {
+  .toe-battle-root.toe-draw-camera-active > .toe-battle-background::after {
     animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
   }
   @keyframes toeDrawBackgroundWalk {
@@ -205,14 +215,16 @@ export const GLOBAL_STYLES = `
   @keyframes spinLoader  { to{transform:rotate(360deg)} }
   @keyframes toastIn     { from{opacity:0;transform:translateY(-8px)} to{opacity:1;transform:translateY(0)} }
   @keyframes swapBlindShuffleIn {
-    0%   { transform: translate(var(--start-x,0), var(--start-y,0)) rotateZ(var(--start-rz,0deg)) rotateY(var(--start-ry,0deg)) scale(0.7); opacity: 0; }
+    0%   { transform: translate(var(--start-x,0), var(--start-y,0)) ${CARD_FLIGHT_POSE.from}; opacity: 0; }
     40%  { opacity: 1; }
-    70%  { transform: translate(var(--pile-x,0), var(--pile-y,0)) rotateZ(0deg) rotateY(var(--pile-ry,0deg)) scale(1); }
-    100% { transform: translate(var(--final-x,0), var(--final-y,0)) rotateZ(0deg) rotateY(var(--final-ry,0deg)) scale(1); opacity: 1; }
+    70%  { transform: translate(var(--pile-x,0), var(--pile-y,0)) ${CARD_FLIGHT_POSE.mid}; }
+    100% { transform: translate(0,0) ${CARD_FLIGHT_POSE.to}; opacity: 1; }
   }
   @keyframes swapBlindFlyCard {
-    0%   { transform: translate(0,0) scale(1); opacity: 1; }
-    100% { transform: translate(var(--fly-tx,0), var(--fly-ty,0)) scale(0.55); opacity: 0; }
+    0%   { transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; opacity: 1; }
+    55%  { transform: translate(calc(var(--tx,0px) * .55), calc(var(--ty,0px) * .55)) ${CARD_FLIGHT_POSE.mid}; }
+    88% { opacity: 1; }
+    100% { transform: translate(var(--tx,0px), var(--ty,0px)) ${CARD_FLIGHT_POSE.to}; opacity: 0; }
   }
   @keyframes swapBlindGlowPulse {
     0%,100% { box-shadow: 0 0 12px rgba(200,169,110,0.25); }

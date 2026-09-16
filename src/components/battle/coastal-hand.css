@@ -74,6 +74,7 @@
   overflow: visible;
 }
 .toe-hand-area[data-hand-composition="coastal"][data-hand-layout="desktop"] > [data-self-hand-strip] {
+  transform: translateY(var(--toe-coastal-hand-offset-y, 0px));
   justify-content: flex-end !important;
   min-height: 0;
 }
@@ -89,17 +90,20 @@
   justify-content: center;
   width: 76px;
   height: 76px;
+  box-sizing: border-box;
+  padding: 18px;
+  gap: 1px;
   background: var(--toe-coastal-count-image) center / contain no-repeat;
   color: #e6d6b6;
   font-family: var(--toe-ui-font, 'Noto Serif SC', serif);
-  line-height: 1.25;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
   text-shadow: 0 2px 3px #000;
   pointer-events: none;
 }
 .toe-hand-area[data-hand-composition="coastal"] .toe-hand-count svg { display: none; }
-.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-label { font-size: 12px; }
-.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-value { font-size: 21px; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-label { font-size: 10px; white-space: nowrap; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-value { font-size: 17px; white-space: nowrap; }
 .toe-hand-area[data-hand-composition="coastal"] .toe-hand-count-value strong { font-weight: 500; }
 .toe-hand-area[data-hand-composition="coastal"] .toe-hand-count[data-over-limit="true"] strong { color: #f17a67; }
 
@@ -173,6 +177,7 @@
   bottom: calc(22px * var(--toe-action-scale));
   width: calc(48px * var(--toe-action-scale));
   height: calc(48px * var(--toe-action-scale));
+  padding: calc(11px * var(--toe-action-scale));
 }
-.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-label { font-size: calc(9px * var(--toe-action-scale)); }
-.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-value { font-size: calc(15px * var(--toe-action-scale)); }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-label { font-size: calc(8px * var(--toe-action-scale)); }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-hand-count-value { font-size: calc(12px * var(--toe-action-scale)); }

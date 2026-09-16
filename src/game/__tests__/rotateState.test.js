@@ -77,6 +77,13 @@ describe('rotateGsForViewer', () => {
       { type: 'VISUAL_LOCK', hiddenZhuCardId: null },
       { type: 'STATE_PATCH', discard: [] },
       { type: 'TSG_SLIME_POP', targetPid: 1, statPresentation: { target: 1, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } } },
+      {
+        type: 'CARD_TRANSFER',
+        transfers: [
+          { fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [{ id: 'stone-kept' }], effect: 'decipherStone', sourcePoint: { x: 12, y: 34 } },
+          { fromPid: -1, dest: 'deckTop', count: 1, cards: [{ id: 'stone-returned' }], effect: 'decipherStone' },
+        ],
+      },
     ];
     const gs = {
       players: [player('p0'), player('p1'), player('p2')],
@@ -98,7 +105,17 @@ describe('rotateGsForViewer', () => {
       expect(rotated[1].visualTimeline[0].patch).not.toHaveProperty('players');
       expect(rotated[2].statEvents[0].target).toBe((1 - viewer + 3) % 3);
       expect(rotated[5].statPresentation.target).toBe((2 - viewer + 3) % 3);
+      const transfers = rotated[6].transfers;
+      expect(transfers[0]).toEqual({
+        ...queue[6].transfers[0],
+        fromPid: (2 - viewer + 3) % 3,
+        toPid: (1 - viewer + 3) % 3,
+      });
+      expect(transfers[1]).toEqual(queue[6].transfers[1]);
+      expect(transfers[1]).not.toHaveProperty('toPid');
     }
+    expect(queue[6].transfers[0].fromPid).toBe(1);
+    expect(queue[6].transfers[0].toPid).toBe(0);
   });
 
   it('rotates god-gift keep owner and landing snapshots together', () => {

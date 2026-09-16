@@ -1565,6 +1565,7 @@ export function buildTimedOutDrawDiscardStepFromVisualEvents(state) {
   return {
     type: 'DISCARD',
     card: event.card,
+    sourceAnchor: event.card.isGod ? 'godChoice' : 'playerArea',
     triggerName: displayName,
     targetPid: drawerIdx,
     msgs: [`(超时) ${displayName} 弃置了 ${cardLogText(event.card, { alwaysShowName: true })}`],
@@ -1579,6 +1580,7 @@ export function buildGodGiftDiscardStepFromVisualEvents(state) {
   return {
     type: 'DISCARD',
     card: event.card,
+    sourceAnchor: 'godChoice',
     triggerName: localDisplayName(drawerIdx, drawerName),
     targetPid: drawerIdx,
   };

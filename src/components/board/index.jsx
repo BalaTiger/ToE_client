@@ -13,16 +13,18 @@ import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { _getZoomCompensatedRect } from '../../utils/dom';
+import { PILE_CARD_TILT } from '../../utils/cardPlane';
 import { PanelFrame } from '../battle/PanelFrame';
 import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import '../battle/coastal-panels.css';
 
-function CoastalPortrait({ playerIndex = 0 }) {
+function CoastalPortrait({ playerIndex = 0, framed = false }) {
   // Portraits are decoration, never a signal of a player's hidden role.
   const portrait = playerIndex === 0 ? 'self' : ((playerIndex - 1) % 4) + 1;
-  return <div className="toe-coastal-portrait" aria-hidden="true">
-    <img src={buildPublicUrl(`/img/ui/coastal/portrait-${portrait}.webp`)} alt="" draggable="false" />
+  return <div className={`toe-coastal-portrait${framed ? ' toe-coastal-portrait-framed' : ''}`} aria-hidden="true"
+    style={framed ? { backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/hand-count.webp')}')` } : undefined}>
+    <img src={buildPublicUrl(`/img/ui/coastal/portrait-${portrait}${framed ? '-gray' : ''}.webp`)} alt="" draggable="false" />
   </div>;
 }
 
@@ -107,13 +109,41 @@ function HoundsTimerBadge({secondsLeft,active}){
 }
 
 const CARD_W=36,CARD_H=CARD_W*CARD_FACE_RATIO;
+const PILE_CARD_SHADOW='0 1px 0 rgba(151,133,99,0.52), 0 3px 0 rgba(20,19,17,0.9), 0 7px 9px rgba(0,0,0,0.48), inset 0 0 8px rgba(0,0,0,0.35)';
 const CARD_BACK_STYLE={
   width:CARD_W,height:CARD_H,borderRadius:3,
+  aspectRatio:`${CARD_FACE_WIDTH}/${CARD_FACE_HEIGHT}`,boxSizing:'border-box',
   background:'#100c08',
   border:'none',
-  boxShadow:'inset 0 0 8px #0a0600',
+  boxShadow:PILE_CARD_SHADOW,
   position:'absolute',
 };
+function pileCardPlane(rotation=0, depth=0){
+  return {
+    '--toe-card-rotation':`${rotation}deg`,
+    '--toe-card-depth':`${depth}px`,
+    transform:`translateZ(${depth}px) rotate(${rotation}deg)`,
+    transformOrigin:'center center',
+    transformStyle:'preserve-3d',
+  };
+}
+function pileDepth(count, cardWidth){
+  return Math.min(18,Math.max(8,cardWidth*.14),Math.max(0,count)*.6);
+}
+function PileCardSurface({cardW,cardH,index,isTop,rotation=0,depth=0,thickness=0,style,children,cardRef,...events}){
+  const paper='repeating-linear-gradient(0deg,#504735 0px,#b0a07b .65px,#76664e 1.1px,#433b2e 1.6px)';
+  const sidePaper='repeating-linear-gradient(90deg,#504735 0px,#a39270 .65px,#716248 1.1px,#433b2e 1.6px)';
+  const edgeStyle={position:'absolute',pointerEvents:'none',backfaceVisibility:'hidden'};
+  return <div ref={cardRef} data-pile-card={index} data-pile-card-top={isTop || undefined}
+    style={{...CARD_BACK_STYLE,width:cardW,height:cardH,...pileCardPlane(rotation,depth),...style}} {...events}>
+    {children}
+    {thickness>0 && <>
+      <div data-pile-edge="front" aria-hidden="true" style={{...edgeStyle,left:0,top:cardH,width:cardW,height:thickness,background:paper,transformOrigin:'center top',transform:'rotateX(-90deg)'}} />
+      <div data-pile-edge="left" aria-hidden="true" style={{...edgeStyle,left:-thickness,top:0,width:thickness,height:cardH,background:sidePaper,transformOrigin:'right center',transform:'rotateY(-90deg)'}} />
+      <div data-pile-edge="right" aria-hidden="true" style={{...edgeStyle,left:cardW,top:0,width:thickness,height:cardH,background:sidePaper,transformOrigin:'left center',transform:'rotateY(90deg)'}} />
+    </>}
+  </div>;
+}
 // Inspection cards use their own physical deck and back artwork. Keeping this
 // lightweight marker here lets AnimatedCardBack select that artwork without
 // coupling the pile to an actual inspection card instance.
@@ -127,7 +157,7 @@ function getCardBackFrameColors(expansionKey){
   const theme=getBoardTheme(expansionKey);
   return {
     border: theme.line,
-    shadow: '0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+    shadow: PILE_CARD_SHADOW,
   };
 }
 
@@ -148,66 +178,67 @@ function PileCardFaceImage({card,cardW,cardH,boxShadow='none'}){
   );
 }
 
-function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden}){
+function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden,depth,thickness}){
   const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
   const litCard=lit?.card;
   if(hidden){
-    return <div style={{...CARD_BACK_STYLE,width:cardW,height:cardH,left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
+    return <PileCardSurface index={deckIndex} isTop={deckIndex===0} cardW={cardW} cardH={cardH} depth={depth} thickness={thickness} style={{left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
   }
   return(
     <>
-      <div
-        ref={cardRef}
+      <PileCardSurface
+        cardRef={cardRef} index={deckIndex} isTop={deckIndex===0}
+        cardW={cardW} cardH={cardH} depth={depth} thickness={thickness}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
         style={{
-          ...CARD_BACK_STYLE,
-          width:cardW,height:cardH,
           left,top,zIndex,
           background:'transparent',
           border:'none',
-          boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
-          '--zhu-rot':`${-5+deckIndex*1.5}deg`,
-          animation:`zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both`,
           pointerEvents:'auto',
         }}
       >
-        <PileCardFaceImage card={litCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
-      </div>
+        <div style={{position:'absolute',inset:0,
+          boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
+          '--zhu-rot':'0deg',animation:'zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both',
+        }}>
+          <PileCardFaceImage card={litCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
+        </div>
+      </PileCardSurface>
       {hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
       {hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
     </>
   );
 }
 
-function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
+function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影',compactStack=false,stackPadding=20}){
   const vis=Math.min(count,7);
   const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=cardW*CARD_FACE_RATIO;
-  const outerW=Math.round((CARD_W+30)*scale);
-  const outerH=Math.round((CARD_H+20)*scale);
+  const offsetScale=compactStack?1:scale;
+  const verticalPadding=compactStack?stackPadding:20*scale;
+  const outerW=cardW+Math.round(30*offsetScale);
+  const outerH=cardH+Math.round(verticalPadding);
+  const thickness=vis>0?pileDepth(count,cardW)/vis:0;
   if(vis===0) return(
-    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
+    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center',transformStyle:'preserve-3d'}}>
+      <PileCardSurface index="empty" isTop cardW={cardW} cardH={cardH} style={{position:'relative',border:'1px dashed #2a1a08',background:'transparent',boxShadow:'none'}}/>
     </div>
   );
   return(
-    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0,transformStyle:'preserve-3d'}}>
       {Array(vis).fill(0).map((_,i)=>{
-        const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length];
+        const rot=DISCARD_ROTATIONS[i%DISCARD_ROTATIONS.length]*(compactStack ? .35*stackPadding/20 : 1);
         const off=DISCARD_OFFSETS[i%DISCARD_OFFSETS.length];
         const isTop=i===vis-1;
         const style={
-            ...CARD_BACK_STYLE,
-            width:cardW,height:cardH,
-            left:Math.round((15+off.x)*scale),top:Math.round((10+off.y)*scale),
-            transform:`rotate(${rot}deg)`,
+            left:Math.round((15+off.x)*offsetScale),top:Math.round((10+off.y)*verticalPadding/20),
             ...(isTop&&topCard?{
               background:'transparent',
               border:'none',
-              boxShadow:'0 1px 5px rgba(0,0,0,0.5), inset 0 0 8px rgba(0,0,0,0.35)',
+              boxShadow:PILE_CARD_SHADOW,
             }:{
               border:'none',
               boxShadow:frameColors.shadow,
@@ -216,13 +247,15 @@ function DiscardPile({count,topCard,scale=1,expansionKey='地神的潜影'}){
           };
         if(isTop&&topCard){
           return(
-            <div key={i} style={style}>
+            <PileCardSurface key={i} index={i} isTop={isTop} cardW={cardW} cardH={cardH} rotation={rot} depth={(i+1)*thickness} thickness={thickness} style={style}>
               <PileCardFaceImage card={topCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
-            </div>
+            </PileCardSurface>
           );
         }
         return(
-          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style}/>
+          <PileCardSurface key={i} index={i} isTop={isTop} cardW={cardW} cardH={cardH} rotation={rot} depth={(i+1)*thickness} thickness={thickness} style={style}>
+            <AnimatedCardBack expansionKey={expansionKey} style={{position:'absolute',inset:0,borderRadius:3}}/>
+          </PileCardSurface>
         );
       })}
     </div>
@@ -262,27 +295,30 @@ function HealCrossEffect({color='#4ade80'}){
 
 // ── Deck / Inspection / PileDisplay ─────────────────────────────
 
-function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
+function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,compactStack=false}){
   const vis=Math.min(count,7);
   const frameColors=getCardBackFrameColors(expansionKey);
   const cardW=Math.round(CARD_W*scale);
   const cardH=cardW*CARD_FACE_RATIO;
-  const outerW=Math.round((CARD_W+12)*scale);
-  const outerH=Math.round((CARD_H+12)*scale);
+  const offsetScale=compactStack?1:scale;
+  const outerW=cardW+Math.round(12*offsetScale);
+  const outerH=cardH+Math.round(12*offsetScale);
+  const thickness=vis>0?pileDepth(count,cardW)/vis:0;
+  // Preserve the top-card anchor while aligning every paper layer beneath it.
+  const cardLeft=Math.round(Math.max(0,vis-1)*1.4*offsetScale);
   const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
   if(vis===0) return(
-    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:cardW,height:cardH,borderRadius:3,border:'1px dashed #2a1a08',background:'transparent'}}/>
+    <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center',transformStyle:'preserve-3d'}}>
+      <PileCardSurface index="empty" isTop cardW={cardW} cardH={cardH} style={{position:'relative',border:'1px dashed #2a1a08',background:'transparent',boxShadow:'none'}}/>
     </div>
   );
   return(
-    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0,transformStyle:'preserve-3d'}}>
       {Array(vis).fill(0).map((_,i)=>{
         const deckIndex=vis-1-i;
         const lit=litByDeckIndex.get(deckIndex);
         const litCard=lit?.card;
         if(litCard){
-          const pull=Math.round((18+deckIndex*3)*scale);
           return(
             <ZhuLitMiniCard
               key={`zhu-lit-${litCard.id||deckIndex}-${lit.lightNonce||0}`}
@@ -291,49 +327,54 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
               scale={scale}
               cardW={cardW}
               cardH={cardH}
-              left={Math.round(i*1.4*scale)-pull}
-              top={Math.round((vis-1-i)*1.4*scale)}
+              depth={(i+1)*thickness}
+              thickness={thickness}
+              left={cardLeft}
+              top={0}
               zIndex={i}
               hidden={litCard.id===zhuHiddenCardId}
             />
           );
         }
         const style={
-          ...CARD_BACK_STYLE,
-          width:cardW,height:cardH,
-          left:Math.round(i*1.4*scale),top:Math.round((vis-1-i)*1.4*scale),
+          left:cardLeft,top:0,
           zIndex:i,
           border:'none',
           boxShadow:frameColors.shadow,
         };
         return(
-          <AnimatedCardBack key={i} expansionKey={expansionKey} style={style} />
+          <PileCardSurface key={i} index={i} isTop={deckIndex===0} cardW={cardW} cardH={cardH} depth={(i+1)*thickness} thickness={thickness} style={style}>
+            <AnimatedCardBack expansionKey={expansionKey} style={{position:'absolute',inset:0,borderRadius:3}} />
+          </PileCardSurface>
         );
       })}
     </div>
   );
 }
 
-function InspectionPile({count,scale=1}){
+function InspectionPile({count,scale=1,compactStack=false}){
   const vis=Math.min(Math.max(count,0),5);
   const cardW=Math.round(CARD_W*scale);
   const cardH=cardW*CARD_FACE_RATIO;
-  const outerW=Math.round((CARD_W+10)*scale);
-  const outerH=Math.round((CARD_H+10)*scale);
+  const offsetScale=compactStack?1:scale;
+  const outerW=cardW+Math.round(10*offsetScale);
+  const outerH=cardH+Math.round(10*offsetScale);
+  const thickness=vis>0?pileDepth(count,cardW)/vis:0;
+  const cardLeft=Math.round(Math.max(0,vis-1)*1.2*offsetScale);
   return(
-    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0}}>
+    <div style={{width:outerW,height:outerH,position:'relative',flexShrink:0,transformStyle:'preserve-3d'}}>
       {Array(Math.max(vis,1)).fill(0).map((_,i)=>{
         const style={
-          ...CARD_BACK_STYLE,
-          width:cardW,height:cardH,
-          left:Math.round(i*1.2*scale),top:Math.round((Math.max(vis,1)-1-i)*1.2*scale),
+          left:cardLeft,top:0,
           zIndex:i,
           background:'transparent',
           border:'none',
-          boxShadow:'0 1px 5px rgba(0,0,0,0.45), inset 0 0 8px rgba(0,0,0,0.45)',
+          boxShadow:PILE_CARD_SHADOW,
         };
         return(
-          <AnimatedCardBack key={i} card={INSPECTION_CARD_BACK} animated={false} style={style}/>
+          <PileCardSurface key={i} index={i} isTop={i===Math.max(vis,1)-1} cardW={cardW} cardH={cardH} depth={(i+1)*thickness} thickness={thickness} style={style}>
+            <AnimatedCardBack card={INSPECTION_CARD_BACK} animated={false} style={{position:'absolute',inset:0,borderRadius:3}}/>
+          </PileCardSurface>
         );
       })}
     </div>
@@ -377,18 +418,19 @@ function DiscardOverlay({cards,onClose}){
   );
 }
 
-function PetrifyingFormulaDie({ state, fontSize }) {
+function PetrifyingFormulaDie({ state, fontSize, inline = false }) {
   if (!state?.active || !Number.isFinite(state.progress)) return null;
   const dots = Math.max(1, Math.min(6, state.progress));
   return (
-    <div title={`石化配方进度：${dots}`} style={{ position: 'absolute', left: 16, bottom: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, pointerEvents: 'none', zIndex: 2 }}>
+    <div className="toe-petrifying-formula" title={`石化配方进度：${dots}`} style={{ position: 'absolute', left: 16, bottom: 12, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5, pointerEvents: 'none', zIndex: 2 }}>
       <DiceFace value={dots} size={42} />
-      <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: fontSize(10), color: '#c8c5ab', fontWeight: 700, textShadow: '0 1px 3px #000', whiteSpace: 'nowrap' }}>石化配方进度</div>
+      {inline ? <div className="toe-board-effect-copy"><span>石化配方</span><strong>进度 {dots}</strong></div>
+        : <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: fontSize(10), color: '#c8c5ab', fontWeight: 700, textShadow: '0 1px 3px #000', whiteSpace: 'nowrap' }}>石化配方进度</div>}
     </div>
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,baseHeight=null,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,baseHeight=null,cardWidth=null,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
   const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
@@ -410,26 +452,29 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   const effectiveCompact=compact&&pileWrapWidth<320;
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
   const widthFitPileScale=((coastal?3.0:effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
-  // Include the discard stack offsets and its caption in the row's height
-  // budget; otherwise the pile's intrinsic height defeats the compact layout.
-  const heightFitPileScale=baseHeight ? Math.max(1,(baseHeight-(coastal?20:40))*fontZoom/(CARD_H+20)) : widthFitPileScale;
-  const pileScale=Math.min(widthFitPileScale,heightFitPileScale);
+  // Captions and paper offsets keep their own size instead of growing with the
+  // card. The shortest 113px row can still show a 51px-wide middle-distance card.
+  const pileExtraHeight=coastal?28:12+7+2+15*fontZoom;
+  const heightFitPileScale=baseHeight ? Math.max(1,Math.floor((baseHeight*fontZoom-pileExtraHeight)/CARD_FACE_RATIO)/CARD_W) : widthFitPileScale;
+  const pileScale=coastal&&cardWidth ? cardWidth/CARD_W : Math.min(widthFitPileScale,heightFitPileScale);
   const pileMinHeight=baseHeight ? Math.round(baseHeight * fontZoom) : (effectiveCompact ? 140 : 220);
+  const visualCardWidth=Math.round(CARD_W*pileScale);
+  const captionHeight=15*fontZoom;
+  const captionStyle={fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),lineHeight:1.25,whiteSpace:'nowrap',flexShrink:0,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`};
   return(
     <div ref={pileWrapRef} className="toe-pile-display" style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       <ThemeCornerOrnament expansionKey={expansionKey} corner="tl" size={56} opacity={0.28}/>
       <ThemeCornerOrnament expansionKey={expansionKey} corner="tr" size={56} opacity={0.28}/>
+      <div data-pile-camera style={{position:'absolute',left:0,top:0,width:'100%',height:coastal?'100%':`calc(100% - ${captionHeight+2}px)`,perspective:Math.max(600,pileWrapWidth*1.6),perspectiveOrigin:'50% 50%'}}>
+      <div data-pile-table style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:coastal?'space-around':'center',gap:coastal?14:0,transform:`rotateX(${PILE_CARD_TILT}deg)`,transformOrigin:'center center',transformStyle:'preserve-3d','--toe-table-tilt':`${PILE_CARD_TILT}deg`}}>
       {/* Inspection deck — top-left corner */}
-      <div data-inspection-pile aria-label={`检定牌堆，${inspectionCount}张`} style={{position:'absolute',top:4,left:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-        <InspectionPile count={inspectionCount} scale={pileScale}/>
-        {!coastal && <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),color:'#90a8d8',fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:'0 0 8px #000000'}}>检定:{inspectionCount}</div>}
+      <div data-inspection-pile aria-label={`检定牌堆，${inspectionCount}张`} style={{position:coastal?'relative':'absolute',top:coastal?undefined:4,left:coastal?undefined:8,flexShrink:0,order:0,transformStyle:'preserve-3d'}}>
+        <InspectionPile count={inspectionCount} scale={pileScale} compactStack/>
       </div>
       {/* Deck — top-right corner */}
-      <div ref={deckRef} data-deck-pile aria-label={`牌堆，${deckCount}张`} style={{position:'absolute',top:4,right:8,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId}/>
-        {!coastal && <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`}}>牌堆:{deckCount}</div>}
+      <div ref={deckRef} data-deck-pile aria-label={`牌堆，${deckCount}张`} style={{position:coastal?'relative':'absolute',top:coastal?undefined:4,right:coastal?undefined:8,flexShrink:0,order:2,transformStyle:'preserve-3d'}}>
+        <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId} compactStack/>
       </div>
-      <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>
       {/* Discard — center */}
       <div
         ref={discardRef}
@@ -439,25 +484,30 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
         onMouseLeave={()=>setDiscardHover(false)}
         onClick={()=>{if(discardCards&&discardCards.length>0)setShowDiscardOverlay(true);}}
         style={{
-          display:'flex',flexDirection:'column',alignItems:'center',gap:4,
+          flexShrink:0,order:1,transformStyle:'preserve-3d',
           cursor:discardCards&&discardCards.length?'pointer':'default',
-          padding:'6px 10px',borderRadius:6,
+          padding:'2px',borderRadius:6,
           border:discardHover?`1.5px solid ${theme.glow}`:'1.5px solid transparent',
           boxShadow:discardHover?`0 0 14px ${theme.glow}66,inset 0 0 12px ${theme.glow}22`:'none',
           transition:'all .18s',
           position:'relative',
         }}
       >
-        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey}/>
-        {!coastal && <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(12),color:theme.text,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 10px #000000`}}>弃牌堆:{discardCount}</div>}
-        {!coastal&&discardHover&&discardCards&&discardCards.length>0&&(
-          <div style={{
-            position:'absolute',bottom:'-18px',left:'50%',transform:'translateX(-50%)',
-            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:10,color:theme.text,
-            whiteSpace:'nowrap',textShadow:'0 0 6px #000',pointerEvents:'none',
-          }}>点击查看</div>
-        )}
+        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey} compactStack stackPadding={coastal?20:12}/>
       </div>
+      </div>
+      </div>
+      {!coastal && <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>}
+      {!coastal && <div data-pile-captions style={{position:'absolute',left:0,right:0,bottom:0,height:captionHeight}}>
+        <div style={{...captionStyle,position:'absolute',left:8,width:visualCardWidth+10,color:'#90a8d8'}}>检定:{inspectionCount}</div>
+        <div style={{...captionStyle,position:'absolute',right:8,width:visualCardWidth+12,color:theme.text}}>牌堆:{deckCount}</div>
+        <div data-discard-caption onClick={()=>{if(discardCards?.length)setShowDiscardOverlay(true);}}
+          onMouseEnter={()=>{if(discardCards?.length)setDiscardHover(true);}} onMouseLeave={()=>setDiscardHover(false)}
+          style={{...captionStyle,position:'absolute',left:'50%',transform:'translateX(-50%)',fontSize:_(12),color:theme.text,cursor:discardCards?.length?'pointer':'default'}}>
+          弃牌堆:{discardCount}
+          {discardHover&&discardCards?.length>0&&<span style={{position:'absolute',top:'100%',left:'50%',transform:'translateX(-50%)',fontSize:10,pointerEvents:'none'}}>点击查看</span>}
+        </div>
+      </div>}
       {showDiscardOverlay&&(
         <DiscardOverlay cards={discardCards} onClose={()=>setShowDiscardOverlay(false)}/>
       )}
@@ -465,7 +515,7 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   );
 }
 
-function GodPowerBadge({player,playerIndex}){
+function GodPowerBadge({player,playerIndex,pendant=false}){
   const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
   const def=GOD_DEFS[player.godName];
   if(!def)return null;
@@ -474,6 +524,8 @@ function GodPowerBadge({player,playerIndex}){
       <span
         ref={cardRef}
         data-god-power-badge={playerIndex}
+        title={pendant ? `${def.power} Lv.${player.godLevel || 1}` : undefined}
+        aria-label={pendant ? `${def.power}，等级 ${player.godLevel || 1}` : undefined}
         onMouseEnter={handleMouseEnter}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
@@ -486,7 +538,7 @@ function GodPowerBadge({player,playerIndex}){
           borderRadius:2,padding:'1px 4px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:0.5,
         }}
       >
-        {def.power} Lv.{player.godLevel}
+        {pendant ? `${def.power} · ${player.godLevel || 1}` : `${def.power} Lv.${player.godLevel}`}
         {/* 信仰/升级瞬间：CSS 绘制的单枚箭头横向拉伸并向上滚动（key 变化触发重播） */}
         <span
           key={`${player.godName}-${player.godLevel}`}
@@ -574,6 +626,19 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       Math.max(0, Math.ceil(((handCards.length*computedCardWidth)-handStripWidth)/(handCards.length-1)))
     )
     : 0;
+  const statusTags = <PlayerStatusTags
+    player={player}
+    playerIndex={playerIndex}
+    variant={coastal ? 'pendant' : 'compact'}
+    renderGodPower={presentationPlayer => (
+      <span data-god-power-anchor={playerIndex} style={{display:'inline-flex',alignItems:'center'}}>
+        <GodPowerBadge player={presentationPlayer} playerIndex={playerIndex} pendant={coastal}/>
+      </span>
+    )}
+  />;
+  const zones = <div className="toe-opponent-zones" style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
+    {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
+  </div>;
   return(
     <div className="toe-battle-panel toe-player-panel toe-opponent-panel" data-current-turn={isCurrentTurn} data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
@@ -591,7 +656,6 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       overflow:'visible',
     }}>
       <PanelFrame />
-      {coastal && <CoastalPortrait playerIndex={playerIndex} />}
       <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"
@@ -612,34 +676,22 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         />
       )}
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
+      <div className="toe-opponent-core">
+      {coastal && <CoastalPortrait playerIndex={playerIndex} framed />}
       {/* Name plate */}
       <div className="toe-opponent-heading" style={{
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
         borderBottom:`1px solid ${theme.lineDim}`,paddingBottom:5,
       }}>
         <span className="toe-opponent-name" title={player.name} style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:_(12),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
-        {(player.roleRevealed||player.isDead)&&<span className="toe-opponent-role" title={player.role} aria-label={player.role} style={{fontSize:_(10),color:ri.col,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:1,marginLeft:2}}>{ri.icon}{coastal ? '' : ` ${player.role}`}</span>}
+        {(player.roleRevealed||player.isDead)&&<span className="toe-opponent-role" title={player.role} aria-label={player.role} style={{fontSize:_(10),color:ri.col,'--toe-role-color': player.role === '邪祀者' ? '#BA9BCB' : ri.col,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
-        {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
+        {!coastal&&player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span className="toe-turn-marker" style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#a54138" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#76609b" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
-      <PlayerStatusTags
-        player={player}
-        playerIndex={playerIndex}
-        renderGodPower={presentationPlayer => (
-          <span
-            data-god-power-anchor={playerIndex}
-            style={{display:'inline-flex',alignItems:'center'}}
-          >
-            <GodPowerBadge player={presentationPlayer} playerIndex={playerIndex}/>
-          </span>
-        )}
-      />
-      <div className="toe-opponent-zones" style={{display:'flex',flexWrap:'wrap',gap:3,marginTop:5,minWidth:0}}>
-        {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
-      </div>
+      {!coastal && <>{statusTags}{zones}</>}
       <div style={{
         display:shouldFillFlatHand?'grid':'flex',
         gridTemplateColumns:shouldFillFlatHand?'repeat(4, minmax(0, 1fr))':undefined,
@@ -686,9 +738,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           );
         })}
       </div>
+      </div>
+      {coastal && <div className="toe-opponent-pendants">
+        {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{color:'#a7b79b'}}>♥ 翻面中</span>}
+        {statusTags}{zones}
+      </div>}
     </div>
   );
 }
 
-export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel, DiscardOverlay, CoastalPortrait };
+export { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel, DiscardOverlay, CoastalPortrait, PetrifyingFormulaDie };
 

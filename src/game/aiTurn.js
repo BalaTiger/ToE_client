@@ -575,6 +575,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       replayMsgs.push(discardMsg);
       replayQueue.push(discardStep({
         card: discarded,
+        sourceAnchor: 'playerArea',
         triggerName: P[ct].name,
         targetPid: ct,
         msgs: [discardMsg],

@@ -50,6 +50,7 @@ describe('coastal battle composition', () => {
     expect(log.type).toBe(BattleLogPanel);
     expect(log.props.logRef).toBe(refs[3]);
     expect(log.props.visibleLog).toBe(visibleLog);
+    expect(log.props.coastalBook).toBe(true);
     expect(slot(root, 'roles').props.children).toBe(opponents);
     expect(hand.type).toBe(HandArea);
     expect(hand.props.handAreaRef).toBe(refs[4]);

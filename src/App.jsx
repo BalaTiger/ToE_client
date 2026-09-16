@@ -30,6 +30,7 @@ import InGameTutorialOverlay from './components/tutorial/InGameTutorialOverlay';
 import SoftGuideOverlay from './components/tutorial/SoftGuideOverlay';
 import { BattleScreen } from './components/battle';
 import { StartScreen } from './components/start/StartScreen';
+import { getStartScreenControlScale } from './components/start/startScreenGeometry';
 import { GameResultScreen } from './components/result/GameResultScreen';
 import { ThemeCornerOrnament, ThemeEdgeRelief } from './components/theme/ThemeOrnaments';
 import { buildPublicUrl } from './utils/url';
@@ -357,7 +358,7 @@ import {
   createCthRestDrawReplayEvent,
   createCthRlyehDreamStep,
 } from './game/animReplayEvents';
-import { _getZoomCompensatedRect, getPlayerHandAnchorCenter } from './utils/dom';
+import { _getZoomCompensatedRect, getCardElementAnchor, getPlayerHandCardAnchor } from './utils/dom';
 import { playIgniteTorchCardFlameEffect } from './utils/igniteTorchPresentation';
 import {
   FIRST_BATTLE_DONE_KEY,
@@ -2025,6 +2026,7 @@ export default function Game(){
     const abandonGiftDiscardStep=abandonedGodGift
       ?discardStep({
         card:godCard,
+        sourceAnchor:'godChoice',
         triggerName:P[actorIdx]?.name||'???',
         targetPid:actorIdx,
         sourceZone:'god',
@@ -2459,6 +2461,7 @@ export default function Game(){
         if(!usedAiTurnStartReplay&&!gs._aiTurnDiscardShown&&aiTurnDiscarded&&aiTurnDrawnCard){
           queue.push(discardStep({
             card:aiTurnDrawnCard,
+            sourceAnchor:aiTurnDrawnCard.isGod?'godChoice':'playerArea',
             triggerName:gs.players[gs.currentTurn]?.name||'???',
             targetPid:gs.currentTurn,
             playersBefore:gs.players,
@@ -3641,12 +3644,12 @@ export default function Game(){
       const discardMsg=`(超时) ${who} 弃置了 ${cardLogText(dr.card,{alwaysShowName:true})}`;
       const win=checkWin(base.players,true);
       if(win){
-        triggerAnimQueue([discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],{...base,gameOver:win},undefined,AUTHORITATIVE_QUEUE_META);
+        triggerAnimQueue([discardStep({card:dr.card,sourceAnchor:dr.card.isGod?'godChoice':'playerArea',triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],{...base,gameOver:win},undefined,AUTHORITATIVE_QUEUE_META);
         return;
       }
       const baseHandLimit=getHandLimitForPlayer(base.players?.[0]);
       if(base.players[0].hand.length>baseHandLimit){
-        triggerAnimQueue([discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],transitionTurnFlowStage({...base,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}),undefined,AUTHORITATIVE_QUEUE_META);
+        triggerAnimQueue([discardStep({card:dr.card,sourceAnchor:dr.card.isGod?'godChoice':'playerArea',triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard})],transitionTurnFlowStage({...base,abilityData:{discardSelected:[],fromEndTurn:true}},TURN_FLOW_STAGE.DISCARD,{phase:'DISCARD_PHASE'}),undefined,AUTHORITATIVE_QUEUE_META);
         return;
       }
       const timeoutDiscardEvent=createTimedOutDrawDiscardEvent({
@@ -3673,7 +3676,7 @@ export default function Game(){
       const drawnCard=ph==='GOD_CHOICE'?nextGs.abilityData?.godCard:nextGs.drawReveal?.card;
       const nextActorName=nextGs.players?.[nextGs.currentTurn]?.name||'???';
       const nextActorPid=nextGs.currentTurn;
-      const queue=[discardStep({card:dr.card,triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard}),...preTurnQ];
+      const queue=[discardStep({card:dr.card,sourceAnchor:dr.card.isGod?'godChoice':'playerArea',triggerName:who,targetPid:drawerIdx,msgs:[discardMsg],playersBefore:base.players,discardBefore:base.discard}),...preTurnQ];
       if(drawnCard&&(ph==='DRAW_REVEAL'||ph==='GOD_CHOICE'||ph==='DRAW_SELECT_TARGET'||ph==='ACTION')){
         queue.push({type:'YOUR_TURN',name:nextActorName,msgs:nextGs._turnStartLogs});
         queue.push({type:'DRAW_CARD',card:drawnCard,triggerName:nextActorPid===0?'你':nextActorName,targetPid:nextActorPid,msgs:nextGs._drawLogs});
@@ -3864,9 +3867,11 @@ export default function Game(){
 
   // ── Start Screen ───────────────────────────────────────────
   if(!gs){
+    const startControlScale = getStartScreenControlScale(vw, vh);
     return(<>
       <StartScreen
         vw={vw}
+        vh={vh}
         handleUiSfxCapture={handleUiSfxCapture}
         startNewGame={startNewGame}
         handleMultiplayer={handleMultiplayer}
@@ -3942,9 +3947,10 @@ export default function Game(){
           onClose={()=>setConnErrModal(false)}
         />
         <style>{GLOBAL_STYLES}</style>
-      {/* GammaSlider outside filtered lobby container */}
-      <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
+      {/* Utility controls stay anchored to the viewport, independently of the main composition. */}
+      {!roleRevealAnim && <GammaSlider startControlScale={startControlScale} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>}
       <DebugControls
+        menuStyle={{ transform: `scale(${startControlScale})`, transformOrigin: 'top left', flexWrap: 'wrap', maxWidth: Math.max(90, (vw / 2 - 80) / startControlScale) }}
         isLocalTestMode={isLocalTestMode}
         localDebugMode={localDebugMode}
         onToggleDebugMode={()=>setLocalDebugMode(v=>!v)}
@@ -4007,6 +4013,9 @@ export default function Game(){
       const winnerPlayer=gs.players?.[treasureMapWinnerIdx];
       return (
         <TreasureMapAnim
+          key={treasureMapWinnerIdx}
+          sourcePlayerIndex={treasureMapWinnerIdx}
+          sourceCardAnchors={Object.fromEntries((winnerPlayer?.hand || []).map(card => [card.id, getPlayerHandCardAnchor(treasureMapWinnerIdx, card)]))}
           hand={winnerPlayer?.hand||[]}
           subtitle={`${winnerPlayer?.name||''} 集齐了全部编号！`}
           autoConfirmMs={3000}
@@ -4043,7 +4052,7 @@ export default function Game(){
         onHome={() => {setModal(null);setShowGodResurrection(false);setShowFullLog(false);setGs(null);}}
         onShowLog={() => setShowFullLog(true)}>
         {showFullLog&&<FullLogModal log={gameOverFullLog} onClose={()=>setShowFullLog(false)}/>}
-        <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>
+        {!roleRevealAnim && <GammaSlider gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}/>}
         {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
         <style>{GLOBAL_STYLES}</style>
       </GameResultScreen>
@@ -5643,6 +5652,7 @@ export default function Game(){
     const queue=[
       discardStep({
         card:discardCard,
+        sourceAnchor:'playerArea',
         triggerName:who,
         targetPid:drawerIdx,
         msgs:[discardLog],
@@ -7647,8 +7657,7 @@ export default function Game(){
     const measureRevealedCardCenter = card => {
       const el = [...document.querySelectorAll('[data-card-id]')]
         .find(node => node?.dataset?.cardId === String(card?.id));
-      const rect = _getZoomCompensatedRect(el);
-      return rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : null;
+      return getCardElementAnchor(el);
     };
     let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard];
     const revealedCards = Array.isArray(abilityData.revealedCards) ? abilityData.revealedCards : [];
@@ -7756,15 +7765,9 @@ export default function Game(){
     if(!swapBlindDrawRef.current)return;
     const tutorialAction={type:'swapSteal',cardIndex:cardIdx};
     if(!isTutorialActionAllowed(tutorialAction))return;
-    const toPos=getPlayerHandAnchorCenter(0);
-    // 遮罩中的牌排成一排，估算每张牌的屏幕位置作为飞行动画起点
-    const handCount=swapBlindDrawRef.current.handSnapshot.length;
-    const cardSpacing=52;
-    const totalWidth=(handCount-1)*cardSpacing;
-    const fromPos={
-      x:window.innerWidth/2+(cardIdx*cardSpacing-totalWidth/2),
-      y:window.innerHeight/2,
-    };
+    const toPos=getPlayerHandCardAnchor(0);
+    const fromPos=getCardElementAnchor(swapBlindHandRef.current?.querySelector(`[data-blind-card-index="${cardIdx}"]`));
+    if(!fromPos)return;
     setSwapBlindDraw(prev=>prev?{...prev,phase:'flying',selectedIdx:cardIdx,flyFrom:fromPos,flyTo:toPos}:null);
     setTimeout(()=>{
       setSwapBlindDraw(null);
@@ -9032,6 +9035,7 @@ export default function Game(){
         // Replaying DRAW_CARD here also replays its background camera prelude.
         discardStep({
           card:godCard,
+          sourceAnchor:'godChoice',
           triggerName:'你',
           targetPid:drawerIdx,
           msgs:[discardLog],

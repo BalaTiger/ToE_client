@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BattleScreen } from '../components/battle/BattleScreen';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from '../components/lobby';
 import { AboutModal, RoadmapModal, FullLogModal } from '../components/modals';
@@ -9,6 +9,9 @@ import { DiscardOverlay } from '../components/board';
 import { OnlineOptionsDialog } from '../components/start/OnlineOptionsDialog';
 import { GameResultScreen } from '../components/result/GameResultScreen';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from '../components/anim/WinAnims';
+import { DiceRollAnim } from '../components/anim/GenericAnimOverlay';
+import { CardTransferOverlay } from '../components/anim/MoveOverlays';
+import { CardDrawFlight } from '../components/anim/CardFlipAnim';
 import { FIXED_ZONE_CARD_VARIANTS_BY_KEY, GOD_DEFS, INSPECTION_DECK, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { getBattleTheme, getBattleBackgroundImage } from '../constants/theme';
 import { RINFO } from '../game/setup';
@@ -16,10 +19,12 @@ import { buildPhaseUiState } from '../game/phaseUi';
 import { TUTORIAL_FLOW, getTutorialStep } from '../game/tutorialScenario';
 import { useBattleResponsiveLayout } from '../hooks/useBattleResponsiveLayout';
 import { buildPublicUrl } from '../utils/url';
+import { getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../utils/dom';
 import './VisualGallery.css';
 
 const SCENES = [
   ['battle', '行动阶段', '对局'],
+  ['battle-camera', '探索运镜 · 背景溢出检查', '对局'],
   ['role', '选择本局身份', '对局'],
   ['battle-mp', '联机行动与倒计时', '对局'],
   ['battle-spectate', '死亡旁观', '对局'],
@@ -27,6 +32,8 @@ const SCENES = [
   ['battle-coastal', '3号布局 · 信仰、状态与五张手牌', '对局'],
   ['battle-coastal-small', '3号布局 · 两张手牌靠近按钮', '对局'],
   ['battle-coastal-many', '3号布局 · 八张手牌与累积区域牌', '对局'],
+  ['battle-coastal-effects', '3号布局 · 场上持续效果与亮牌', '对局'],
+  ['battle-coastal-clarity', '3号布局 · 信仰标签与长效果文字', '对局'],
   ['battle-ai', '等待其他旅者行动', '对局', 'AI_TURN'],
   ['battle-crowded', '七名其他角色 · 回合置顶', '对局', 'AI_TURN'],
   ['battle-full', '十一名其他角色 · 满员拱形', '对局', 'AI_TURN'],
@@ -126,7 +133,16 @@ const SCENES = [
   }).map(step => [`tutorial-${step}`, getTutorialStep(step).title, '教学', null, step]),
   ['treasure-win', '寻宝者 · 藏宝图揭示', '演出'],
   ['treasure-wait', '藏宝图 · 等待获胜者', '演出'],
+  ['flight-self-discard', '卡牌飞行 · 自己 → 弃牌堆', '演出'],
+  ['flight-opponent-self', '卡牌飞行 · 对手 → 自己', '演出'],
+  ['flight-self-opponent', '卡牌飞行 · 自己 → 对手', '演出'],
+  ['flight-pile-self', '卡牌飞行 · 牌堆 → 自己', '演出'],
+  ['flight-pile-opponent', '卡牌飞行 · 牌堆 → 其他角色', '演出'],
+  ['flight-reveal-self', '收入手牌 · 全程正面', '演出'],
+  ['flight-reveal-opponent', '收入手牌 · 全程背面', '演出'],
   ['resurrection', '邪神复活', '演出'],
+  ['dice-rest', '桌游骰子 · 双骰休息', '演出'],
+  ['dice-single', '桌游骰子 · 单骰检定', '演出'],
   ...Object.keys(RINFO).map((role, i) => [`role-reveal-${i}`, `身份揭示 · ${role}`, '演出']),
   ['result-treasure', '结算 · 寻宝者获胜', '结算'],
   ['result-treasure-other', '结算 · 其他寻宝者获胜', '结算'],
@@ -154,6 +170,7 @@ const ZONES = Object.entries(FIXED_ZONE_CARD_VARIANTS_BY_KEY).map(([key, variant
   ...variants.find(card => card.expansion === '地神的潜影'), key, letter: key[0], num: Number(key[1]), id: `gallery-zone-${i}`,
 }));
 const GODS = ['CTH', 'NYA', 'ZHU'].map(godCard);
+const TREASURE_HAND = ['A1', 'B2', 'C3', 'D4'].map(key => ZONES.find(card => card.key === key));
 
 function makeState(scene, expansionKey) {
   const id = scene[0];
@@ -187,6 +204,8 @@ function makeState(scene, expansionKey) {
   }
   if (id === 'battle-spectate') players[0].isDead = true;
   if (id === 'battle-empty') players[0].hand = [];
+  if (id === 'treasure-win') players[0].hand = TREASURE_HAND;
+  if (id === 'treasure-wait') players[1].hand = TREASURE_HAND;
   if (id === 'ignite-torch') players[0].hand.push({ ...ZONES[4], id: 'gallery-ignite-fifth' });
   if (id === 'battle-status') {
     players[0].hand = [...players[0].hand, { ...createBlackGoatYoungCard(), id: 'gallery-young' }, { ...createTsathogguaSlimeCard(), id: 'gallery-slime' }];
@@ -207,9 +226,16 @@ function makeState(scene, expansionKey) {
       player.hand = [...player.hand.slice(0, 3), { ...createBlackGoatYoungCard(), id: `gallery-coastal-young-${player.id}` }];
     });
     if (id === 'battle-coastal-small') players[0].hand = players[0].hand.slice(0, 2);
+    if (id === 'battle-coastal-effects') players[0].godName = 'ZHU';
+    if (id === 'battle-coastal-clarity') Object.assign(players[0], {
+      godName: null, godLevel: 0, hasBelievedGod: false,
+      hand: [godCard('SHU', 0), ZONES.find(card => card.key === 'A3'), godCard('SHU', 1), godCard('VRI')],
+    });
     if (id === 'battle-coastal-many') {
       players[0].hand.push(...ZONES.slice(8, 11));
       players[0].zoneCards = Array.from({ length: 4 }, (_, index) => ({ id: `gallery-coastal-zone-${index}`, type: 'blankZone', name: '空白区域牌' }));
+      Object.assign(players[1], { isResting: true, godLevel: 2, godEncounters: 8, etherealizeStacks: 2, poisonStacks: 3 });
+      players[1].zoneCards = [{ id: 'gallery-coastal-opponent-zone', type: 'blankZone', name: '空白区域牌' }];
     }
   }
   if (id === 'discard') players[0].hand.push(...ZONES.slice(8, 11));
@@ -218,6 +244,8 @@ function makeState(scene, expansionKey) {
   return {
     players, phase, expansionKey, currentTurn: id === 'battle-crowded' || id === 'battle-full' ? 2 : waiting || id === 'battle-ai' ? 1 : 0, turn: 3, turnDirection: 1,
     deck: ZONES, discard: [...ZONES.slice(9, 13), GODS[1]], inspectionDeck: INSPECTION_DECK,
+    petrifyingFormula: id === 'battle-coastal-effects' ? { active: true, progress: 4 } : null,
+    apophisNight: id === 'battle-coastal-effects' ? { active: true, count: 7, limit: 12 } : null,
     inspectionDiscard: [], log: LOG, skillUsed: false, restUsed: false, multiplyUsed: false,
     huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, selectedCard: 0,
     _isMP: waiting || ['battle-mp', 'emoji', 'exit', 'reconnect'].includes(id),
@@ -315,9 +343,11 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     gamma: 1, musicVolume: 0.6, sfxVolume: 0.8,
     settingsDefaultOpen: id === 'settings',
     mpTurnSec: 36, mpDiscardSec: 12, mpHuntSec: 18, mpDecisionSec: 20,
-    houndsTimerVisible: id === 'battle-status', houndsSecLeft: 17,
+    houndsTimerVisible: id === 'battle-status' || id === 'battle-coastal-effects', houndsSecLeft: 17,
+    zhuLitCardsForView: id === 'battle-coastal-effects' ? state.deck.slice(0, 7).map((card, deckIndex) => ({ card, deckIndex })) : [],
     serverAnnouncement: id === 'announcement' ? '服务器将于 10 分钟后维护，请在当前对局结束后返回主界面。' : null,
     globalStyles: GLOBAL_STYLES,
+    drawBackgroundCameraActive: id === 'battle-camera',
     battleBackgroundStyle: {
       ...Object.fromEntries(Object.entries(theme).filter(([key]) => ['text', 'strong', 'muted', 'panel', 'panelActive', 'line', 'lineDim', 'glow'].includes(key)).map(([key, value]) => [`--toe-${key.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}`, value])),
       backgroundImage: `linear-gradient(${theme.tintTop},${theme.tintBottom}),url('${buildPublicUrl(getBattleBackgroundImage(expansionKey))}')`,
@@ -433,7 +463,80 @@ function CardClarityFixture() {
         <figure style={{ width: 196 }}><figcaption>衍生牌 · 196 px</figcaption><DDCard card={token} frameStyle={{ width: 196 }} /></figure>
       </div>
     </section>
+    <section className="gallery-clarity-panel" aria-label="长效果文字的边界检查">
+      <h2>完整长效果 · 相同 196 px 卡宽</h2>
+      <div className="gallery-clarity-row">
+        {['APO', 'ZHU', 'VRI'].map(key => <figure key={key} style={{ width: 196 }}>
+          <figcaption>{GOD_DEFS[key].name} · Lv.2</figcaption>
+          <DDCard card={godCard(key)} godLevel={2} showCaption={false} frameStyle={{ width: 196 }} />
+        </figure>)}
+      </div>
+    </section>
   </main>;
+}
+
+function CardFlightFixture({ id, expansionKey }) {
+  const overlayRef = useRef(null);
+  const [transfers, setTransfers] = useState([]);
+  const [progress, setProgress] = useState(50);
+  const [replay, setReplay] = useState(0);
+  useEffect(() => {
+    if (id === 'swap-shuffle') return undefined;
+    let frame;
+    const measure = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const card = id === 'flight-opponent-self' ? ZONES[1] : ZONES[0];
+        const from = id.startsWith('flight-pile-') ? getPileCardAnchor('[data-deck-pile]')
+          : id.startsWith('flight-reveal-') ? getRevealCardAnchor()
+          : getPlayerHandCardAnchor(id === 'flight-opponent-self' ? 1 : 0, card);
+        const to = id === 'flight-self-discard' ? getPileCardAnchor('[data-discard-pile]')
+          : getPlayerHandCardAnchor(id.endsWith('-opponent') ? 1 : 0);
+        setTransfers([{
+          key: `${id}-${replay}-${Date.now()}`, count: 1,
+          paths: [{ from, to }], cards: [card],
+          cardFaceUp: [!id.endsWith('-opponent')],
+          keepFacing: !id.startsWith('flight-pile-') && id !== 'flight-self-discard',
+          srcX: from.x, srcY: from.y, srcWidth: from.width, srcRotation: from.rotation,
+          destX: to.x, destY: to.y, destWidth: to.width, destRotation: to.rotation,
+          srcTilt: from.tilt, destTilt: to.tilt,
+          srcProjection: from.projection, destProjection: to.projection,
+        }]);
+      });
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => { cancelAnimationFrame(frame); window.removeEventListener('resize', measure); };
+  }, [id, replay]);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      const roots = id === 'swap-shuffle' ? [...document.querySelectorAll('[data-blind-card-index]')] : [overlayRef.current];
+      for (const root of roots) for (const animation of root?.getAnimations({ subtree: true }) || []) {
+        if (progress == null) { animation.currentTime = 0; animation.play(); }
+        else {
+          animation.pause();
+          const timing = animation.effect.getTiming();
+          animation.currentTime = Number(timing.delay) + Number(timing.duration) * progress / 100;
+        }
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [id, transfers, progress, replay]);
+  return <>
+    <div ref={overlayRef} data-flight-preview={id} data-flight-anchors={JSON.stringify(transfers[0] || null)}>
+      {id.startsWith('flight-pile-') ? transfers[0] && <CardDrawFlight
+        key={transfers[0].key} card={transfers[0].cards[0]} targetPid={id.endsWith('-opponent') ? 1 : 0}
+        from={transfers[0].paths[0].from} to={transfers[0].paths[0].to} expansionKey={expansionKey}
+      /> : <CardTransferOverlay transfers={transfers} expansionKey={expansionKey} />}
+    </div>
+    <aside aria-label="卡牌飞行验收" style={{ position: 'fixed', top: '42%', left: '50%', transform: 'translate(-50%,-50%)', zIndex: 10000, padding: '8px 12px', display: 'flex', gap: 12, alignItems: 'center', background: '#0b0a08ed', border: '1px solid #a3844a', color: '#dbc595', fontSize: 12 }}>
+      <button type="button" onClick={() => { setProgress(null); setReplay(value => value + 1); }}>重播飞行</button>
+      <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>定格进度
+        <input aria-label="飞行定格进度" type="range" min="0" max="100" value={progress ?? 0} onChange={event => setProgress(Number(event.target.value))} />
+      </label>
+      <output>{progress == null ? '播放中' : `${progress}%`}</output>
+    </aside>
+  </>;
 }
 
 export function GalleryScenePreview({ scene, expansionKey, onAction, onScene }) {
@@ -450,9 +553,11 @@ export function GalleryScenePreview({ scene, expansionKey, onAction, onScene }) 
     {id.startsWith('full-log') && <FullLogModal log={id === 'full-log-empty' ? [] : LOG} onClose={close} />}
     {id === 'discard-pile' && <DiscardOverlay cards={[...ZONES.slice(0, 8), ...GODS]} onClose={close} />}
     {(id === 'card-zone-detail' || id === 'card-god-detail') && <CardFaceTooltip card={id === 'card-god-detail' ? GODS[0] : ZONES[0]} godLevel={2} position={{ left: 120, top: 400, width: 82, height: 82 * CARD_FACE_RATIO }} />}
-    {id === 'treasure-win' && <TreasureMapAnim hand={ZONES} onConfirm={() => onAction('宣布胜利')} />}
-    {id === 'treasure-wait' && <TreasureMapAnim hand={ZONES} subtitle="艾伦集齐了全部编号" waitingLabel="正在等待艾伦宣布胜利…" />}
+    {id === 'treasure-win' && <TreasureMapAnim hand={TREASURE_HAND} onConfirm={() => onAction('宣布胜利')} />}
+    {id === 'treasure-wait' && <TreasureMapAnim hand={TREASURE_HAND} sourcePlayerIndex={1} subtitle="艾伦集齐了全部编号" waitingLabel="正在等待艾伦宣布胜利…" />}
+    {(id.startsWith('flight-') || id === 'swap-shuffle') && <CardFlightFixture id={id} expansionKey={expansionKey} />}
     {id === 'resurrection' && <GodResurrectionAnim onDone={noop} />}
+    {id.startsWith('dice-') && <DiceRollAnim anim={{ type: 'DICE_ROLL', d1: 4, d2: id === 'dice-single' ? 0 : 6, rollerName: '你', dodgeSuccess: true }} />}
     {id.startsWith('role-reveal-') && <RoleRevealAnim role={Object.keys(RINFO)[Number(id.at(-1))]} onDone={noop} />}
     {id === 'debug-settings' && <DebugFixture onAction={onAction} />}
   </>;

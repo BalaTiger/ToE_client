@@ -1,8 +1,25 @@
+.toe-coastal-matte { position: fixed; inset: 0; background: #040608; pointer-events: none; }
+body:has(.toe-coastal-matte) { min-width: 0; overflow: hidden; }
 [data-ui-layout='coastal'] .toe-battle-root {
   padding: 0 !important;
-  left: 0 !important;
-  width: 100% !important;
+  position: fixed !important;
+  left: var(--toe-coastal-viewport-left, 0px) !important;
+  top: var(--toe-coastal-viewport-top, 0px) !important;
+  width: var(--toe-coastal-viewport-width, 100%) !important;
+  height: var(--toe-coastal-viewport-height, 100dvh) !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
   scrollbar-gutter: auto !important;
+}
+[data-ui-layout='coastal'] .toe-battle-root > .toe-battle-background {
+  position: absolute;
+  inset: 0;
+}
+[data-ui-layout='coastal'] .toe-battle-background::before,
+[data-ui-layout='coastal'] .toe-battle-background::after {
+  inset: 0;
+  background-attachment: scroll;
 }
 [data-ui-layout='coastal'] .toe-battle-content {
   max-width: none !important;
@@ -13,15 +30,17 @@
   width: 100%;
   min-height: var(--toe-coastal-height, 680px);
   isolation: isolate;
+  overflow: clip;
 }
-/* Cloth sits behind the skulls/tentacles, independently of live panel effects. */
+/* Cloth and journal sit behind skulls/tentacles, independently of live effects. */
 .toe-coastal-drapery { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
 .toe-coastal-drapery img { position: absolute; display: block; height: auto; }
 .toe-coastal-faith-drape { top: 68px; left: -34px; width: 252px; }
-.toe-coastal-log-drape { top: 72px; right: -40px; width: 246px; }
+/* Extra action rows tuck the intact page behind the prompt rail, without stretching. */
+.toe-coastal-log-book { top: var(--toe-coastal-log-top, 92px); right: var(--toe-coastal-log-right, -12px); width: var(--toe-coastal-log-width, 224px); filter: brightness(.78) saturate(.7); clip-path: inset(0 0 max(0px, calc(100% - var(--toe-coastal-log-height, 323.25px) - 18px)) 0); }
 .toe-coastal-foreground { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; object-fit: fill; z-index: -1; }
 .toe-coastal-self { position: absolute; top: 4px; left: 8px; width: 262px; z-index: 20; }
-.toe-coastal-roles { position: absolute; top: 8px; left: 26%; width: 50.5%; z-index: 25; }
+.toe-coastal-roles { position: absolute; top: 8px; left: calc(26% - 24px); width: calc(50.5% + 24px); z-index: 25; }
 .toe-coastal-opponents { display: flex; align-items: stretch; justify-content: center; gap: 5px; width: 100%; }
 .toe-coastal-opponent-seat { width: calc((100% - (var(--coastal-opponent-count) - 1) * 5px) / var(--coastal-opponent-count)); flex-shrink: 0; }
 .toe-coastal-opponents[data-crowded='true'] { gap: 0; justify-content: flex-start; }
@@ -29,14 +48,25 @@
 .toe-coastal-opponents[data-crowded='true'] .toe-coastal-opponent-seat + .toe-coastal-opponent-seat { margin-left: calc((100% - 146px) / (var(--coastal-opponent-count) - 1) - 146px); }
 .toe-coastal-opponent-seat:hover, .toe-coastal-opponent-seat:focus-within { z-index: 250 !important; }
 .toe-coastal-opponent-seat[data-current-turn='true'] { z-index: 300 !important; }
-.toe-board-composition-coastal .toe-opponent-panel .toe-turn-marker { top: 1px; right: 3px; font-size: 8px !important; padding: 0 3px; }
-/* Native art is 778 x 526; every breakpoint changes only its width. */
-.toe-coastal-turn { position: absolute; right: 0; top: 0; width: 272px; height: auto; aspect-ratio: 778 / 526; background-size: contain; background-repeat: no-repeat; pointer-events: none; z-index: 26; }
-.toe-coastal-turn > div { position: absolute; top: 37.5%; left: 8%; width: 38.6%; text-align: center; display: flex; flex-direction: column; gap: 5px; }
-.toe-coastal-turn strong { font-size: 23px; font-weight: 500; color: #99bfc0; letter-spacing: 2px; }
-.toe-coastal-turn span { font-size: 12px; color: #a8b7ad; overflow-wrap: anywhere; }
-.toe-coastal-log { position: absolute; top: var(--toe-coastal-log-top, 164px); right: 8px; width: 181px; height: var(--toe-coastal-log-height, 175px); z-index: 10; }
+/* Keep the native header ratio; the viewport trims only its outer ornaments. */
+.toe-coastal-turn { position: absolute; right: var(--toe-coastal-corner-right, -22px); top: var(--toe-coastal-corner-top, -3px); width: var(--toe-coastal-corner-width, 292px); pointer-events: none; z-index: 26; }
+.toe-coastal-turn > img { display: block; width: 100%; height: auto; filter: brightness(.7) saturate(.65); }
+.toe-coastal-turn-copy { position: absolute; top: 17px; left: 46px; width: 96px; height: 38px; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.toe-coastal-turn strong { font-size: 22px; white-space: nowrap; }
+.toe-coastal-turn span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toe-coastal-log { position: absolute; top: var(--toe-coastal-log-top, 92px); right: var(--toe-coastal-log-right, -12px); width: var(--toe-coastal-log-width, 224px); height: var(--toe-coastal-log-height, 323.25px); z-index: 10; }
 .toe-coastal-piles { position: absolute; left: var(--toe-coastal-piles-left, 29%); top: var(--toe-coastal-piles-top, 29%); width: var(--toe-coastal-piles-width, 43%); height: var(--toe-coastal-piles-height, 27%); z-index: 5; }
+.toe-coastal-effects { position: absolute; left: 17%; top: var(--toe-coastal-effects-top, 208px); width: calc(10% - 12px); z-index: 6; }
+.toe-coastal-effects:empty { display: none; }
+.toe-board-effects { display: flex; flex-direction: column; gap: 7px; }
+.toe-coastal-effects :is(.toe-board-effect, .toe-petrifying-formula) { position: relative !important; inset: auto !important; display: flex; flex-direction: row !important; align-items: center; gap: 6px !important; padding: 6px 3px; border-block: 1px solid #9b865b42; background: linear-gradient(90deg, #101c1a35, #15231fe6 22%, #15231fe6 78%, #101c1a35); }
+.toe-coastal-effects .toe-petrifying-formula > svg { flex-shrink: 0; }
+.toe-coastal-effects .toe-petrifying-formula > div,
+.toe-board-effect-copy { min-width: 0; font: 350 10px/1.5 var(--toe-coastal-panel-font); color: var(--toe-coastal-ink); text-shadow: 0 1px 2px #000; white-space: normal !important; }
+.toe-board-effect-copy { display: flex; flex-direction: column; }
+.toe-board-effect-copy strong { font-weight: 350; font-size: 12px; font-variant-numeric: tabular-nums; }
+.toe-board-effect-orb { width: 44px; height: 44px; flex-shrink: 0; }
+.toe-board-effect-orb > div { position: relative !important; inset: auto !important; transform: none !important; zoom: .5; }
 .toe-coastal-counts { position: absolute; bottom: 39px; left: 9px; width: 127px; padding: 14px 13px; box-sizing: border-box; background-size: 100% 100%; color: #c7b899; z-index: 25; }
 .toe-coastal-counts > div { display: grid; grid-template-columns: 18px 1fr auto; gap: 5px; padding: 5px 0; font-size: 15px; }
 .toe-coastal-counts > div + div { border-top: 1px solid #8c775330; }
@@ -46,31 +76,24 @@
 .toe-board-composition-coastal .toe-coastal-piles .toe-pile-display { min-height: 0 !important; height: 100%; }
 .toe-board-composition-coastal .toe-self-faith { width: 175px; min-height: 265px; margin-left: 8px; padding: 25px 25px 65px; }
 .toe-board-composition-coastal .toe-self-faith [data-god-power-badge] > div:nth-child(-n+2) { font-size: 12px !important; color: #cbbb9c !important; text-shadow: 0 1px 2px #000 !important; }
-.toe-board-composition-coastal .toe-opponent-panel { min-height: 150px; }
-.toe-board-composition-coastal .toe-log-frame-shell { min-height: 0; padding: 18px 24px 51px; }
+.toe-board-composition-coastal .toe-log-frame-shell { min-height: 0; }
 .toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-log .toe-log-frame-shell { min-height: 0; max-height: 100%; }
-.toe-board-composition-coastal .toe-log-heading { font-size: 12px !important; }
-.toe-board-composition-coastal .toe-log-line { font-size: 11px !important; }
 
 /* The viewport cuts through the outer ornaments; live content stays inset. */
-.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-self { top: -18px; left: -14px; width: 284px; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content { grid-template-columns: 98px minmax(0, 1fr); grid-template-rows: 61px 43px auto; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content::before { left: -14px; width: calc(100% + 56px); }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content > .toe-coastal-portrait { width: 64px; height: 64px; margin-top: 29px; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-self-title { padding-top: 32px; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-self { top: -18px; left: -14px; width: 260px; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content { grid-template-columns: 90px minmax(0, 1fr); grid-template-rows: 60px 40px auto; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content::before { top: 1px; left: -14px; width: calc(100% + 56px); }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content > .toe-coastal-portrait { width: 60px; height: 60px; margin: 33px 0 15px 13px; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-title { align-items: flex-end !important; padding: 0 0 4px; }
 .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-self-faith {
   width: 208px;
   min-height: 0;
-  height: clamp(150px, calc(var(--toe-coastal-height, 680px) * .47 - 110px), 240px);
+  height: clamp(150px, calc(var(--toe-coastal-height, 680px) * .47 - 98px), 252px);
   margin: 8px 4px 0 14px;
   padding: 12px 40px 8px 24px;
   background: none;
 }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-log .toe-log-frame-shell { background: none; }
 .toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-roles { top: -12px; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-opponent-panel { padding-top: 22px !important; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-opponent-panel .toe-turn-marker { top: auto; bottom: -5px; right: 10px; }
-.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-turn { top: -44px; right: -36px; width: 300px; }
 
 /* Compact screens keep the same visual materials with scrolling, reachable regions. */
 .toe-board-composition-coastal[data-compact='true'] { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; box-sizing: border-box; min-height: 0; }
@@ -93,14 +116,16 @@
 .toe-board-composition-coastal[data-compact='true'] .toe-coastal-hand { grid-column: 1 / -1; }
 [data-ui-layout='coastal'] .toe-battle-root:has(.toe-board-composition-coastal[data-compact='true']) { height: auto !important; overflow-y: auto !important; }
 .toe-settings-coastal { left: auto !important; transform: none !important; align-items: flex-end !important; }
-.toe-settings-coastal .toe-settings-triggers { display: flex; gap: 9px; }
-.toe-settings-coastal .toe-coastal-system-button { display: grid; place-items: center; width: 44px; height: 44px; min-height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
-.toe-settings-coastal .toe-coastal-system-button img { display: block; width: 100%; height: 100%; object-fit: contain; pointer-events: none; filter: brightness(.78) drop-shadow(0 2px 2px #000); transition: filter .15s ease; }
+.toe-settings-coastal .toe-settings-triggers { display: flex; align-items: center; justify-content: flex-end; gap: 8px; zoom: var(--toe-coastal-system-scale, 1); }
+.toe-settings-coastal .toe-coastal-system-button { position: relative; flex: 0 0 54px; display: grid; place-items: center; box-sizing: border-box; width: 54px; height: 54px; min-width: 54px; min-height: 54px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.toe-settings-coastal .toe-coastal-system-button img { display: block; position: absolute; object-fit: contain; pointer-events: none; transition: filter .15s ease; }
+.toe-settings-coastal .toe-coastal-system-disc { inset: 0; width: 100%; height: 100%; filter: brightness(.66) saturate(.7) drop-shadow(0 1px 2px #000); }
+.toe-settings-coastal .toe-coastal-system-glyph { width: 30px; height: 30px; filter: brightness(.88) drop-shadow(0 1px 1px #000); }
 .toe-settings-coastal .toe-coastal-system-button:hover { background: transparent; border: 0; box-shadow: none; }
-.toe-settings-coastal .toe-coastal-system-button:is(:hover, :focus-visible) img { filter: brightness(.95) drop-shadow(0 2px 2px #000); }
+.toe-settings-coastal .toe-coastal-system-button:is(:hover, :focus-visible) .toe-coastal-system-disc { filter: brightness(.85) saturate(.8) drop-shadow(0 1px 2px #000); }
 .toe-settings-coastal .toe-coastal-system-button:focus-visible { outline: 2px solid #b8aa86; outline-offset: 2px; }
 .toe-settings-coastal .toe-coastal-system-button:disabled { opacity: .45; cursor: not-allowed; }
-.toe-settings-coastal .toe-settings-panel { width: min(295px, calc(100vw - 20px)); padding: 12px; margin-top: 10px; }
+.toe-settings-coastal .toe-settings-panel { width: min(295px, calc(100vw - 20px)); max-height: max(0px, calc(100dvh - var(--toe-coastal-settings-top, 0px) - 54px * var(--toe-coastal-system-scale, 1) - 20px)); padding: 12px; margin-top: 10px; }
 .toe-settings-coastal .toe-setting-row { margin-top: 8px; gap: 7px; font-size: 12px; grid-template-columns: 40px minmax(60px,1fr) 34px; }
 .toe-settings-coastal .toe-setting-row select { padding: 4px 8px !important; }
 .toe-settings-coastal .toe-settings-exit { width: 100%; padding: 6px 12px; margin-top: 7px; }
@@ -112,8 +137,8 @@
   /* Reflow live stats below the small frame instead of stretching its portrait ring. */
   .toe-board-composition-coastal[data-compact='true'] .toe-self-content { grid-template-rows: calc((100cqw + 16px) * 280 / 806) 43px auto; gap: 3px; }
   .toe-board-composition-coastal[data-compact='true'] .toe-self-content > .toe-coastal-portrait { grid-row: 1; }
-  [data-ui-layout='coastal'] .toe-self-stats { grid-column: 1 / -1; padding-right: 8px !important; }
-  [data-ui-layout='coastal'] .toe-self-stats [data-stat-label] { grid-template-columns: 23px minmax(0,1fr) 12px !important; column-gap: 3px !important; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-stats { grid-column: 1 / -1; padding-right: 8px !important; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-stats [data-stat-label] { grid-template-columns: 23px minmax(0,1fr) 12px !important; column-gap: 3px !important; }
   .toe-board-composition-coastal[data-compact='true'] .toe-self-content .toe-self-faith { width: 100%; padding-inline: 24px; max-height: 360px; }
   .toe-board-composition-coastal[data-compact='true'] .toe-coastal-log { height: 260px; }
 }

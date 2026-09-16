@@ -1,3 +1,5 @@
+import { CARD_FLIGHT_POSE } from './cardSizing';
+
 export const EARTHQUAKE_ANIMATION_STYLES = `
   @keyframes earthquakeBlackout {
     0%, 2%, 6%, 10%, 39%, 45%, 100% {opacity:0}
@@ -16,9 +18,9 @@ export const EARTHQUAKE_ANIMATION_STYLES = `
     100% {opacity:0; transform:translate(var(--pebble-dx),var(--pebble-drop)) rotate(var(--pebble-rot)) scale(0.88)}
   }
   @keyframes earthquakeDiscardFly {
-    0% {opacity:0; transform:translate(0,0) rotate(-4deg) scale(0.96)}
+    0% {opacity:0; transform:translate(0,0) ${CARD_FLIGHT_POSE.from}}
     8% {opacity:1}
-    56% {opacity:1; transform:translate(var(--mid-tx),var(--mid-ty)) rotate(8deg) scale(1.04)}
-    100% {opacity:0; transform:translate(var(--tx),var(--ty)) rotate(16deg) scale(0.72)}
+    56% {opacity:1; transform:translate(var(--mid-tx),var(--mid-ty)) ${CARD_FLIGHT_POSE.mid}}
+    100% {opacity:0; transform:translate(var(--tx),var(--ty)) ${CARD_FLIGHT_POSE.to}}
   }
 `;

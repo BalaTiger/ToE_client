@@ -1,0 +1,170 @@
+[
+  {
+    "footerBottom": 468.765625,
+    "page": [
+      900,
+      474
+    ],
+    "roleBoxes": [
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 280
+      }
+    ],
+    "viewport": [
+      900,
+      474
+    ]
+  },
+  {
+    "footerBottom": 527.234375,
+    "page": [
+      1024,
+      540
+    ],
+    "roleBoxes": [
+      {
+        "height": 55,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 55,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 55,
+        "overflow": false,
+        "width": 280
+      }
+    ],
+    "viewport": [
+      1024,
+      540
+    ]
+  },
+  {
+    "footerBottom": 610.15625,
+    "page": [
+      1200,
+      632
+    ],
+    "roleBoxes": [
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      }
+    ],
+    "viewport": [
+      1200,
+      632
+    ]
+  },
+  {
+    "footerBottom": 705.15625,
+    "page": [
+      1368,
+      720
+    ],
+    "roleBoxes": [
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      }
+    ],
+    "viewport": [
+      1368,
+      720
+    ]
+  },
+  {
+    "footerBottom": 801.765625,
+    "page": [
+      1440,
+      900
+    ],
+    "roleBoxes": [
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      },
+      {
+        "height": 61,
+        "overflow": false,
+        "width": 280
+      }
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "footerBottom": 769.09375,
+    "page": [
+      390,
+      844
+    ],
+    "roleBoxes": [
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 358
+      },
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 358
+      },
+      {
+        "height": 50,
+        "overflow": false,
+        "width": 358
+      }
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  }
+]

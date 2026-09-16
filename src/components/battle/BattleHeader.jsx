@@ -4,6 +4,7 @@ export function BattleHeader({
   isMultiplayer,
   isSpectating,
   showTutorial,
+  hidePauseButton,
   baseFontSizes,
   scaleRatio,
   isMobile,
@@ -42,7 +43,7 @@ export function BattleHeader({
         </button>
       ) : (
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: hp(8) }}>
-          <button className="toe-button"
+          {!hidePauseButton && <button className="toe-button"
             type="button"
             onClick={pauseGame}
             disabled={showTutorial}
@@ -58,7 +59,7 @@ export function BattleHeader({
             }}
           >
             暂停游戏
-          </button>
+          </button>}
           <button className="toe-button toe-button-danger"
           onClick={showTutorial ? undefined : returnToMainMenu}
           disabled={showTutorial}

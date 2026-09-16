@@ -1,0 +1,85 @@
+[
+  {
+    "host": [
+      844,
+      390
+    ],
+    "frame": {
+      "height": 600,
+      "transform": "translate(-50%, -50%) rotate(0deg) scale(0.65)",
+      "width": 1299
+    },
+    "stage": {
+      "height": 1056,
+      "scale": "0.5681818181818182",
+      "width": 1490
+    },
+    "intro": {
+      "height": 68,
+      "lines": 2,
+      "scrollWidth": 960,
+      "width": 960
+    }
+  },
+  {
+    "host": [
+      390,
+      844
+    ],
+    "frame": {
+      "height": 600,
+      "transform": "translate(-50%, -50%) rotate(90deg) scale(0.65)",
+      "width": 1299
+    },
+    "stage": {
+      "height": 1056,
+      "scale": "0.5681818181818182",
+      "width": 1490
+    },
+    "dialogRetained": true
+  },
+  {
+    "host": [
+      667,
+      375
+    ],
+    "frame": {
+      "height": 600,
+      "transform": "translate(-50%, -50%) rotate(0deg) scale(0.625)",
+      "width": 1068
+    },
+    "stage": {
+      "height": 1056,
+      "scale": "0.5681818181818182",
+      "width": 1490
+    },
+    "intro": {
+      "height": 68,
+      "lines": 2,
+      "scrollWidth": 960,
+      "width": 960
+    }
+  },
+  {
+    "host": [
+      375,
+      667
+    ],
+    "frame": {
+      "height": 600,
+      "transform": "translate(-50%, -50%) rotate(90deg) scale(0.625)",
+      "width": 1068
+    },
+    "stage": {
+      "height": 1056,
+      "scale": "0.5681818181818182",
+      "width": 1490
+    },
+    "intro": {
+      "height": 68,
+      "lines": 2,
+      "scrollWidth": 960,
+      "width": 960
+    }
+  }
+]

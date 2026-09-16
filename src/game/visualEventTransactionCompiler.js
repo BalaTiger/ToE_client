@@ -522,6 +522,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
             compileDiscardStep({
               type: 'DISCARD',
               card: event.card,
+              sourceAnchor: event.card?.isGod ? 'godChoice' : 'playerArea',
               triggerName: drawStep.triggerName,
               targetPid: playerIdx,
             }, event, state, previousState),

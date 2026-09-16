@@ -1,3 +1,4 @@
+import React, { Children } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PlayerPanel, PileDisplay, CoastalPortrait } from '../board';
@@ -5,7 +6,7 @@ import { SelfPlayerPanel } from './SelfPlayerPanel';
 
 const appearance = vi.hoisted(() => ({ battleLayout: 'coastal' }));
 vi.mock('../../ui/UiAppearance', () => ({ useUiAppearance: () => ({ appearance }) }));
-afterEach(() => { vi.unstubAllGlobals(); appearance.battleLayout = 'coastal'; });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); appearance.battleLayout = 'coastal'; });
 
 describe('coastal panel presentation', () => {
   it('keeps hidden opponent roles anonymous and reads presentation stats', () => {
@@ -15,7 +16,8 @@ describe('coastal panel presentation', () => {
       playerIndex: 1, displayStats: [null, { hp: 7, san: 5 }], scaleRatio: 1, viewportWidth: 1280,
     };
     const hidden = renderToStaticMarkup(<PlayerPanel {...props} />);
-    expect(hidden).toContain('portrait-1.webp');
+    expect(hidden).toContain('portrait-1-gray.webp');
+    expect(hidden).toContain('toe-coastal-portrait-framed');
     expect(hidden).not.toContain('邪祀者');
     const san = hidden.slice(hidden.indexOf('data-stat-label="SAN"'), hidden.indexOf('toe-opponent-zones'));
     expect(san).toContain('>5</span>');
@@ -23,19 +25,94 @@ describe('coastal panel presentation', () => {
     expect(san).not.toContain('>6<');
     expect(hidden.match(/aspect-ratio:392\s*\/\s*590/g)).toHaveLength(4);
     const publicRole = renderToStaticMarkup(<PlayerPanel {...props} player={{ ...props.player, roleRevealed: true }} />);
-    expect(publicRole).toContain('portrait-1.webp');
+    expect(publicRole).toContain('portrait-1-gray.webp');
     expect(publicRole).toContain('aria-label="邪祀者"');
+    expect(publicRole).toMatch(/class="toe-opponent-role"[^>]*>[^<]*邪祀者<\/span>/);
+    expect(publicRole).toContain('--toe-role-color:');
     const otherHiddenRole = renderToStaticMarkup(<PlayerPanel {...props} player={{ ...props.player, role: '追猎者' }} />);
     expect(otherHiddenRole.match(/src="([^"]*portrait-[^"]+)"/)[1]).toBe(hidden.match(/src="([^"]*portrait-[^"]+)"/)[1]);
     expect(renderToStaticMarkup(<CoastalPortrait playerIndex={5} />)).toContain('portrait-1.webp');
     const derivative = renderToStaticMarkup(<PlayerPanel {...props} player={{ ...props.player, hand: [
       { id: 'goat', isBlackGoatYoung: true, name: '黑山羊幼仔', type: 'blackGoatYoung' },
+      { id: 'slime', isTsathogguaSlime: true, name: '撒托古亚黏液', type: 'tsathogguaSlime' },
       { id: 'secret', name: '不可公开的普通牌' },
     ] }} />);
     expect(derivative).toContain('cardbg_token.png');
     expect(derivative).toContain('黑山羊幼仔');
-    expect(derivative).toContain('data-player-hand-card-id="back-1-1"');
+    expect(derivative).toContain('撒托古亚黏液');
+    expect(derivative).toContain('data-player-hand-card-id="goat"');
+    expect(derivative).toContain('data-player-hand-card-id="slime"');
+    expect(derivative).toContain('data-player-hand-card-id="back-1-2"');
     expect(derivative).not.toContain('不可公开的普通牌');
+  });
+
+  it.each([false, true])('separates pendants from the frame without losing card selection (revealed: %s)', showFaceUp => {
+    vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+    vi.spyOn(React, 'useRef').mockReturnValue({ current: null });
+    vi.spyOn(React, 'useState').mockImplementation(initial => [initial, () => {}]);
+    vi.spyOn(React, 'useLayoutEffect').mockImplementation(() => {});
+    const onSelect = vi.fn(), onCardSelect = vi.fn();
+    const panel = PlayerPanel({
+      player: { role: '寻宝者', name: '旅者', hp: 10, san: 10, godName: 'CTH', godLevel: 2, hand: [{ id: 'first' }, { id: 'second' }], zoneCards: [] },
+      playerIndex: 1, scaleRatio: 1, viewportWidth: 1200, isSelectable: true, onSelect, onCardSelect, showFaceUp,
+    });
+    const children = Children.toArray(panel.props.children);
+    const core = children.find(child => child.props.className === 'toe-opponent-core');
+    const pendants = children.find(child => child.props.className === 'toe-opponent-pendants');
+    expect(core).toBeDefined();
+    expect(pendants).toBeDefined();
+    expect(children.indexOf(pendants)).toBeGreaterThan(children.indexOf(core));
+    expect(panel.props['data-death-panel']).toBe(1);
+    const hand = Children.toArray(core.props.children).find(child => child.props['data-player-hand-strip'] === 1);
+    expect(hand.props.ref).toEqual({ current: null });
+    const cards = Children.toArray(hand.props.children);
+    expect(cards.map(card => card.props['data-player-hand-card-id'])).toEqual(showFaceUp ? ['first', 'second'] : ['back-1-0', 'back-1-1']);
+    panel.props.onClick();
+    cards[1].props.children.props.onClick();
+    expect(onSelect).toHaveBeenCalledOnce();
+    expect(onCardSelect).toHaveBeenCalledWith(1);
+  });
+
+  it('keeps status and zone-card anchors beneath only the coastal frame', () => {
+    vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+    const props = {
+      player: {
+        role: '寻宝者', name: '旅者', hp: 10, san: 10, hand: [],
+        godName: 'CTH', godLevel: 2, godEncounters: 8, etherealizeStacks: 2, poisonStacks: 3, isResting: true,
+        zoneCards: [{ id: 'visible-zone', type: 'blankZone', name: '空白区域牌', isZone: true }],
+      },
+      playerIndex: 1, scaleRatio: 1, viewportWidth: 1200,
+    };
+    const coastal = renderToStaticMarkup(<PlayerPanel {...props} />);
+    const [frame, pendants] = coastal.split('<div class="toe-opponent-pendants">');
+    expect(pendants).toBeDefined();
+    expect(frame).toContain('data-player-hand-strip="1"');
+    expect(frame).not.toContain('data-player-god-status');
+    expect(frame).not.toContain('data-resting-marker');
+    expect(frame).not.toContain('data-rendered-card-id="visible-zone"');
+    expect(pendants).toContain('data-player-god-status="1"');
+    expect(pendants).toContain('data-god-power-anchor="1"');
+    expect(pendants).toContain('data-god-power-badge="1"');
+    expect(pendants).toContain('梦访拉莱耶 · 2');
+    expect(pendants).toContain('title="梦访拉莱耶 Lv.2"');
+    expect(pendants).toContain('god-power-chevron-layer');
+    expect(pendants).toContain('💀 8');
+    expect(pendants).toContain('data-etherealize-badge="1"');
+    expect(pendants).toContain('虚化 2');
+    expect(pendants).toContain('中毒 3');
+    expect(pendants).toContain('data-resting-marker="1"');
+    expect(pendants).toContain('data-rendered-card-id="visible-zone"');
+    expect(pendants).toContain('空白区域牌');
+    expect(coastal.match(/data-resting-marker="1"/g)).toHaveLength(1);
+
+    appearance.battleLayout = 'arch';
+    const arch = renderToStaticMarkup(<PlayerPanel {...props} />);
+    expect(arch).not.toContain('toe-opponent-pendants');
+    expect(arch).not.toContain('toe-coastal-portrait-framed');
+    expect(arch).toContain('梦访拉莱耶 Lv.2');
+    expect(arch).toContain('💀💀💀💀💀💀×8');
+    expect(arch).toContain('data-player-god-status="1"');
+    expect(arch).toContain('data-rendered-card-id="visible-zone"');
   });
 
   it('keeps local faith and status descriptions on the banner with animation-owned values', () => {

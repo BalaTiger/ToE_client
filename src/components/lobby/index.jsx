@@ -592,6 +592,7 @@ function DebugSettingsPanel({
 
 // ── Debug Controls (buttons + panel) ──────────────────────────
 function DebugControls({
+  menuStyle,
   isLocalTestMode,
   localDebugMode,
   onToggleDebugMode,
@@ -611,15 +612,12 @@ function DebugControls({
   if (!isLocalTestMode) return null;
   return (
     <>
+      <div className="toe-debug-controls" style={{ position: 'fixed', top: 14, left: 14, zIndex: 120, display: 'flex', gap: 20, ...menuStyle }}>
       <button className="toe-button" aria-pressed={localDebugMode}
         type="button"
         onClick={onToggleDebugMode}
         style={{
           ...smallBtnStyle,
-          position: 'fixed',
-          top: 14,
-          left: 14,
-          zIndex: 120,
           fontSize: 12,
           padding: '6px 10px',
         }}
@@ -631,16 +629,13 @@ function DebugControls({
         onClick={(e) => { e.stopPropagation(); onToggleShowSettings(); }}
         style={{
           ...smallBtnStyle,
-          position: 'fixed',
-          top: 14,
-          left: 100,
-          zIndex: 120,
           fontSize: 12,
           padding: '6px 10px',
         }}
       >
         Debug设置
       </button>
+      </div>
       <DebugSettingsPanel
         show={showSettings}
         localDebugMode={localDebugMode}

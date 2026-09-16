@@ -260,6 +260,9 @@ function rotateAnimQueueStep(step, rotateIndex, myIndex) {
     ...rotatedPlayers,
     ...(step.fromPid != null && step.fromPid >= 0 ? { fromPid: rotateIndex(step.fromPid) } : {}),
     ...(step.toPid != null && step.toPid >= 0 ? { toPid: rotateIndex(step.toPid) } : {}),
+    ...(Array.isArray(step.transfers) ? {
+      transfers: step.transfers.map(transfer => rotateAnimQueueStep(transfer, rotateIndex, myIndex)),
+    } : {}),
     ...(Array.isArray(step.statEvents) ? { statEvents: rotateStatEvents(step.statEvents, rotateIndex, myIndex) } : {}),
     ...(step.statPresentation ? {
       statPresentation: {

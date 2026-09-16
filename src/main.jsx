@@ -4,6 +4,7 @@ import './index.css'
 import App from './App.jsx'
 import { buildPublicUrl } from './utils/url'
 import { UiAppearanceProvider } from './ui/UiAppearance.jsx'
+import { mountMobileLandscape } from './ui/mobileLandscape.js'
 
 document.body.style.setProperty('--toe-html-bg', `url('${buildPublicUrl('/bg.webp')}')`)
 
@@ -11,7 +12,8 @@ const VisualGallery = import.meta.env.DEV && new URLSearchParams(window.location
   ? lazy(() => import('./dev/VisualGallery.jsx'))
   : null;
 
-createRoot(document.getElementById('root')).render(
+const mobileLandscapeHost = mountMobileLandscape();
+if (!mobileLandscapeHost) createRoot(document.getElementById('root')).render(
   <StrictMode>
     <UiAppearanceProvider>
       {VisualGallery ? <Suspense fallback={null}><VisualGallery /></Suspense> : <App />}
@@ -22,6 +24,7 @@ createRoot(document.getElementById('root')).render(
 if (
   typeof window !== 'undefined' &&
   typeof navigator !== 'undefined' &&
+  !mobileLandscapeHost &&
   'serviceWorker' in navigator &&
   typeof __TOE_H5_BUILD__ !== 'undefined' &&
   !__TOE_H5_BUILD__ &&

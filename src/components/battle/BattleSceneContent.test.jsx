@@ -2,8 +2,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Children } from 'react';
 import { BattleSceneContent } from './BattleSceneContent';
 import { BattleScreen } from './BattleScreen';
+import { CoastalBattleLayout } from './CoastalBattleLayout';
+import { getCoastalViewport } from './coastalViewport';
 
 const hooks = vi.hoisted(() => ({ current: null }));
+const appearance = vi.hoisted(() => ({ id: 'arcane-table', battleLayout: 'arch' }));
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
   useRef: (...args) => hooks.current.useRef(...args),
@@ -12,7 +15,7 @@ vi.mock('react', async importOriginal => ({
   useLayoutEffect: (...args) => hooks.current.useLayoutEffect(...args),
 }));
 vi.mock('react-dom', () => ({ createPortal: children => children }));
-vi.mock('../../ui/UiAppearance', () => ({ useUiAppearance: () => ({ appearance: { id: 'arcane-table', battleLayout: 'arch' } }) }));
+vi.mock('../../ui/UiAppearance', () => ({ useUiAppearance: () => ({ appearance }) }));
 
 // Commit a single host element in the project's node test environment, retaining
 // hook identity and running effect cleanup before setup on subsequent renders.
@@ -101,10 +104,40 @@ afterEach(() => {
   renderer?.unmount();
   renderer = null;
   hooks.current = null;
+  Object.assign(appearance, { id: 'arcane-table', battleLayout: 'arch' });
   vi.unstubAllGlobals();
 });
 
 describe('BattleScreen central space', () => {
+  it.each([[390, 844], [2560, 720]])('keeps one coastal composition in a %ix%i window', (vw, vh) => {
+    Object.assign(appearance, { id: 'coastal', battleLayout: 'coastal' });
+    hooks.current = { useRef: () => ({ current: null }), useState: initial => [initial, vi.fn()], useLayoutEffect: vi.fn() };
+    vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+    vi.stubGlobal('document', { body: {} });
+    const tree = BattleScreen({ vw, vh, isMobile: vw < 580, isMobileLandscape: vh < 580,
+      gs: { players: [], deck: [], inspectionDeck: [], expansionKey: '群星呼唤' }, visualPlayers: [], visualDiscard: [],
+      phase: 'ACTION', baseFontSizes: { body: 12 }, mobileCssPx: value => value, boardCssPx: value => value,
+    });
+    const nodes = [];
+    const collect = node => {
+      if (!node?.props) return;
+      nodes.push(node);
+      Children.toArray(node.props.children).forEach(collect);
+    };
+    collect(tree);
+    const frame = getCoastalViewport(vw, vh);
+    const board = nodes.find(node => node.type === CoastalBattleLayout);
+    expect(board.props).toMatchObject({ compact: false, width: 1200, height: frame.boardHeight });
+    expect(board.props.opponents.props.compact).toBe(false);
+    expect(board.props.hand.props).toMatchObject({ isMobile: false, isMobileLandscape: false, scaleRatio: frame.scale });
+    const [self, piles, log] = Children.toArray(board.props.middle.props.children);
+    expect(self.props).toMatchObject({ isMobile: false, isMobileLandscape: false, vw: 1200 });
+    expect(piles.props.compact).toBe(false);
+    expect(log.props.isMobile).toBe(false);
+    expect(nodes.find(node => 'data-zoom-container' in node.props).props['data-board-zoom']).toBe(frame.scale);
+    expect(nodes.find(node => node.props.className === 'toe-coastal-matte')).toBeDefined();
+  });
+
   it('reclaims and restores desktop space from layout heights while leaving mobile layouts intact', () => {
     const hand = {};
     const root = {};

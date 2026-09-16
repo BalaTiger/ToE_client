@@ -519,6 +519,7 @@ export function buildAiHuntWaitPresentation({
   ) {
     queue.push(discardStep({
       card: drawnCard,
+      sourceAnchor: drawnCard.isGod ? 'godChoice' : 'playerArea',
       triggerName: actorName,
       targetPid: previousState.currentTurn,
       playersBefore: previousState.players,

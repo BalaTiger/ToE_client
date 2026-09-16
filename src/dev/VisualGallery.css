@@ -17,3 +17,4 @@
 .gallery-clarity-description { border-top: 1px solid #47361f; padding-top: 16px; margin: 12px 0 0; max-width: 850px; font-size: 14px; line-height: 1.8; color: #c3b18e; }
 @media (max-width: 540px) { .gallery-card-clarity { padding: 24px 14px 140px; } .gallery-clarity-panel { padding: 14px 10px; } .gallery-clarity-row { gap: 20px; } }
 @media (max-width: 760px) { .gallery-toolbar { flex-wrap: wrap; width: calc(100vw - 40px); gap: 6px; bottom: 6px; } .gallery-toolbar select { max-width: 60vw; } .gallery-toolbar span { display: none; } }
+.toe-visual-gallery[data-ui-gallery-scene="battle-camera"] .toe-draw-camera-active > .toe-battle-background::after { animation-iteration-count: infinite; }

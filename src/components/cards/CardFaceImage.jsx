@@ -1,6 +1,7 @@
 import React from 'react';
 import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getInspectionCardDescription } from '../../constants/card';
 import { buildPublicUrl } from '../../utils/url';
+import illustrationWidths from './illustrationWidths.json';
 import {
   CARD_FACE_BACKGROUND_FILES,
   CARD_FACE_HEIGHT,
@@ -96,11 +97,7 @@ function getGodTitleFontSize(name) {
 
 function getEffectFontSize(text, isGod) {
   const len = [...(text || '')].length;
-  if (isGod) {
-    if (len > 76) return 17;
-    if (len > 56) return 18.5;
-    return 20.5;
-  }
+  if (isGod) return 20.5;
   if (len > 72) return 16.5;
   if (len > 48) return 18;
   if (len > 30) return 20;
@@ -116,7 +113,7 @@ function estimateEffectLineCount(text, fontSize, boxWidth) {
 
 function getAdaptiveEffectFontSize(text, isGod, box) {
   let fontSize = getEffectFontSize(text, isGod);
-  const lineHeight = 1.48;
+  const lineHeight = isGod ? 1.24 : 1.48;
   const minFontSize = isGod ? 12.5 : 13;
   while (fontSize > minFontSize) {
     const lines = estimateEffectLineCount(text, fontSize, box.width);
@@ -233,6 +230,7 @@ function ScaledText({ children, style }) {
 function EffectTextBlock({ text, isGod, box }) {
   return (
     <div
+      data-card-effect
       style={{
         position: 'absolute',
         left: box.left,
@@ -244,7 +242,7 @@ function EffectTextBlock({ text, isGod, box }) {
         justifyContent: 'center',
         textAlign: 'center',
         color: TEXT_COLOR,
-        textShadow: SHADOW,
+        textShadow: '0 1px 1px #000',
         pointerEvents: 'none',
       }}
     >
@@ -254,7 +252,7 @@ function EffectTextBlock({ text, isGod, box }) {
           fontFamily: BODY_FONT,
           fontSize: getAdaptiveEffectFontSize(text, isGod, box),
           fontWeight: 700,
-          lineHeight: 1.48,
+          lineHeight: isGod ? 1.24 : 1.48,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
         }}
@@ -308,8 +306,14 @@ function CardIllustration({ card, kind, scale }) {
   const ready = useIllustrationReady(meta?.illustration);
   const layout = ILLUSTRATION_LAYOUT[kind];
   if (!meta?.illustration || !ready || !layout) return null;
-  // Positioned in real display px (design coords × scale), NOT inside the scaled 392 layer,
-  // so the 1448px source stays sharp at any card size. clipPath is %-based → scale-independent.
+  const file = meta.illustration.split('/').pop();
+  const sourceWidth = illustrationWidths[file];
+  // Low-pass resized sources avoid sparkling fine detail on small, rotated cards.
+  // Native srcset selection retains the full source for larger / high-DPI views.
+  const srcSet = sourceWidth ? [
+    ...[256, 512].map(width => `${buildPublicUrl(`/img/card/illustration/display-${width}/${file}`)} ${width}w`),
+    `${buildPublicUrl(meta.illustration)} ${sourceWidth}w`,
+  ].join(', ') : undefined;
   return (
     <div
       style={{
@@ -325,6 +329,8 @@ function CardIllustration({ card, kind, scale }) {
     >
       <img
         src={buildPublicUrl(meta.illustration)}
+        srcSet={srcSet}
+        sizes={`${layout.width * scale}px`}
         alt=""
         draggable={false}
         style={{
@@ -333,6 +339,7 @@ function CardIllustration({ card, kind, scale }) {
           objectFit: 'cover',
           objectPosition: layout.objectPosition || 'center',
           display: 'block',
+          transform: 'translateZ(0)',
           userSelect: 'none',
           pointerEvents: 'none',
         }}
@@ -516,6 +523,7 @@ function CardFaceImage({
     <div
       className={className}
       data-card-face
+      data-card-face-id={card?.id}
       style={{
         position: 'relative',
         overflow: hasTransparentFrame ? 'visible' : 'hidden',
@@ -537,8 +545,7 @@ function CardFaceImage({
           inset: 0,
           width: CARD_FACE_WIDTH,
           height: CARD_FACE_HEIGHT,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
+          zoom: scale,
           zIndex: 0,
         }}
       >
@@ -565,8 +572,8 @@ function CardFaceImage({
           inset: 0,
           width: CARD_FACE_WIDTH,
           height: CARD_FACE_HEIGHT,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
+          // Lay out glyphs at their displayed size instead of shrinking a rasterized text layer.
+          zoom: scale,
           zIndex: 2,
         }}
       >

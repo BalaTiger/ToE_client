@@ -113,6 +113,29 @@ describe('coastal hand composition', () => {
     expect(props.endTurn).toHaveBeenCalledOnce();
   });
 
+  it.each([.55, 1, 1.6])('keeps worship and upgrade hints readable at board scale %s without widening cards', scaleRatio => {
+    const props = makeProps({ scaleRatio });
+    props.visualMe.godName = 'CTH';
+    props.visualMe.godLevel = 1;
+    props.visualMe.hand = [
+      { id: 'upgrade', isGod: true, godKey: 'CTH' },
+      { id: 'worship', isGod: true, godKey: 'VRT' },
+    ];
+    const nodes = descendants(HandArea(props));
+    const hints = nodes.filter(node => node?.props?.['data-hand-card-hint'] !== undefined);
+    expect(hints).toHaveLength(2);
+    hints.forEach(hint => {
+      const logicalSize = Number(hint.props.style.fontSize.match(/calc\(([\d.]+)px/)[1]);
+      expect(logicalSize * scaleRatio).toBeGreaterThanOrEqual(12);
+      expect(hint.props.style.fontSize).toContain('/ var(--toe-mobile-screen-scale, 1)');
+      expect(hint.props.style.maxWidth).toBe('calc(100% - 8px)');
+      expect(hint.props.style.boxSizing).toBe('border-box');
+      expect(hint.props.style.whiteSpace).toBe('normal');
+      expect(hint.props.style.pointerEvents).toBe('none');
+    });
+    expect(nodes.filter(node => node?.type === DDCard).map(node => node.props.frameStyle.width)).toEqual([200, 200]);
+  });
+
   it.each([
     ['DISCARD_PHASE', { discardSelected: [0] }, 'confirmDiscard'],
     ['BURY_ALIVE_SELECT', { buryAliveSelectedIndex: 0 }, 'confirmBuryAliveSelection'],

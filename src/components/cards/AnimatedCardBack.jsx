@@ -77,7 +77,7 @@ function useCardBackStyle(expansionKey, enabled = true, card) {
     return {
       mode: 'image',
       backgroundImage: `url('${fallbackImage}')`,
-      backgroundSize: '100% 100%',
+      backgroundSize: 'contain',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
     };
@@ -100,7 +100,7 @@ function CardBackFrameImage({ cardBackStyle }) {
         inset: 0,
         width: '100%',
         height: '100%',
-        objectFit: 'fill',
+        objectFit: 'contain',
         pointerEvents: 'none',
         userSelect: 'none',
       }}
@@ -115,6 +115,8 @@ function AnimatedCardBack({
   style,
   className,
   children,
+  'data-pile-card': pileCard,
+  'data-pile-card-top': pileCardTop,
 }) {
   const cardBackStyle = useCardBackStyle(expansionKey, animated, card);
   const isFrame = cardBackStyle.mode === 'frame';
@@ -134,6 +136,9 @@ function AnimatedCardBack({
   } = style || {};
   return (
     <div
+      data-card-back
+      data-pile-card={pileCard}
+      data-pile-card-top={pileCardTop}
       className={className}
       style={{
         position: 'relative',
@@ -164,6 +169,7 @@ function CardBackLayer({
   } = cardBackStyle;
   return (
     <div
+      data-card-back
       style={{
         position: 'absolute',
         inset: 0,

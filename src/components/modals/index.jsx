@@ -9,6 +9,7 @@ import { DDCard, DDCardBack, CardFaceImage, GodCardDisplay } from '../cards';
 import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 
 import { buildPublicUrl } from '../../utils/url';
+import { captureDecisionCardAnchors } from '../../utils/dom';
 
 function getDecisionModalMetrics(scaleRatio = 1) {
   const vw = typeof window === 'undefined' ? 1200 : window.innerWidth || 1200;
@@ -65,7 +66,7 @@ function GodChoiceModal({
   const ui = tm.uiScale;
   return (
     <div className="toe-dialog-backdrop" style={tm.overlay}>
-      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="god-choice" role="dialog" style={{
+      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="god-choice" role="dialog" onAnimationEnd={captureDecisionCardAnchors} onPointerDownCapture={captureDecisionCardAnchors} style={{
          padding: `${20*ui}px ${28*ui}px`, maxWidth: 660*ui, width: 'min(94vw, 100%)', textAlign: 'center',
         animation: 'animPop 0.22s ease-out',
         display: 'flex',
@@ -186,7 +187,7 @@ function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingTex
   const ui = tm.uiScale;
   return (
     <div className="toe-dialog-backdrop" style={{ ...tm.overlay, zIndex: 300 }}>
-      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="draw-reveal" role="dialog" style={{
+      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="draw-reveal" role="dialog" onAnimationEnd={captureDecisionCardAnchors} onPointerDownCapture={captureDecisionCardAnchors} style={{
          padding: `${20*ui}px ${28*ui}px`, maxWidth: 600*ui, width: 'min(94vw, 100%)', textAlign: 'center',
         animation: 'animPop 0.22s ease-out',
         ...tm.panel,

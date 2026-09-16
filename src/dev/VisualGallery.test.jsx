@@ -29,6 +29,19 @@ describe('fixed functional UI gallery', () => {
     expect(html).toContain('data-card-kind="token"');
   });
 
+  it.each(['flight-self-discard', 'flight-opponent-self', 'flight-self-opponent', 'flight-pile-self', 'flight-pile-opponent', 'flight-reveal-self', 'flight-reveal-opponent'])('keeps %s anchored to the full battle with replay and freeze controls', id => {
+    const scene = VisualGallery.scenes.find(item => item[0] === id);
+    const html = renderToString(<GalleryScenePreview scene={scene} expansionKey="地神的潜影" onAction={() => {}} onScene={() => {}} />);
+    expect(html).toContain('toe-battle-root');
+    expect(html).toContain('data-self-hand-card=');
+    expect(html).toContain('data-player-hand-strip="1"');
+    expect(html).toContain('data-deck-pile=');
+    expect(html).toContain('data-discard-pile=');
+    expect(html).toContain(`data-flight-preview="${id}"`);
+    expect(html).toContain('重播飞行');
+    expect(html).toContain('aria-label="飞行定格进度"');
+  });
+
   it.each(VisualGallery.scenes.map(scene => [scene[0], scene]))('renders %s without running game orchestration', (_id, scene) => {
     const html = renderToString(<GalleryScenePreview scene={scene} expansionKey="地神的潜影" onAction={() => {}} onScene={() => {}} />);
     expect(html.length).toBeGreaterThan(100);

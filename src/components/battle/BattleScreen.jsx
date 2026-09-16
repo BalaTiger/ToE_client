@@ -5,6 +5,9 @@ import { buildPublicUrl } from '../../utils/url';
 import { OpponentArc } from './OpponentArc';
 import { ArchBattleLayout, ClassicBattleLayout } from './BattleLayouts';
 import { CoastalBattleLayout, CoastalOpponents } from './CoastalBattleLayout';
+import { CoastalBoardEffects } from './CoastalBoardEffects';
+import { getCoastalViewport } from './coastalViewport';
+import { COASTAL_CORNER } from './coastalGeometry';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
@@ -305,14 +308,19 @@ export function BattleScreen(props) {
   const { appearance } = useUiAppearance();
   const archLayout = appearance.battleLayout === 'arch';
   const coastalLayout = appearance.battleLayout === 'coastal';
-  const coastalCompact = isMobile || isMobileLandscape;
-  const coastalScale = coastalCompact ? 1 : vw / DESIGN_WIDTH;
+  const coastalCompact = !coastalLayout && (isMobile || isMobileLandscape);
+  const coastalViewport = coastalLayout ? getCoastalViewport(vw, props.vh) : null;
+  const coastalScale = coastalViewport?.scale ?? 1;
   const boardZoom = coastalLayout ? coastalScale : scaleRatio;
   const compositionFonts = coastalLayout ? { ...fontSizes, body: 12, small: 11, tiny: 10 } : fontSizes;
-  const coastalBoardHeight = coastalLayout ? Math.max(620, (props.vh || 620) / coastalScale) : undefined;
+  const coastalBoardHeight = coastalViewport?.boardHeight;
   const sceneBackgroundStyle = coastalLayout ? {
     ...battleBackgroundStyle,
     backgroundImage: `linear-gradient(rgba(0, 4, 7, .13), rgba(0, 3, 5, .3)), url('${buildPublicUrl(getBattleBackgroundImage(gs.expansionKey))}')`,
+    '--toe-coastal-viewport-left': `${coastalViewport.left}px`,
+    '--toe-coastal-viewport-top': `${coastalViewport.top}px`,
+    '--toe-coastal-viewport-width': `${coastalViewport.width}px`,
+    '--toe-coastal-viewport-height': `${coastalViewport.height}px`,
   } : battleBackgroundStyle;
   const OpponentLayout = coastalLayout ? CoastalOpponents : archLayout ? OpponentArc : 'div';
   const BoardLayout = appearance.BattleLayout || (coastalLayout ? CoastalBattleLayout : archLayout ? ArchBattleLayout : ClassicBattleLayout);
@@ -351,7 +359,7 @@ export function BattleScreen(props) {
   const getButtonStyle = (opts) =>
     getPhaseActionButtonStyle({ isMobile, isMobileLandscape, mobileCssPx, interactionFontSizes, ...opts });
 
-  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} {...(archLayout || coastalLayout ? { currentTurn: visualCurrentTurn, compact: isMobile || isMobileLandscape } : { style: {
+  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} {...(archLayout || coastalLayout ? { currentTurn: visualCurrentTurn, compact: coastalCompact } : { style: {
           display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
           gap: isMobile ? boardCssPx(6) : isMobileLandscape ? boardCssPx(4) : 8,
           justifyContent: 'center', width: '100%',
@@ -369,7 +377,7 @@ export function BattleScreen(props) {
             const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={coastalLayout ? 1 : boardScaleRatio} viewportWidth={vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={coastalLayout ? 1 : boardScaleRatio} viewportWidth={coastalLayout ? DESIGN_WIDTH : vw} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
                 </div>
               );
             })}
@@ -387,13 +395,13 @@ export function BattleScreen(props) {
             canLocalTargetSelect={canLocalTargetSelect}
             suppressAnim={suppressAnim}
             tutorialStep={tutorialStep}
-            isMobile={isMobile}
-            isMobileLandscape={isMobileLandscape}
+            isMobile={coastalLayout ? false : isMobile}
+            isMobileLandscape={coastalLayout ? false : isMobileLandscape}
             boardCssPx={boardCssPx}
             middleRowHeight={centralHeight}
             fontSizes={compositionFonts}
             boardScaleRatio={coastalLayout ? 1 : boardScaleRatio}
-            vw={vw}
+            vw={coastalLayout ? DESIGN_WIDTH : vw}
             expansionKey={gs.expansionKey}
             hitIndices={hitIndices}
             sanHitIndices={sanHitIndices}
@@ -409,7 +417,7 @@ export function BattleScreen(props) {
             handleAIClick={handleAIClick}
           />
           {/* Center: deck/discard piles */}
-        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={vw<430} baseHeight={coastalLayout ? 170 : centralHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={coastalLayout ? 1 : compactBoardScaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
+        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={!coastalLayout && vw<430} baseHeight={coastalLayout ? 170 : centralHeight} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={coastalLayout ? 1 : compactBoardScaleRatio} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId} petrifyingFormula={gs.petrifyingFormula}/>
           {/* Log — narrow, right-aligned */}
           <BattleLogPanel
             logRef={logRef}
@@ -417,7 +425,7 @@ export function BattleScreen(props) {
             players={gs.players}
             isMultiplayer={!!gs._isMP}
             expansionKey={gs.expansionKey}
-            isMobile={isMobile}
+            isMobile={coastalLayout ? false : isMobile}
             middleRowHeight={centralHeight}
             fontSizes={compositionFonts}
             scaleRatio={coastalLayout ? 1 : layoutScaleRatio}
@@ -427,9 +435,9 @@ export function BattleScreen(props) {
           <BattlePhaseBar
             myTurn={myTurn}
             phase={phase}
-            isMobile={isMobile}
+            isMobile={coastalLayout ? false : isMobile}
             baseFontSizes={coastalLayout ? { ...interactionFontSizes, body: 12, small: 11 } : interactionFontSizes}
-            scaleRatio={layoutScaleRatio}
+            scaleRatio={coastalLayout ? 1 : layoutScaleRatio}
             displayPhaseLabel={coastalLayout && phase === 'ACTION' && myTurn ? '你的回合 · 请选择行动' : (archLayout || coastalLayout) && typeof displayPhaseLabel === 'string' ? displayPhaseLabel.replace(/(手牌超限)\s*[（(]\d+\/\d+[)）]/, '$1') : displayPhaseLabel}
             cardHintText={coastalLayout && phase === 'ACTION' ? '' : cardHintText === '鼠标悬停查看卡牌详情（移动端请点击卡牌）' ? '点击手牌选择行动' : cardHintText}
             isPhaseWarningText={isPhaseWarningText}
@@ -494,12 +502,12 @@ export function BattleScreen(props) {
           blackGoatPulsePid={blackGoatPulsePid}
           promptWarningTextColor={promptWarningTextColor}
           promptActiveTextColor={promptActiveTextColor}
-          isMobile={isMobile}
-          isMobileLandscape={isMobileLandscape}
+          isMobile={coastalLayout ? false : isMobile}
+          isMobileLandscape={coastalLayout ? false : isMobileLandscape}
           mobileCssPx={mobileCssPx}
-          interactionFontSizes={interactionFontSizes}
+          interactionFontSizes={coastalLayout ? compositionFonts : interactionFontSizes}
           mobileHandUsesCompact={mobileHandUsesCompact}
-          selfHandCardScale={coastalLayout && coastalCompact ? 2 : selfHandCardScale}
+          selfHandCardScale={selfHandCardScale}
           scaleRatio={boardZoom}
           handleMyCardClick={handleMyCardClick}
           useAbility={useAbility}
@@ -517,11 +525,13 @@ export function BattleScreen(props) {
 
   return (
     <>
+    {coastalLayout && <div className="toe-coastal-matte" aria-hidden="true" />}
     <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...sceneBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
     }}>
       {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
+      <div className="toe-battle-background" aria-hidden="true" />
       {/* Global vignette */}
-      <div style={{position:'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
+      <div style={{position:coastalLayout?'absolute':'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       {pendingRoleSelection&&(
         <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
@@ -671,6 +681,7 @@ export function BattleScreen(props) {
       <BattleSceneContent shake={sceneShake} paused={isSoloPaused} style={{position:'relative',zIndex:2,width:'100%',maxWidth:DESIGN_WIDTH*scaleRatio,alignSelf:'center',display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
         {/* Header */}
         {!coastalLayout && <BattleHeader
+          hidePauseButton={!!pendingRoleSelection || !!roleRevealAnim}
           isMultiplayer={isMultiplayer}
           isSpectating={isSpectating}
           showTutorial={showTutorial}
@@ -686,9 +697,9 @@ export function BattleScreen(props) {
 
         {/* Scaled player areas wrapper */}
         <div style={{overflow:'visible',width:'100%',display:'flex',justifyContent:'center'}}>
-          <div data-zoom-container style={{
+          <div data-zoom-container data-board-zoom={boardZoom} style={{
             zoom:boardZoom!==1?boardZoom:'normal',
-            width:coastalLayout && coastalCompact ? vw : DESIGN_WIDTH,
+            width:DESIGN_WIDTH,
             flexShrink:0,
             transformOrigin:'top center',
             '--toe-coastal-height': coastalLayout ? `${coastalBoardHeight}px` : undefined,
@@ -696,9 +707,12 @@ export function BattleScreen(props) {
             <div style={{width:'100%',boxSizing:'border-box',padding:coastalLayout ? 0 : `0 ${(isMobile||isMobileLandscape)?boardCssPx(scaledAreaSafeInsetX):scaledAreaSafeInsetX}px`}}>
 
         <BoardLayout opponents={opponentPanels} middle={middlePanel} prompt={phasePrompt} hand={handPanel}
+          effects={coastalLayout ? <CoastalBoardEffects formula={gs.petrifyingFormula}
+            night={!showTutorial && anim?.type !== 'APOPHIS_ECLIPSE' ? (anim && Object.prototype.hasOwnProperty.call(anim, '_apophisNight') ? anim._apophisNight : gs.apophisNight) : null}
+            houndsActive={!showTutorial && houndsTimerVisible} secondsLeft={houndsSecLeft} /> : null}
           turn={gs.turn} turnLabel={visualCurrentTurn === 0 ? '你的回合' : `${visualPlayers[visualCurrentTurn]?.name || '其他角色'}的回合`}
           counts={{ inspection: gs.inspectionDeck.length, deck: gs.deck.length, discard: visualDiscard.length }}
-          compact={coastalCompact} width={coastalCompact ? vw : DESIGN_WIDTH} height={coastalBoardHeight} />
+          compact={coastalCompact} width={DESIGN_WIDTH} height={coastalBoardHeight} />
         <DamageLinkOverlay
           visualPlayers={visualPlayers}
           damageLinkGhosts={damageLinkGhosts}
@@ -712,12 +726,12 @@ export function BattleScreen(props) {
       {/* ── Overlays ── */}
       {createPortal(
         <>
-          {!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge
+          {!coastalLayout&&!showTutorial&&anim?.type!=='APOPHIS_ECLIPSE'&&<ApophisNightBadge
             night={anim&&Object.prototype.hasOwnProperty.call(anim,'_apophisNight')
               ?anim._apophisNight
               :gs?.apophisNight}
           />}
-          {!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
+          {!coastalLayout&&!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
           {!showTutorial&&pendingSoftGuideId&&<SoftGuideOverlay
             guide={SOFT_GUIDE_DEFS[pendingSoftGuideId]}
             spotlights={softGuideSpotlights}
@@ -776,6 +790,7 @@ export function BattleScreen(props) {
         const winnerPlayer=winIdx!=null?gs?.players?.[winIdx]:null;
         return (
           <TreasureMapAnim
+            sourcePlayerIndex={winIdx}
             hand={winnerPlayer?.hand||[]}
             subtitle={`${winnerPlayer?.name||'其他玩家'} 集齐了全部编号！`}
             waitingLabel={`正在等待 ${winnerPlayer?.name||'获胜者'} ……`}
@@ -794,28 +809,34 @@ export function BattleScreen(props) {
         }}/>
       )}
       <style>{globalStyles}</style>
-    </div>
-    {/* GammaSlider, emoji picker, and combat overlays all outside the filtered container
-         so that position:fixed uses the true viewport (filter on ancestor breaks fixed positioning) */}
-    <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}
+    {/* Keep controls below this root's masks. The root itself must stay untransformed;
+        background camera and shake transforms belong to its visual children. */}
+    {!pendingRoleSelection && !roleRevealAnim && <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}
       battleControls={coastalLayout ? { onPause: () => setIsSoloPaused(true), onExit: requestExitMatch || returnToMainMenu, isMultiplayer, showTutorial,
-        style: { top: coastalCompact ? 8 : 125 * coastalScale, right: coastalCompact ? 8 : 10 * coastalScale } } : undefined} />
+        shake: sceneShake, paused: isSoloPaused,
+        style: { top: coastalViewport.top + (COASTAL_CORNER.top + COASTAL_CORNER.controlsTop) * coastalScale,
+          right: coastalViewport.left + (COASTAL_CORNER.right + COASTAL_CORNER.controlsRight) * coastalScale,
+          '--toe-coastal-settings-top': `${coastalViewport.top + (COASTAL_CORNER.top + COASTAL_CORNER.controlsTop) * coastalScale}px`,
+          '--toe-coastal-system-scale': coastalScale } } : undefined} />}
+    </div>
+    {/* Emoji picker and combat overlays use viewport portals. */}
     {isLocalTestMode&&(
       <button
         type="button"
         onClick={()=>setLocalDebugMode(v=>!v)}
+        className="toe-battle-debug-toggle"
         style={{
           ...smallBtnStyle,
           position:'fixed',
-          top:14,
-          left:14,
+          top:(coastalViewport?.top || 0) + 14,
+          left:(coastalViewport?.left || 0) + 14,
           zIndex:120,
           fontSize:11,
           padding:'6px 10px',
           background:localDebugMode?'#2a1608':'#140e08',
           color:localDebugMode?'#f0cb7a':'#9b7641',
           borderColor:localDebugMode?'#7a5324':'#3a2510',
-          boxShadow:localDebugMode?'0 0 14px #7a532455':'none',
+          boxShadow:'none',
         }}
       >
         {localDebugMode?'Debug: 开':'Debug: 关'}

@@ -112,6 +112,25 @@ export function HandArea({
   const fanRadius = coastalGeometry?.hand.radius ?? Math.max(900, fanHalfSpan * fanHalfSpan / 64);
   const fanLift = coastalGeometry?.hand.lift ?? fanHalfSpan * fanHalfSpan / (2 * fanRadius);
   const badgeX = handSpace.betweenReliefs / 2 + 20;
+  const handCardHintStyle = {
+    position: 'absolute',
+    top: 0,
+    left: '50%',
+    transform: 'translate(-50%, -50%)',
+    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+    // Compensate both the board and the outer mobile landscape frame.
+    fontSize: `calc(${Math.max(12, 12 / scaleRatio)}px / var(--toe-mobile-screen-scale, 1))`,
+    lineHeight: 1.25,
+    borderRadius: 3,
+    padding: '3px 6px',
+    width: 'max-content',
+    maxWidth: 'calc(100% - 8px)',
+    boxSizing: 'border-box',
+    textAlign: 'center',
+    pointerEvents: 'none',
+    whiteSpace: 'normal',
+    zIndex: 10,
+  };
   const handCount = integratedHand && (
     <div
       className="toe-hand-count"
@@ -305,7 +324,8 @@ export function HandArea({
       <div
         className="toe-hand-card-strip"
         ref={stripRef}
-        data-self-hand-strip
+          data-self-hand-strip
+          data-hand-card-width={cardWidth}
         data-hand-fanned={fanEnabled}
         style={{
           display: 'flex',
@@ -383,20 +403,10 @@ export function HandArea({
                 <div
                   data-hand-card-hint
                   style={{
-                    position: 'absolute',
-                    top: -7,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                    fontSize: 8,
+                    ...handCardHintStyle,
                     color: '#c8a96e',
                     background: '#0a0705',
                     border: '1px solid #8a6020',
-                    borderRadius: 2,
-                    padding: '1px 4px',
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                    zIndex: 10,
                   }}
                 >
                   ⬆ 升级邪神之力
@@ -406,20 +416,10 @@ export function HandArea({
                 <div
                   data-hand-card-hint
                   style={{
-                    position: 'absolute',
-                    top: -7,
-                    left: '50%',
-                    transform: 'translateX(-50%)',
-                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                    fontSize: 8,
-                    color: '#b080e0',
+                    ...handCardHintStyle,
+                    color: '#cdb0ea',
                     background: '#0a0412',
                     border: '1px solid #7040aa',
-                    borderRadius: 2,
-                    padding: '1px 4px',
-                    pointerEvents: 'none',
-                    whiteSpace: 'nowrap',
-                    zIndex: 10,
                   }}
                 >
                   ⛧ 点击信仰

@@ -366,6 +366,7 @@ function buildResolvedDrawChoiceQueue(rotated, previousGs, logDelta, compileFres
       })
     : discardStep({
         card,
+        sourceAnchor: card.isGod ? 'godChoice' : 'playerArea',
         triggerName: localDisplayName(drawerIdx, drawerName),
         targetPid: drawerIdx,
         msgs: [],

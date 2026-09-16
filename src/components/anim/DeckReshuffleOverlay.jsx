@@ -1,6 +1,6 @@
 import React from 'react';
-import { getPileAnchorCenter } from '../../utils/dom';
-import { getStandardFlyingCardSize } from './cardSizing';
+import { getPileCardAnchor } from '../../utils/dom';
+import { CARD_FLIGHT_POSE, getCardFlightStyle } from './cardSizing';
 import { GenericAnimOverlay } from './GenericAnimOverlay';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 
@@ -17,22 +17,19 @@ export function DeckReshuffleOverlay({ anim, exiting, expansionKey = '地神的�
 
   React.useLayoutEffect(() => {
     const measure = () => {
-      const from = getPileAnchorCenter('[data-discard-pile]', {
+      const from = getPileCardAnchor('[data-discard-pile]', {
         x: window.innerWidth * 0.58,
         y: window.innerHeight * 0.48,
       });
-      const to = getPileAnchorCenter('[data-deck-pile]', {
+      const to = getPileCardAnchor('[data-deck-pile]', {
         x: window.innerWidth * 0.42,
         y: window.innerHeight * 0.48,
       });
-      const size = getStandardFlyingCardSize();
+      const flight = getCardFlightStyle(from, to);
       setPath({
-        left: from.x - size.width / 2,
-        top: from.y - size.height / 2,
-        width: size.width,
-        height: size.height,
-        '--reshuffle-x': `${to.x - from.x}px`,
-        '--reshuffle-y': `${to.y - from.y}px`,
+        ...flight,
+        left: from.x - flight.width / 2,
+        top: from.y - flight.height / 2,
       });
     };
     measure();
@@ -46,10 +43,11 @@ export function DeckReshuffleOverlay({ anim, exiting, expansionKey = '地神的�
     <div className={`deck-reshuffle-transfer${exiting ? ' deck-reshuffle-transfer-exiting' : ''}`}>
       <style>{`
         @keyframes deckReshuffleFly {
-          0% { opacity: 0; transform: translate3d(0,0,0) rotate(var(--reshuffle-rot)) scale(.94); }
+          0% { opacity: 0; transform: translate3d(0,0,0) ${CARD_FLIGHT_POSE.from}; }
           12% { opacity: 1; }
+          55% { opacity: 1; transform: translate3d(calc(var(--tx) * .55),calc(var(--ty) * .55),0) ${CARD_FLIGHT_POSE.mid}; }
           78% { opacity: 1; }
-          100% { opacity: 0; transform: translate3d(var(--reshuffle-x),var(--reshuffle-y),0) rotate(0deg) scale(.9); }
+          100% { opacity: 0; transform: translate3d(var(--tx),var(--ty),0) ${CARD_FLIGHT_POSE.to}; }
         }
         @keyframes deckReshuffleCaption {
           0% { opacity: 0; transform: translateY(8px); }
@@ -65,7 +63,7 @@ export function DeckReshuffleOverlay({ anim, exiting, expansionKey = '地神的�
             ...path,
             borderRadius: 7,
             overflow: 'hidden',
-            '--reshuffle-rot': `${(index - 3) * 5}deg`,
+            '--mid-rotation': `${(index - 3) * 5}deg`,
             animationDelay: `${index * 55}ms`,
           }}
         >

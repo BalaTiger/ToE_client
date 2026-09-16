@@ -1,0 +1,843 @@
+{
+  "checks": [
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "draw-error",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "god",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "dodge",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "nya-borrow",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "tortoise",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "1200",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "peek",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "1200",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "first-come",
+      "settings": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-settings-toggle toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "900",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "decipher",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "900",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-blind-draw",
+        "hitZ": "550",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "swap-blind",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-blind-draw",
+        "hitZ": "550",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "pause",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "exit",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10040",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "reconnect",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "9999",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "target-swap",
+      "settings": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-settings-toggle toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "980",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "soft-rest",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "980",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "900",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "tutorial-intro",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "900",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "battle",
+      "settings": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-settings-toggle toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "settings",
+      "settings": {
+        "covered": false,
+        "exists": true,
+        "hit": "toe-button toe-settings-toggle toe-coastal-system-button",
+        "hitZ": "auto",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      }
+    },
+    {
+      "layout": "grid",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "draw-error",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "grid",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "god",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "grid",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "pause",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "grid",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "exit",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10040",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "grid",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "reconnect",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "9999",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "arch",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "draw-error",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "arch",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "god",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "400",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "arch",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          1080,
+          8,
+          66,
+          24.59375
+        ]
+      },
+      "scene": "pause",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10030",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "arch",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "exit",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "10040",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "arch",
+      "parent": "toe-battle-root",
+      "pause": {
+        "exists": false
+      },
+      "scene": "reconnect",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "9999",
+        "rect": [
+          598.28125,
+          0,
+          73.4375,
+          28
+        ]
+      }
+    },
+    {
+      "layout": "coastal",
+      "parent": "toe-battle-root",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "99999",
+        "rect": [
+          1172.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "scene": "battle",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "DIV",
+        "hitZ": "99999",
+        "rect": [
+          1225.34375,
+          133.328125,
+          44,
+          44
+        ]
+      },
+      "case": "discard-pile"
+    },
+    {
+      "layout": "coastal",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1535.609375,
+          142.5,
+          44,
+          44
+        ]
+      },
+      "scene": "draw-error",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          1588.609375,
+          142.5,
+          44,
+          44
+        ]
+      },
+      "viewport": [
+        1920,
+        720
+      ]
+    },
+    {
+      "layout": "coastal",
+      "pause": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          655.828125,
+          350,
+          26.390625,
+          26.390625
+        ]
+      },
+      "scene": "draw-error",
+      "settings": {
+        "covered": true,
+        "exists": true,
+        "hit": "toe-dialog-backdrop",
+        "hitZ": "300",
+        "rect": [
+          687.609375,
+          350,
+          26.390625,
+          26.390625
+        ]
+      },
+      "viewport": [
+        720,
+        1000
+      ]
+    }
+  ],
+  "mainAbout": [
+    {
+      "covered": true,
+      "element": "toe-button toe-settings-toggle",
+      "hit": "toe-dialog-backdrop",
+      "hitZ": "800"
+    },
+    {
+      "covered": true,
+      "element": "toe-dialog toe-settings-panel",
+      "hit": "",
+      "hitZ": "auto"
+    }
+  ],
+  "roadmapCovered": true,
+  "pauseResumeAndSettings": true
+}

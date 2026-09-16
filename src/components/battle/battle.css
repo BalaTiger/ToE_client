@@ -157,3 +157,5 @@
 .toe-turn-actions:empty { display: none; }
 .toe-button.toe-phase-plaque { width: calc(148px * var(--toe-action-scale)); }
 .toe-phase-plaque .toe-turn-label { font-size: calc(13px * var(--toe-action-scale)); }
+.toe-battle-debug-toggle { opacity: .18; transition: opacity .15s ease; }
+.toe-battle-debug-toggle:is(:hover, :focus-visible) { opacity: .9; }

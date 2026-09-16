@@ -162,6 +162,7 @@ export function SelfPlayerPanel({
                   fontWeight: 700,
                   fontSize: fontSizes.body,
                   color: ri.col,
+                  '--toe-role-color': player.role === '邪祀者' ? '#BA9BCB' : ri.col,
                   textShadow: '0 1px 3px #000',
                   letterSpacing: 1,
                 }}

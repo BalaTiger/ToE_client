@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 
-// The only DOM scene-shake target. Backgrounds and viewport overlays stay outside.
-export function BattleSceneContent({ shake, paused = false, style, children }) {
+// Shake a visual content layer while backgrounds and viewport overlays stay outside.
+export function BattleSceneContent({ shake, paused = false, className = 'toe-battle-content', style, children }) {
   const contentRef = useRef(null);
   const animationRef = useRef(null);
 
@@ -25,5 +25,5 @@ export function BattleSceneContent({ shake, paused = false, style, children }) {
     else if (animation.playState === 'paused') animation.play();
   }, [paused, shake]);
 
-  return <div ref={contentRef} className="toe-battle-content" style={style}>{children}</div>;
+  return <div ref={contentRef} className={className} style={style}>{children}</div>;
 }

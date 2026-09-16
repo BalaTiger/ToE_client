@@ -1,7 +1,10 @@
 import { renderToStaticMarkup } from 'react-dom/server';
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DiceFace } from './DiceFace';
 import { DiceRollAnim } from './GenericAnimOverlay';
+
+beforeEach(() => vi.stubGlobal('window', { __PUBLIC_BASE__: '/' }));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('engraved dice presentation', () => {
   it('draws exactly the declared number of pips for all six results', () => {

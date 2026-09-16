@@ -4,7 +4,8 @@ import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
-import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { getCardFlightStyle } from './cardSizing';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
 import { getCardFlipGlowColor, getInspectionCardPolarity, petalPath } from './utils';
 import { GodHighlightBurst } from './GodHighlightBurst';
@@ -100,6 +101,34 @@ function BlindFishScotoma({top}){
   );
 }
 
+const revealsDrawFace = (card, targetPid) => (targetPid ?? 0) === 0 && !card?.effect && !card?.hiddenDraw && !card?._back;
+
+export function CardDrawFlight({card,targetPid,from,to,expansionKey='地神的潜影'}){
+  const revealFace=revealsDrawFace(card,targetPid);
+  const hideIdentity=shouldHideBlindZoneIdentity(card,(targetPid??0)===0);
+  // Leave a little pitch for the following spin/rise reveal to finish.
+  const flight=getCardFlightStyle(from,{...to,tilt:18},0,'endpoints');
+  return <div data-card-draw-flight={revealFace?'reveal-front':'back'} style={{
+    ...flight,position:'absolute',borderRadius:4,
+    '--dest-x':`${to.x-flight.width/2}px`,'--dest-y':`${to.y-flight.height/2}px`,
+    '--src-x':`${from.x-flight.width/2}px`,'--src-y':`${from.y-flight.height/2}px`,
+    animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
+  }}>
+    {revealFace?<div data-card-draw-turn style={{
+      position:'absolute',inset:0,transformStyle:'preserve-3d',
+      animation:'cardDrawTurn 0.65s linear forwards',
+    }}>
+      <div data-card-flight-side="back" style={{position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateX(180deg)',borderRadius:4,overflow:'hidden',background:'#100c08',boxShadow:'0 4px 18px #000b'}}>
+        <CardBackLayer expansionKey={expansionKey} card={card}/>
+      </div>
+      <div data-card-flight-side="front" style={{position:'absolute',inset:0,backfaceVisibility:'hidden',borderRadius:4,overflow:'hidden',background:'#100c08',boxShadow:'0 4px 18px #000b'}}>
+        <CardFaceImage card={card} godLevel={1} width={flight.width} style={{borderRadius:4,boxShadow:'none'}}/>
+        {hideIdentity&&<BlindFishScotoma top={Math.round(flight.height*54/590)}/>}
+      </div>
+    </div>:<CardBackLayer expansionKey={expansionKey} card={card}/>}
+  </div>;
+}
+
 function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
   const [traveled,setTraveled]=React.useState(skipTravel);
   const settledRef=React.useRef(false);
@@ -132,9 +161,6 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const showAtmosphereEffects=true;
   const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
   const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
-  const travelScale=Math.max(1,Math.min(1.35,viewportScale));
-  const travelW=Math.round(70*travelScale);
-  const travelH=Math.round(94*travelScale);
   const flipW=Math.round(208*cardScale);
   const flipH=Math.round(flipW*590/392);
   const px=value=>Math.round(value*cardScale);
@@ -154,40 +180,24 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
 
   const getSourceCenter=()=>{
     if(!isInspection&&sourcePile==='discard'){
-      return getPileAnchorCenter(
+      return getPileCardAnchor(
         '[data-discard-pile]',
         {x:window.innerWidth*0.35,y:window.innerHeight*0.50}
       );
     }
-    return getPileAnchorCenter(
+    return getPileCardAnchor(
       isInspection?'[data-inspection-pile]':'[data-deck-pile]',
       isInspection
       ?{x:window.innerWidth*0.10,y:window.innerHeight*0.14}
       :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08}
     );
   };
-  const getHandCenter=pid=>{
-    return getPlayerHandAnchorCenter(pid);
-  };
-  const destStyle=(()=>{
-    const src=getSourceCenter();
-    const dest=getHandCenter(targetPid??0);
-    return{'--dest-x':`${dest.x-travelW/2}px`,'--dest-y':`${dest.y-travelH/2}px`,'--src-x':`${src.x-travelW/2}px`,'--src-y':`${src.y-travelH/2}px`};
-  })();
+  const src=getSourceCenter();
+  const dest=travelOnly ? getPlayerHandCardAnchor(targetPid??0,card) : getRevealCardAnchor();
 
   if(!traveled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
-      <div style={{
-        position:'absolute',
-        width:travelW,height:travelH,borderRadius:4,
-        backgroundColor:'#100c08',
-        boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
-        overflow:'hidden',
-        ...destStyle,
-        animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
-      }}>
-        <CardBackLayer expansionKey={expansionKey} card={card}/>
-      </div>
+      <CardDrawFlight card={card} targetPid={targetPid} from={src} to={dest} expansionKey={expansionKey}/>
     </div>
   );
 
@@ -322,6 +332,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       )}
 
       <div
+        data-card-reveal
         data-inspection-flip-card={isInspection ? 'true' : undefined}
         style={{
           position:'relative',

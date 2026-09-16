@@ -1,7 +1,8 @@
 import React from 'react';
 import { CS, GOD_CS } from '../../constants/card';
 import { MiniCardFace } from '../cards';
-import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { getPileCardAnchor, getPlayerHandCardAnchor } from '../../utils/dom';
+import { CARD_FLIGHT_POSE, getCardFlightStyle } from './cardSizing';
 import { FullscreenLightLayer } from './FullscreenLightLayer';
 import { EARTHQUAKE_SHAKE_DURATION_MS } from './sceneShake';
 
@@ -25,14 +26,15 @@ function EarthquakeDiscardCard({ event }) {
 
   React.useEffect(() => {
     if (!event?.card) return;
-    const start = getPlayerHandAnchorCenter(event.playerIndex ?? 0);
-    const discard = getPileAnchorCenter(
+    const start = getPlayerHandCardAnchor(event.playerIndex ?? 0, event.card);
+    const discard = getPileCardAnchor(
       '[data-discard-pile]',
       { x: window.innerWidth * 0.35, y: window.innerHeight * 0.50 }
     );
     const tx = discard.x - start.x;
     const ty = discard.y - start.y;
     setStyle({
+      ...getCardFlightStyle(start, discard),
       left: start.x,
       top: start.y,
       '--tx': `${tx}px`,
@@ -51,12 +53,9 @@ function EarthquakeDiscardCard({ event }) {
   return (
     <div style={{
       position: 'absolute',
-      left: style.left,
-      top: style.top,
-      width: 70,
-      height: 94,
-      marginLeft: -35,
-      marginTop: -47,
+      ...style,
+      marginLeft: -style.width / 2,
+      marginTop: -style.height / 2,
       borderRadius: 4,
       background: s ? 'transparent' : '#100c08',
       border: 'none',
@@ -64,19 +63,15 @@ function EarthquakeDiscardCard({ event }) {
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      '--tx': style['--tx'],
-      '--ty': style['--ty'],
-      '--mid-tx': style['--mid-tx'],
-      '--mid-ty': style['--mid-ty'],
       opacity: 0,
-      transform: 'translate(0,0) rotate(-4deg) scale(0.96)',
+      transform: `translate(0,0) ${CARD_FLIGHT_POSE.from}`,
       animationName: 'earthquakeDiscardFly',
       animationDuration: style['--duration'],
       animationTimingFunction: 'cubic-bezier(0.26,0,0.2,1)',
       animationDelay: style['--delay'],
       animationFillMode: 'both',
     }}>
-      {s && <MiniCardFace card={card} width={70} height={94} ambient={false} frameStyle={{ boxShadow: 'none', border: 'none', background: 'transparent' }} />}
+      {s && <MiniCardFace card={card} width={style.width} height={style.height} ambient={false} frameStyle={{ boxShadow: 'none', border: 'none', background: 'transparent' }} />}
     </div>
   );
 }

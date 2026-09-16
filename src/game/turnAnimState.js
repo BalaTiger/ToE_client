@@ -977,6 +977,7 @@ export function buildTurnStartDrawReplayQueue({
   const discardDrawnStep = discardedDrawnCard
     ? discardStep({
       card: drawnCard,
+      sourceAnchor: drawnCard?.isGod ? 'godChoice' : 'playerArea',
       triggerName: localDisplayName(drawerPid, drawerName),
       targetPid: drawerPid,
       playersBefore: oldGs?.players,

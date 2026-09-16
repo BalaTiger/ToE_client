@@ -1,0 +1,33 @@
+{
+  "description": "AI edits preserving existing anonymous opponent identities; textured gray background. Original sources retained.",
+  "assets": [
+    {
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-59f98a00-6bdc-41e2-aa70-939fdab8ef33.png",
+      "target": "public/img/ui/coastal/portrait-1-gray.webp",
+      "width": 500,
+      "height": 500,
+      "bytes": 69194
+    },
+    {
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-1364dec7-b6eb-4ba8-a818-19b64bf48946.png",
+      "target": "public/img/ui/coastal/portrait-2-gray.webp",
+      "width": 500,
+      "height": 500,
+      "bytes": 75950
+    },
+    {
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-1c64b772-bfd3-4ae0-9115-dfd8805b713b.png",
+      "target": "public/img/ui/coastal/portrait-3-gray.webp",
+      "width": 500,
+      "height": 500,
+      "bytes": 80700
+    },
+    {
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-0e6f2598-45d5-4cd4-a85b-ca6d5ef4f1a5.png",
+      "target": "public/img/ui/coastal/portrait-4-gray.webp",
+      "width": 500,
+      "height": 500,
+      "bytes": 64578
+    }
+  ]
+}

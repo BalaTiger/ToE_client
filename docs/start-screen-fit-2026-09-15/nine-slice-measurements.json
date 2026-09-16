@@ -1,0 +1,450 @@
+[
+  {
+    "footerBottom": 468.765625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 83.19999694824219,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      },
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 49.20001220703125,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      },
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 83.19999694824219,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      }
+    ],
+    "scroll": [
+      900,
+      474
+    ],
+    "viewport": [
+      900,
+      474
+    ]
+  },
+  {
+    "footerBottom": 525.453125,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 59.9375,
+        "icon": [
+          33,
+          33
+        ],
+        "insets": {
+          "bottom": 12.488311767578123,
+          "right": 90.08001708984376,
+          "top": 12.488311767578123
+        },
+        "width": 199
+      },
+      {
+        "goalOverflow": false,
+        "height": 59.9375,
+        "icon": [
+          33,
+          33
+        ],
+        "insets": {
+          "bottom": 12.488311767578123,
+          "right": 42.160003662109375,
+          "top": 12.488311767578123
+        },
+        "width": 199
+      },
+      {
+        "goalOverflow": false,
+        "height": 59.9375,
+        "icon": [
+          33,
+          33
+        ],
+        "insets": {
+          "bottom": 12.488311767578123,
+          "right": 90.08001708984376,
+          "top": 12.488311767578123
+        },
+        "width": 199
+      }
+    ],
+    "scroll": [
+      1024,
+      540
+    ],
+    "viewport": [
+      1024,
+      540
+    ]
+  },
+  {
+    "footerBottom": 614.90625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 34,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      }
+    ],
+    "scroll": [
+      1200,
+      632
+    ],
+    "viewport": [
+      1200,
+      632
+    ]
+  },
+  {
+    "footerBottom": 758.515625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 34,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      }
+    ],
+    "scroll": [
+      1280,
+      800
+    ],
+    "viewport": [
+      1280,
+      800
+    ]
+  },
+  {
+    "footerBottom": 711.90625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 34,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      }
+    ],
+    "scroll": [
+      1368,
+      720
+    ],
+    "viewport": [
+      1368,
+      720
+    ]
+  },
+  {
+    "footerBottom": 808.515625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 34,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      }
+    ],
+    "scroll": [
+      1440,
+      900
+    ],
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "footerBottom": 898.515625,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 34,
+          "top": 11
+        },
+        "width": 224
+      },
+      {
+        "goalOverflow": false,
+        "height": 65.046875,
+        "icon": [
+          42,
+          42
+        ],
+        "insets": {
+          "bottom": 11,
+          "right": 94,
+          "top": 11
+        },
+        "width": 224
+      }
+    ],
+    "scroll": [
+      1920,
+      1080
+    ],
+    "viewport": [
+      1920,
+      1080
+    ]
+  },
+  {
+    "footerBottom": 777.71875,
+    "footerOverflow": false,
+    "roles": [
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 83.19999694824219,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      },
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 49.19999694824219,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      },
+      {
+        "goalOverflow": false,
+        "height": 56.09375,
+        "icon": [
+          24,
+          24
+        ],
+        "insets": {
+          "bottom": 13.557037353515623,
+          "right": 83.19999694824219,
+          "top": 13.557037353515623
+        },
+        "width": 176
+      }
+    ],
+    "scroll": [
+      390,
+      844
+    ],
+    "viewport": [
+      390,
+      844
+    ]
+  }
+]

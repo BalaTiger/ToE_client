@@ -51,6 +51,7 @@ export function BattleLogPanel({
   middleRowHeight,
   fontSizes,
   scaleRatio = 1,
+  coastalBook = false,
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
   const allLogLines = Array.isArray(visibleLog) ? visibleLog : [];
@@ -64,17 +65,26 @@ export function BattleLogPanel({
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const mobileLogHeight = Math.round(132 * fontZoom);
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
+  const heading = <div className="toe-log-heading" style={{
+    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+    color: 'var(--toe-log-title-ink,' + reliefConfig.logText.title + ')',
+    fontSize: Math.max(12 * fontZoom, fontSizes.small),
+    letterSpacing: 2,
+    marginBottom: 5,
+    textTransform: 'uppercase',
+    position: 'relative',
+  }}>冒险日志</div>;
 
   return (
-    <div className="toe-log-frame-shell toe-closed-panel" style={{
+    <div className="toe-log-frame-shell toe-closed-panel" data-log-book={coastalBook || undefined} style={{
       width: isMobile ? '100%' : 218,
       flexBasis: isMobile ? '100%' : undefined,
       flexShrink: 0,
       height: isMobile ? mobileLogHeight : middleRowHeight,
-      '--toe-coastal-log-banner': `url('${buildPublicUrl('/img/ui/coastal/log-banner.webp')}')`,
       '--toe-coastal-body-font': `${12 * fontZoom}px`,
     }}>
     <PanelFrame closed />
+    {coastalBook && heading}
     <div ref={logRef} className="toe-battle-panel" data-log-panel style={{
       width: isMobile ? '100%' : 218,
       flexBasis: isMobile ? '100%' : undefined,
@@ -118,15 +128,7 @@ export function BattleLogPanel({
           ))}
         </div>
       </div>
-      <div className="toe-log-heading" style={{
-        fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-        color: reliefConfig.logText.title,
-        fontSize: Math.max(12 * fontZoom, fontSizes.small),
-        letterSpacing: 2,
-        marginBottom: 5,
-        textTransform: 'uppercase',
-        position: 'relative',
-      }}>冒险日志</div>
+      {!coastalBook && heading}
       {displayLogLines.map(({ line, display }, i) => {
         return (
           <div key={i} className="toe-log-line" data-turn-heading={line.includes('──')} style={{
@@ -134,13 +136,13 @@ export function BattleLogPanel({
             fontStyle: 'normal',
             fontSize: Math.max(12 * fontZoom, fontSizes.body),
             lineHeight: 1.7,
-            color: line.includes('──') ? reliefConfig.logText.turn
-              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? '#cc8b7c'
-                : line.includes('获胜') || line.includes('集齐') ? 'var(--toe-strong,#c8a96e)'
-                  : reliefConfig.logText.body,
+            color: line.includes('──') ? `var(--toe-log-turn-ink,${reliefConfig.logText.turn})`
+              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? 'var(--toe-log-danger-ink,#cc8b7c)'
+                : line.includes('获胜') || line.includes('集齐') ? 'var(--toe-log-win-ink,var(--toe-strong,#c8a96e))'
+                  : `var(--toe-log-body-ink,${reliefConfig.logText.body})`,
             fontWeight: line.includes('──') ? 700 : 400,
             position: 'relative',
-          }}>{display}</div>
+          }}>{coastalBook && line.includes('──') ? display.replace(/^─+\s*|\s*─+$/g, '') : display}</div>
         );
       })}
     </div>

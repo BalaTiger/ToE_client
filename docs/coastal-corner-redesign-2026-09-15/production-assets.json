@@ -1,0 +1,144 @@
+{
+  "generator": "scripts/extract-coastal-corner-assets.mjs",
+  "generationMode": "Built-in image_gen; original generated masters archived unmodified",
+  "originalSourceDirectory": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0",
+  "processing": {
+    "operation": "Deterministic matte extraction only, preserving the generated painted RGB and native geometry",
+    "basedOn": "scripts/extract-coastal-assets.mjs",
+    "neutralMatte": {
+      "minChannel": "130 by default; 110 for the darker turn-plaque checkerboard",
+      "maxChannelSpread": 22
+    },
+    "enclosedCheckerboard": {
+      "minArea": 32,
+      "minLuminanceRange": 38
+    },
+    "alpha": "Exterior/checked-hole removal, largest connected subject, one-pixel edge decontamination",
+    "trimPadding": 2,
+    "circularCanvas": "Transparent padding only; no resampling or nonuniform scaling",
+    "webp": {
+      "quality": 94,
+      "alphaQuality": 100,
+      "effort": 6
+    }
+  },
+  "assets": [
+    {
+      "name": "turn-plaque",
+      "path": "public/img/ui/coastal/turn-plaque.webp",
+      "source": "exec-1acdbf70-3a1e-4ea1-9c91-b21e914aad17.png",
+      "archivedSource": "docs/coastal-corner-redesign-2026-09-15/turn-plaque-master.png",
+      "sourceSize": [
+        2161,
+        728
+      ],
+      "sourceSha256": "4c660e24c7eacbbf8d52c9cdba5d40f86be15fc0ec2c1ca2263633742ec0fede",
+      "alphaBounds": {
+        "left": 10,
+        "top": 92,
+        "width": 2147,
+        "height": 518
+      },
+      "trim": {
+        "left": 8,
+        "top": 90,
+        "width": 2151,
+        "height": 522
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      },
+      "matteMinChannel": 110,
+      "size": [
+        2151,
+        522
+      ],
+      "aspectRatio": 4.120689655172414,
+      "hasAlpha": true,
+      "clearedComponents": 24,
+      "bytes": 291964,
+      "sha256": "3a9a770cd243a94e2df1f0084eb2a9118800b9b9aa56a70e0bf15790979bba85"
+    },
+    {
+      "name": "log-journal",
+      "path": "public/img/ui/coastal/log-journal.webp",
+      "source": "exec-8eea696b-0617-4461-ac8e-46ff05b6d486.png",
+      "archivedSource": "docs/coastal-corner-redesign-2026-09-15/log-journal-master.png",
+      "sourceSize": [
+        1122,
+        1402
+      ],
+      "sourceSha256": "eb3d8e355a5498d9b97c2f0a3fe0af86d515fcd8a421ffde2dff5d4ad00fef10",
+      "alphaBounds": {
+        "left": 49,
+        "top": 30,
+        "width": 1045,
+        "height": 1327
+      },
+      "trim": {
+        "left": 47,
+        "top": 28,
+        "width": 1049,
+        "height": 1331
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      },
+      "matteMinChannel": 130,
+      "size": [
+        1049,
+        1331
+      ],
+      "aspectRatio": 0.7881292261457551,
+      "hasAlpha": true,
+      "clearedComponents": 1,
+      "bytes": 475086,
+      "sha256": "9a7bf8a3c013732979f7acc957a1aa2e5b3b50aea456926a1935fb52f1ec4643"
+    },
+    {
+      "name": "control-disc",
+      "path": "public/img/ui/coastal/control-disc.webp",
+      "source": "exec-36024573-7058-4de1-9b0e-49222d43eb4a.png",
+      "archivedSource": "docs/coastal-corner-redesign-2026-09-15/control-disc-master.png",
+      "sourceSize": [
+        1254,
+        1254
+      ],
+      "sourceSha256": "9ad78f21b602563186e2d5d87acdf9b691223975c1f39e2b69b15c6b358067de",
+      "alphaBounds": {
+        "left": 3,
+        "top": 4,
+        "width": 1245,
+        "height": 1236
+      },
+      "trim": {
+        "left": 1,
+        "top": 2,
+        "width": 1249,
+        "height": 1240
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 4,
+        "bottom": 5
+      },
+      "matteMinChannel": 130,
+      "size": [
+        1249,
+        1249
+      ],
+      "aspectRatio": 1,
+      "hasAlpha": true,
+      "clearedComponents": 2,
+      "bytes": 435870,
+      "sha256": "18ef5fd93644ea266220f4fa8dc553b125f02c5ffd95394d22571dc27a766770"
+    }
+  ]
+}

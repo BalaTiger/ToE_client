@@ -60,7 +60,9 @@ export const INTERFACE_STYLES = `
 .toe-online-dialog .toe-panel { padding: 14px; margin-top: 14px; }
 .toe-online-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .toe-online-paths button { min-height: 66px; padding: 14px; }
-.toe-settings { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 1800; display: flex; flex-direction: column; align-items: center; }
+.toe-settings { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-direction: column; align-items: center; }
+/* Same stacking context as battle masks: content 2, vignette 3, controls 4, masks 100+. */
+.toe-battle-root > .toe-settings { position: fixed; z-index: 4; }
 .toe-settings-toggle { min-height: 28px; padding: 3px 16px; font-size: 12px; border-top: 0; }
 .toe-settings-panel { width: min(340px,calc(100vw - 24px)); max-height: calc(100dvh - 40px); overflow-y: auto; padding: 20px; margin-top: 5px; }
 .toe-setting-row { display: grid; grid-template-columns: 44px minmax(80px,1fr) 44px; align-items: center; gap: 12px; font-size: 13px; margin-top: 14px; }

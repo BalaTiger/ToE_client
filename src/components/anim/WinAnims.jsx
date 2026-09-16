@@ -1,9 +1,19 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { RINFO } from '../../game';
 import { buildPublicUrl } from '../../utils/url';
 import { CardFaceImage } from '../cards/CardFaceImage';
 import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 import { FullscreenLightLayer } from './FullscreenLightLayer';
+import { _getZoomCompensatedRect, getPlayerHandCardAnchor } from '../../utils/dom';
+import { CARD_FLIGHT_POSE, getCardFlightStyle } from './cardSizing';
+
+const TREASURE_FLIGHT_STYLES = `
+  @keyframes treasureCardAssemble {
+    0%   { transform: translate(calc(var(--tx,0px) * -1), calc(var(--ty,0px) * -1)) ${CARD_FLIGHT_POSE.from}; opacity: 0; }
+    55%  { transform: translate(calc(var(--tx,0px) * -.45), calc(var(--ty,0px) * -.45)) ${CARD_FLIGHT_POSE.mid}; opacity: 1; }
+    100% { transform: translate(0,0) ${CARD_FLIGHT_POSE.to}; opacity: 1; }
+  }
+`;
 
 function GodResurrectionAnim({onDone}){
   const [textPhase, setTextPhase] = useState(0); // 0: black, 1: transitioning, 2: red with blood
@@ -110,10 +120,8 @@ function GodResurrectionAnim({onDone}){
 //   - confirmCountdownSec：按钮带倒计时，归零自动点击（联机获胜者侧，避免房间卡死）
 //   - waitingLabel：不显示按钮，替换为等待提示（远端玩家集齐宝藏时本地所见）
 //   - autoConfirmMs：不显示按钮，地图揭示后停留一段时间自动 onConfirm（AI 集齐宝藏）
-function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=null,autoConfirmMs=null,subtitle=null}){
-  // Compute the minimal ordered set of cards that covers all 4 letters AND 4 numbers
-  const LETTERS_ALL=['A','B','C','D'],NUMS_ALL=[1,2,3,4];
-  function pickWinCards(h){
+// Compute the minimal ordered set of cards that covers all 4 letters AND 4 numbers.
+function pickWinCards(h){
     const nonGod=h.filter(c=>!c.isGod);
     const chosen=[];
     const ls=new Set(),ns=new Set();
@@ -130,7 +138,9 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
       ls.add(pick.letter);ns.add(pick.number);
     }
     return chosen;
-  }
+}
+
+function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=null,autoConfirmMs=null,subtitle=null,sourcePlayerIndex=0,sourceCardAnchors={}}){
   const winCards=pickWinCards(hand);
   const N=winCards.length; // 4 to 8
   // Phase: 0=init, 1..N = card N flies in, N+1=all in (glow builds), N+2=flash, N+3=map revealed, N+4=button shown
@@ -138,6 +148,10 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   const firedRef=useRef(false);
   const [countdown,setCountdown]=useState(confirmCountdownSec);
   const confirmFiredRef=useRef(false);
+  const gridRef=useRef(null);
+  // Result scenes unmount the board; retain its last measured card geometry.
+  const sourceCardAnchorsRef=useRef(sourceCardAnchors);
+  const [handOrigins,setHandOrigins]=useState([]);
   const [viewport,setViewport]=useState(()=>({
     width:typeof window==='undefined'?1280:window.innerWidth,
     height:typeof window==='undefined'?720:window.innerHeight,
@@ -202,13 +216,21 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
   const CW=Math.round(Math.max(52,Math.min(180,desiredCW,maxCWByWidth,maxCWByHeight)));
   const CH=Math.round(CW*CARD_FACE_RATIO),GAP=Math.round(Math.max(6,Math.min(12,CW/9)));
   const gridW=COLS*(CW+GAP)-GAP, gridH=ROWS*(CH+GAP)-GAP;
-  // Scatter origins (8 corners/edges)
-  const origins=[
-    {x:-CW*3.05,y:-CH*1.65},{x:CW*3.05,y:-CH*1.65},{x:-CW*3.05,y:CH*1.65},{x:CW*3.05,y:CH*1.65},
-    {x:0,y:-CH*1.85},{x:0,y:CH*1.85},{x:-CW*2.8,y:0},{x:CW*2.8,y:0},
-  ];
+  useLayoutEffect(()=>{
+    const grid=_getZoomCompensatedRect(gridRef.current);
+    if(!grid)return;
+    setHandOrigins(pickWinCards(hand).map((card,i)=>{
+      const source=sourceCardAnchorsRef.current[card.id]||getPlayerHandCardAnchor(sourcePlayerIndex,card);
+      return getCardFlightStyle(source,{
+        x:grid.left+(i%COLS)*(CW+GAP)+CW/2,
+        y:grid.top+Math.floor(i/COLS)*(CH+GAP)+CH/2,
+        width:CW,rotation:0,tilt:0,
+      });
+    }));
+  },[hand,sourcePlayerIndex,COLS,CW,CH,GAP,viewport.width,viewport.height]);
   return(
     <>
+      <style>{TREASURE_FLIGHT_STYLES}</style>
       {flashing&&(
         <FullscreenLightLayer style={{background:'rgba(210,195,155,0.38)'}} />
       )}
@@ -234,7 +256,7 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
         )}
       </div>
       {/* Card grid / Map area */}
-      <div style={{position:'relative',width:gridW,height:gridH,marginBottom:32}}>
+      <div ref={gridRef} style={{position:'relative',width:gridW,height:gridH,marginBottom:32}}>
         {/* Glow overlay on grid */}
         {(glowing||flashing)&&(
           <div style={{position:'absolute',inset:-12,borderRadius:8,pointerEvents:'none',
@@ -249,17 +271,22 @@ function TreasureMapAnim({hand,onConfirm,confirmCountdownSec=null,waitingLabel=n
           const col=i%COLS,row=Math.floor(i/COLS);
           const tx=col*(CW+GAP),ty=row*(CH+GAP);
           const arrived=phase>i;
-          const orig=origins[i%origins.length];
+          const flight=handOrigins[i];
+          const cardWidth=flight?.width||CW;
+          const cardHeight=flight?.height||CH;
           return(
             <div key={card.id} style={{
-              position:'absolute',left:tx,top:ty,width:CW,height:CH,
-              transform:arrived?'translate(0,0)':`translate(${orig.x}px,${orig.y}px)`,
-              opacity:arrived?1:0,
-              transition:'transform 0.55s cubic-bezier(0.22,1.1,0.36,1), opacity 0.4s ease, box-shadow 0.4s ease',
+              ...flight,
+              position:'absolute',left:tx+CW/2,top:ty+CH/2,width:cardWidth,height:cardHeight,
+              marginLeft:-cardWidth/2,marginTop:-cardHeight/2,
+              animation:arrived&&flight?'treasureCardAssemble 0.55s cubic-bezier(0.22,1.1,0.36,1) both':'none',
+              opacity:arrived&&flight?1:0,
+              transition:'box-shadow 0.4s ease',
+              backfaceVisibility:'hidden',
               borderRadius:5,
               boxShadow:allIn?'0 0 14px #c8a96e99, 0 0 26px #c8a96e44':'0 0 4px rgba(0,0,0,0.6)',
             }}>
-              <CardFaceImage card={card} width={CW} style={{boxShadow:'none'}} />
+              <CardFaceImage card={card} width={cardWidth} style={{boxShadow:'none'}} />
             </div>
           );
         })}
@@ -347,7 +374,7 @@ function RoleRevealAnim({role,onDone}){
             你本局的身份：
           </span>
           {/* Slot window */}
-          <div style={{overflow:'hidden',height:ITEM_H,minWidth:108,background:'#080502',padding:'0 10px',display:'flex',alignItems:'flex-start'}}>
+          <div style={{overflow:'hidden',height:ITEM_H,minWidth:108,padding:'0 10px',display:'flex',alignItems:'flex-start'}}>
             <div style={{
               transform:`translateY(${offset}px)`,
               transition:offset===0?'none':`transform 2.0s cubic-bezier(0.04,0.0,0.1,1.0)`,

@@ -1,5 +1,8 @@
 import React from 'react';
 import { DDCard, DDCardBack } from '../cards';
+import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
+import { _getZoomCompensatedRect, getPlayerHandCardAnchor } from '../../utils/dom';
+import { getCardFlightStyle } from '../anim/cardSizing';
 
 export function SwapBlindDrawOverlay({
   swapBlindDraw,
@@ -9,6 +12,43 @@ export function SwapBlindDrawOverlay({
   swapBlindHandRef,
   handleSwapBlindDrawSelect,
 }) {
+  const [shufflePaths, setShufflePaths] = React.useState({});
+  const phase = swapBlindDraw?.phase;
+  const targetPi = swapBlindDraw?.targetPi;
+  const handSnapshot = swapBlindDraw?.handSnapshot;
+  const cardHeight = swapBlindCardLayout.width * CARD_FACE_RATIO;
+  const flyPath = phase === 'flying' && swapBlindDraw.flyFrom && swapBlindDraw.flyTo
+    ? getCardFlightStyle(swapBlindDraw.flyFrom, swapBlindDraw.flyTo) : null;
+
+  React.useLayoutEffect(() => {
+    const hand = swapBlindHandRef.current;
+    if (phase !== 'shuffling' || !hand || !handSnapshot) return;
+    const slots = [...hand.querySelectorAll('[data-blind-card-index]')];
+    // Stable flex slots stay measurable while their card planes fly in 3D.
+    const handRect = _getZoomCompensatedRect(hand);
+    const pileX = handRect.left + handRect.width / 2;
+    const pileY = handRect.top + handRect.height / 2;
+    const paths = {};
+    slots.forEach(element => {
+      const idx = Number(element.dataset.blindCardIndex);
+      const entry = handSnapshot.find(item => item.idx === idx);
+      const rect = _getZoomCompensatedRect(element);
+      if (!entry || !rect?.width) return;
+      const from = getPlayerHandCardAnchor(targetPi, entry.card);
+      const x = rect.left + rect.width / 2;
+      const y = rect.top + rect.height / 2;
+      const flight = getCardFlightStyle(from, { x, y, width: rect.width, rotation: 0, tilt: 0 });
+      paths[idx] = {
+        ...flight,
+        '--start-x': `${from.x - x}px`,
+        '--start-y': `${from.y - y}px`,
+        '--pile-x': `${pileX - x}px`,
+        '--pile-y': `${pileY - y}px`,
+      };
+    });
+    setShufflePaths(paths);
+  }, [phase, targetPi, handSnapshot, swapBlindHandRef, swapBlindCardLayout.width, swapBlindCardLayout.gap, swapBlindCardLayout.maxWidth]);
+
   if (!swapBlindDraw) return null;
 
   return (
@@ -27,81 +67,68 @@ export function SwapBlindDrawOverlay({
       </div>
       <div ref={swapBlindHandRef} style={{
         display: 'flex', gap: swapBlindCardLayout.gap, alignItems: 'center', justifyContent: 'center',
-        flexWrap: 'wrap', maxWidth: swapBlindCardLayout.maxWidth, perspective: '1200px',
+        flexWrap: 'wrap', maxWidth: swapBlindCardLayout.maxWidth,
       }}>
         {swapBlindDraw.handSnapshot.map(({ idx, card, isFaceUp }) => {
           const isShuffling = swapBlindDraw.phase === 'shuffling';
           const isSelecting = swapBlindDraw.phase === 'selecting';
           const isFlying = swapBlindDraw.phase === 'flying' && swapBlindDraw.selectedIdx === idx;
           const isOtherFlying = swapBlindDraw.phase === 'flying' && swapBlindDraw.selectedIdx !== idx;
-          const seed = idx * 137 + idx * 31;
-          const startX = `${(Math.sin(seed) * 220).toFixed(1)}px`;
-          const startY = `${(Math.cos(seed * 1.3) * 180 - 80).toFixed(1)}px`;
-          const startRz = `${(Math.sin(seed * 0.7) * 35).toFixed(1)}deg`;
-          const pileX = `${(Math.sin(seed * 2.1) * 8).toFixed(1)}px`;
-          const pileY = `${(Math.cos(seed * 1.7) * 6).toFixed(1)}px`;
-          const handCount = swapBlindDraw.handSnapshot.length;
-          const cardSpacing = swapBlindCardLayout.spacing;
-          const totalWidth = (handCount - 1) * cardSpacing;
-          const finalX = `${(idx * cardSpacing - totalWidth / 2).toFixed(1)}px`;
+          const shufflePath = shufflePaths[idx];
+          const visualWidth = isFlying && flyPath ? flyPath.width : isShuffling && shufflePath ? shufflePath.width : swapBlindCardLayout.width;
+          const visualHeight = visualWidth * CARD_FACE_RATIO;
           return (
             <div
               key={idx}
+              data-blind-card-index={idx}
               onClick={isSelecting ? () => handleSwapBlindDrawSelect(idx) : undefined}
               style={{
                 position: 'relative',
-                width: swapBlindCardLayout.width, height: swapBlindCardLayout.height,
+                width: swapBlindCardLayout.width, height: cardHeight,
                 cursor: isSelecting ? 'pointer' : 'default',
-                transformStyle: 'preserve-3d',
+              }}
+            >
+              <div data-blind-card-plane style={{
+                position: 'absolute', left: '50%', top: '50%',
+                width: visualWidth, height: visualHeight,
+                marginLeft: -visualWidth / 2, marginTop: -visualHeight / 2,
                 transition: isSelecting ? 'transform 0.18s ease' : 'none',
+                backfaceVisibility: 'hidden',
                 ...(isShuffling ? {
-                  '--start-x': startX, '--start-y': startY, '--start-rz': startRz,
-                  '--pile-x': pileX, '--pile-y': pileY,
-                  '--final-x': finalX, '--final-y': '0px',
-                  // 内层 face/back 两个 div 已经各自通过 rotateY 决定正反面朝向（face-up: face 0°/back 180°；
-                  // face-down: face 180°/back 0°），外层洗牌动画落到 0° 即可，否则会与内层叠加成双重旋转，
-                  // 让本该背面朝上的牌露出正面。
-                  '--final-ry': '0deg',
-                  '--pile-ry': isFaceUp ? '0deg' : `${(Math.sin(seed) * 20).toFixed(1)}deg`,
-                  animation: 'swapBlindShuffleIn 1.2s cubic-bezier(0.25,0,0.35,1) both',
-                  animationDelay: `${(idx * 0.09).toFixed(2)}s`,
-                } : isFlying ? {
-                  '--fly-tx': `${(swapBlindDraw.flyTo?.x || 0) - (swapBlindDraw.flyFrom?.x || 0)}px`,
-                  '--fly-ty': `${(swapBlindDraw.flyTo?.y || 0) - (swapBlindDraw.flyFrom?.y || 0)}px`,
+                  ...shufflePath,
+                  visibility: shufflePath ? 'visible' : 'hidden',
+                  animation: shufflePath ? `swapBlindShuffleIn 1.2s cubic-bezier(0.25,0,0.35,1) ${(idx * 0.09).toFixed(2)}s both` : 'none',
+                } : isFlying && flyPath ? {
+                  ...flyPath,
+                  position: 'fixed', left: swapBlindDraw.flyFrom.x, top: swapBlindDraw.flyFrom.y,
+                  marginLeft: -visualWidth / 2, marginTop: -visualHeight / 2,
                   animation: 'swapBlindFlyCard 0.7s cubic-bezier(0.25,0,0.35,1) forwards',
                   zIndex: 100,
                 } : isOtherFlying ? {
                   opacity: 0, transition: 'opacity 0.15s',
                 } : {}),
-              }}
-            >
-              <div style={{
-                position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
-                transform: isFaceUp ? 'none' : 'rotateY(180deg)',
-                borderRadius: 3, overflow: 'hidden',
               }}>
+              <div style={{ position: 'absolute', inset: 0, borderRadius: 3, overflow: 'hidden' }}>
+                {isFaceUp ? (
                 <DDCard
                   card={card}
                   holderId={swapBlindDraw.targetPi}
+                  hoverPreview={isSelecting}
                   frameStyle={{
-                    height: '100%',
-                    transform: `scale(${swapBlindCardLayout.scale})`,
-                    transformOrigin: 'top left',
+                    width: visualWidth,
+                    height: visualHeight,
                   }}
                 />
-              </div>
-              <div style={{
-                position: 'absolute', inset: 0, backfaceVisibility: 'hidden',
-                transform: isFaceUp ? 'rotateY(180deg)' : 'none',
-                borderRadius: 3, overflow: 'hidden',
-              }}>
+                ) : (
                 <DDCardBack
                   expansionKey={expansionKey}
                   frameStyle={{
-                    width: swapBlindCardLayout.width,
-                    height: swapBlindCardLayout.height,
+                    width: visualWidth,
+                    height: visualHeight,
                   }}
                 />
+                )}
+              </div>
               </div>
               {isSelecting && isFaceUp && <div style={{
                 position: 'absolute', bottom: -Math.max(20, Math.round(swapBlindCardLayout.height * 0.22)), left: '50%', transform: 'translateX(-50%)',

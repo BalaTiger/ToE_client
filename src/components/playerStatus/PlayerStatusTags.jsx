@@ -22,14 +22,14 @@ function GodEncountersTag({ count, variant, fontSize }) {
   const label = variant === 'stack' ? ' 邪神遭遇' : '';
   const Tag = variant === 'stack' ? 'div' : 'span';
   return (
-    <Tag style={{
+    <Tag title={`邪神遭遇 ${count} 次`} aria-label={`邪神遭遇 ${count} 次`} style={{
       ...(variant === 'stack' ? { marginTop: 4 } : null),
       fontSize,
       color: '#8b6060',
       letterSpacing: 1,
       fontFamily: "'Cinzel',serif",
     }}>
-      {'💀'.repeat(Math.min(count, maxSkulls))}{count > maxSkulls ? `×${count}` : ''}{label}
+      {variant === 'pendant' ? `💀 ${count}` : <>{'💀'.repeat(Math.min(count, maxSkulls))}{count > maxSkulls ? `×${count}` : ''}{label}</>}
     </Tag>
   );
 }

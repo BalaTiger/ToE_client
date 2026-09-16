@@ -1,0 +1,78 @@
+{
+  "generator": "built-in image_gen",
+  "reference": "C:/Users/zhuzi/AppData/Local/Temp/codex-clipboard-695cc205-e7f8-458c-80ab-ec9de50605db.png",
+  "assets": [
+    {
+      "name": "role-treasure",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a wide 3:1 panoramic image (1536x512 or larger). Palette black, desaturated dark sea green, small aged pale gold light. Subject: a lone 1920s occult treasure seeker in silhouette crouching beside an opened ancient stone treasure coffer, a few unmistakable relics within, on the RIGHT third. The lid, relic and reaching hand read as strong simple silhouettes. Faint collapsed crypt columns behind. Main subject fills rightmost 35%, keep ALL important shapes inside the middle 70% of image height for later ultra-wide cropping. Left 65% is very dark, quiet mottled crypt shadow reserved for icon and text, not busy. One readable treasure-search scene, not a distant landscape.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-f0d9ac29-1f4c-4479-b42b-11cc6a09d0db.png",
+      "output": "public/img/ui/start/role-treasure-v3.webp",
+      "logicalWidth": 415,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/role-treasure.png"
+    },
+    {
+      "name": "role-hunter",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a wide 3:1 panoramic image (1536x512 or larger). Palette black and dark oxblood with a restrained copper-red backlight. Subject: a hooded occult hunter stalking a fleeing inhuman shadow through ruined stone passageways; prominent hunter profile and lowered short spear on RIGHT third, farther thin quarry silhouette at extreme right. Strong angular silhouetted gesture conveys pursuit, no explicit violence. Main readable shapes stay within middle 70% of height for later ultra-wide cropping. Left 65% very dark low-detail shadow for live title and goal. Avoid landscape castles dominating; the hunter is the subject.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-eae2e00a-44d9-49ce-be61-0f83b8ac7257.png",
+      "output": "public/img/ui/start/role-hunter-v3.webp",
+      "logicalWidth": 415,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/role-hunter.png"
+    },
+    {
+      "name": "role-cultist",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a wide 3:1 panoramic image (1536x512 or larger). Palette near-black, desaturated plum-violet and a very restrained pale violet rim light. Subject: a black-robed cultist with raised arms at a low altar, awakening a huge indistinct tentacled presence behind, staged on RIGHT third. Clear ritual silhouette, no written glyphs or circles, no glowing spell UI. Keep meaningful hands, head, altar and tentacle contours within middle 70% of height for ultra-wide crop. Left 65% a very dark quiet temple shadow reserved for live icon/title/goal. Not a general mountain/castle scene.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-6b91ae3b-f0aa-4b30-9585-bbceefb96a1a.png",
+      "output": "public/img/ui/start/role-cultist-v3.webp",
+      "logicalWidth": 415,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/role-cultist.png"
+    },
+    {
+      "name": "rules-table",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a 3:2 horizontal illustration, 1536x1024. A battered occult tabletop with a closed thick rules folio, a small fan of four plain face-down cards, two ivory six-sided tabletop dice, and a single near-extinguished candle, arranged in the BOTTOM RIGHT quarter. The prominent open space upper 70% and left 65% is almost black charcoal/green textured tabletop, safe for an overlaid heading and four rules lines. Object silhouettes and edges in dim pewter and old gold, recognizable but subdued. Book has no readable writing, card backs have only simple dark ornate texture and NO symbols or numbers. Dice may have normal dots. No banner cloth, no castle panorama. Atmospheric practical game-rule materials.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-a6f56507-4951-4eec-8547-44140d6c37aa.png",
+      "output": "public/img/ui/start/rules-table-v3.webp",
+      "logicalWidth": 510,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/rules-table.png"
+    },
+    {
+      "name": "action-solo",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a wide 3:1 panoramic illustration (1536x512 or larger) for a main action button. Palette black, dark petrol green and a small pale cyan backlight. At FAR RIGHT, a looming ancient stone doorway opening into abyssal darkness with faint cold light along its arch, receding stone steps. At FAR LEFT, the close silhouetted shoulder and small lantern of one solitary 1920s investigator poised to step forward. The center 55% stays dark and quiet for a large overlaid title. Recognizable narrative: one person stepping into the unknown. Keep key doorway and figure shapes within the middle 85% image height for crop. Strong simple silhouettes, restrained texture, no bright central spot.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-f8999b97-f61e-4d66-833f-f105f03b356a.png",
+      "output": "public/img/ui/start/action-solo-v3.webp",
+      "logicalWidth": 385,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/action-solo.png"
+    },
+    {
+      "name": "action-online",
+      "prompt": "Create ONE production background illustration, NOT a screenshot, not a mockup or contact sheet. The attached image is STYLE reference only: preserve its severe chiaroscuro, nearly black foreground silhouettes, worn etched painterly gothic Lovecraftian atmosphere, muted restrained highlights. No cartoon, no cute rendering, no neon, no photorealistic colorful fantasy. This art will sit behind live Chinese UI text; no words, no letters, no symbols resembling writing, no UI, no borders, no frame, no icons, no watermark. Fill the entire canvas with the scene, no gutters or black padding. Make a wide 3:1 panoramic illustration (1536x512 or larger) for a multiplayer card duel button. Palette black, dark muted violet, gray-lavender edge light, tiny aged gold table reflection. Two mysterious human investigators in opposing dark profile silhouettes sit face-to-face at FAR LEFT and FAR RIGHT across an old gaming table. Each holds a small fan of playing cards, their hands and cards angled toward the middle. Center 55% is very dark empty smoky space for a large title, card hands along LOWER edge under title, figures distinctly at opposite outer edges. This must clearly suggest two people engaged in a secretive card duel, not combat fighters or castles. Keep meaningful silhouettes within middle 85% height for crop.",
+      "source": "E:\\Codex\\codex-home\\generated_images\\01a094e6-b663-7ab2-ac74-ac53e4bb49c0\\exec-5f14e8dd-314e-411f-994d-1bb5e1163615.png",
+      "output": "public/img/ui/start/action-online-v3.webp",
+      "logicalWidth": 385,
+      "densities": [
+        1,
+        2
+      ],
+      "archived": "sources/action-online.png"
+    }
+  ]
+}

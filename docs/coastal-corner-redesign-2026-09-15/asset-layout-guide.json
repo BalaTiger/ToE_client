@@ -1,0 +1,31 @@
+{
+  "coordinateSystem": "Pixels in the final trimmed WebP; guides are measured artwork safe areas, not CSS layout requirements",
+  "turn-plaque": {
+    "size": [2151, 522],
+    "aspectRatio": 4.120689655172414,
+    "divider": { "centerX": 1250, "percentX": 58.11250581125058, "left": 1239, "right": 1262 },
+    "leftTextSafe": { "left": 222, "right": 1202, "top": 130, "bottom": 380 },
+    "rightTextSafe": { "left": 1290, "right": 1985, "top": 130, "bottom": 380 },
+    "sharedTextCenterY": 255
+  },
+  "log-journal": {
+    "size": [1049, 1331],
+    "aspectRatio": 0.7881292261457551,
+    "headingRuleY": 193,
+    "headingSafe": { "left": 179, "right": 943, "top": 67, "bottom": 172 },
+    "bodySafe": { "left": 179, "right": 953, "top": 223, "bottom": 1242 },
+    "bodyInsetsPercent": { "left": 17.1, "right": 9.2, "top": 16.8, "bottom": 6.7 },
+    "nineSlice": {
+      "minimumKeepingCircularRivets": { "top": 240, "right": 120, "bottom": 120, "left": 180 },
+      "keepingWholeLowerCornerOrnament": { "top": 240, "right": 120, "bottom": 190, "left": 180 },
+      "notes": "Use one uniform corner scale for all four border-image-width values. Repeat the vertical spine rather than stretch its round rivets. Text padding must be mapped to the chosen border scale, not left as these full-image percentages after nine-slicing."
+    }
+  },
+  "control-disc": {
+    "size": [1249, 1249],
+    "aspectRatio": 1,
+    "center": [624.5, 624.5],
+    "iconSafeDiameter": 860,
+    "notes": "The trimmed art was only padded to a square. Use equal width and height and contain; no independent axis scaling."
+  }
+}

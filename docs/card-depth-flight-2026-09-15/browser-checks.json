@@ -1,0 +1,548 @@
+{
+  "nativeRatio": "392:590",
+  "pileRatioChecks": [
+    {
+      "animatedFit": null,
+      "aspectRatio": "392 / 590",
+      "height": "142.983px",
+      "native": null,
+      "staticFit": "contain",
+      "width": "94.9951px"
+    },
+    {
+      "animatedFit": "contain",
+      "aspectRatio": "392 / 590",
+      "height": "142.983px",
+      "native": [
+        392,
+        590
+      ],
+      "staticFit": "auto",
+      "width": "94.9951px"
+    },
+    {
+      "animatedFit": null,
+      "aspectRatio": "392 / 590",
+      "height": "142.983px",
+      "native": null,
+      "staticFit": null,
+      "width": "94.9951px"
+    }
+  ],
+  "flights": [
+    {
+      "anchors": {
+        "cards": [
+          {
+            "desc": "你失去3HP，随机弃1张牌（强制触发）",
+            "effectScope": "self",
+            "expansion": "地神的潜影",
+            "forced": true,
+            "id": "gallery-zone-0",
+            "key": "A1",
+            "letter": "A",
+            "name": "坠落",
+            "num": 1,
+            "polarity": "negative",
+            "slotKey": "A1",
+            "type": "selfDamageDiscardHP",
+            "val": 3
+          }
+        ],
+        "count": 1,
+        "destRotation": -6.299982003370183,
+        "destWidth": 88.53137558264548,
+        "destX": 650.640625,
+        "destY": 247.09375,
+        "key": "flight-self-discard-0-1789466234125",
+        "srcRotation": -12.8607,
+        "srcWidth": 182.6403522572534,
+        "srcX": 469.4600372314453,
+        "srcY": 546.4973602294922
+      },
+      "from": "1",
+      "height": "274.891px",
+      "mid": "0.716601854237944",
+      "progress": "0",
+      "rect": [
+        349.8385009765625,
+        392.17034912109375,
+        239.229248046875,
+        308.6436767578125
+      ],
+      "scene": "flight-self-discard",
+      "to": "0.4847306440689891",
+      "transform": "matrix(0.974914, -0.222581, 0.222581, 0.974914, 0, 0)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.008633427705894878,
+      "widthError": 0.015387964370830787
+    },
+    {
+      "anchors": {
+        "cards": [
+          {
+            "desc": "你失去3HP，随机弃1张牌（强制触发）",
+            "effectScope": "self",
+            "expansion": "地神的潜影",
+            "forced": true,
+            "id": "gallery-zone-0",
+            "key": "A1",
+            "letter": "A",
+            "name": "坠落",
+            "num": 1,
+            "polarity": "negative",
+            "slotKey": "A1",
+            "type": "selfDamageDiscardHP",
+            "val": 3
+          }
+        ],
+        "count": 1,
+        "destRotation": -6.299982003370183,
+        "destWidth": 88.53137558264548,
+        "destX": 650.640625,
+        "destY": 247.09375,
+        "key": "flight-self-discard-0-1789466234125",
+        "srcRotation": -12.8607,
+        "srcWidth": 182.6403522572534,
+        "srcX": 469.4600372314453,
+        "srcY": 546.4973602294922
+      },
+      "from": "1",
+      "height": "274.891px",
+      "mid": "0.716601854237944",
+      "progress": "100",
+      "rect": [
+        599.328125,
+        176.00991821289062,
+        102.6112060546875,
+        142.15731811523438
+      ],
+      "scene": "flight-self-discard",
+      "to": "0.4847306440689891",
+      "transform": "matrix(0.481803, -0.0531914, 0.0531914, 0.481803, 181.181, -299.404)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.0086212158203125,
+      "widthError": 0.007506032413900243
+    },
+    {
+      "anchors": {
+        "cards": [
+          {
+            "desc": "你恢复1HP",
+            "effectScope": "self",
+            "expansion": "地神的潜影",
+            "id": "gallery-zone-1",
+            "key": "A2",
+            "letter": "A",
+            "name": "蚂蚁虽小",
+            "num": 2,
+            "polarity": "positive",
+            "slotKey": "A2",
+            "type": "selfHealHP",
+            "val": 1
+          }
+        ],
+        "count": 1,
+        "destRotation": 4.352,
+        "destWidth": 182.6404970818014,
+        "destX": 720.6873168945312,
+        "destY": 531.4785919189453,
+        "key": "flight-opponent-self-0-1789466234307",
+        "srcRotation": 0,
+        "srcWidth": 28.765625,
+        "srcX": 405.1640625,
+        "srcY": 92.0625
+      },
+      "from": "0.15749861317512945",
+      "height": "274.891px",
+      "mid": "0.6208743759288082",
+      "progress": "0",
+      "rect": [
+        390.774658203125,
+        70.42286682128906,
+        28.76318359375,
+        43.294891357421875
+      ],
+      "scene": "flight-opponent-self",
+      "to": "1",
+      "transform": "matrix(0.157499, 0, 0, 0.157499, 0, 0)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.011048543456039806,
+      "widthError": 0.0023701249999987795
+    },
+    {
+      "anchors": {
+        "cards": [
+          {
+            "desc": "你恢复1HP",
+            "effectScope": "self",
+            "expansion": "地神的潜影",
+            "id": "gallery-zone-1",
+            "key": "A2",
+            "letter": "A",
+            "name": "蚂蚁虽小",
+            "num": 2,
+            "polarity": "positive",
+            "slotKey": "A2",
+            "type": "selfHealHP",
+            "val": 1
+          }
+        ],
+        "count": 1,
+        "destRotation": 4.352,
+        "destWidth": 182.6404970818014,
+        "destX": 720.6873168945312,
+        "destY": 531.4785919189453,
+        "key": "flight-opponent-self-0-1789466234307",
+        "srcRotation": 0,
+        "srcWidth": 28.765625,
+        "srcX": 405.1640625,
+        "srcY": 92.0625
+      },
+      "from": "0.15749861317512945",
+      "height": "274.891px",
+      "mid": "0.6208743759288082",
+      "progress": "100",
+      "rect": [
+        619.200439453125,
+        387.50823974609375,
+        202.9581298828125,
+        287.956298828125
+      ],
+      "scene": "flight-opponent-self",
+      "to": "1",
+      "transform": "matrix(0.997117, 0.0758837, -0.0758837, 0.997117, 315.523, 439.416)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.011037759136325728,
+      "widthError": 0.015437946494586186
+    },
+    {
+      "anchors": {
+        "count": 1,
+        "destRotation": 0,
+        "destWidth": 28.765625,
+        "destX": 405.1640625,
+        "destY": 92.0625,
+        "key": "flight-self-opponent-0-1789466234416",
+        "srcRotation": -12.8607,
+        "srcWidth": 182.6403522572534,
+        "srcX": 469.4600372314453,
+        "srcY": 546.4973602294922
+      },
+      "from": "1",
+      "height": "274.891px",
+      "mid": "0.5366243059349535",
+      "progress": "0",
+      "rect": [
+        349.8385009765625,
+        392.17034912109375,
+        239.229248046875,
+        308.6436767578125
+      ],
+      "scene": "flight-self-opponent",
+      "to": "0.15749873806355189",
+      "transform": "matrix(0.974914, -0.222581, 0.222581, 0.974914, 0, 0)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.008633427705894878,
+      "widthError": 0.015387964370830787
+    },
+    {
+      "anchors": {
+        "count": 1,
+        "destRotation": 0,
+        "destWidth": 28.765625,
+        "destX": 405.1640625,
+        "destY": 92.0625,
+        "key": "flight-self-opponent-0-1789466234416",
+        "srcRotation": -12.8607,
+        "srcWidth": 182.6403522572534,
+        "srcX": 469.4600372314453,
+        "srcY": 546.4973602294922
+      },
+      "from": "1",
+      "height": "274.891px",
+      "mid": "0.5366243059349535",
+      "progress": "100",
+      "rect": [
+        390.7755432128906,
+        70.40985107421875,
+        28.763214111328125,
+        43.294921875
+      ],
+      "scene": "flight-self-opponent",
+      "to": "0.15749873806355189",
+      "transform": "matrix(0.157499, 0, 0, 0.157499, -64.296, -454.435)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.008642578663799033,
+      "widthError": 0.0023701249999987795
+    },
+    {
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.352,
+        "destWidth": 182.6404970818014,
+        "destX": 720.6873168945312,
+        "destY": 531.4785919189453,
+        "key": "flight-pile-self-0-1789466234537",
+        "srcRotation": 0,
+        "srcWidth": 88.53125,
+        "srcX": 875.6875,
+        "srcY": 244.96875
+      },
+      "from": "0.48472957210770423",
+      "height": "274.891px",
+      "mid": "0.7681283074484668",
+      "progress": "0",
+      "rect": [
+        831.4256591796875,
+        178.35275268554688,
+        88.523681640625,
+        133.24761962890625
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.48473, 0, 0, 0.48473, 0, 0)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.0078125,
+      "widthError": 0.0074337500000041246
+    },
+    {
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.352,
+        "destWidth": 182.6404970818014,
+        "destX": 720.6873168945312,
+        "destY": 531.4785919189453,
+        "key": "flight-pile-self-0-1789466234537",
+        "srcRotation": 0,
+        "srcWidth": 88.53125,
+        "srcX": 875.6875,
+        "srcY": 244.96875
+      },
+      "from": "0.48472957210770423",
+      "height": "274.891px",
+      "mid": "0.7681283074484668",
+      "progress": "100",
+      "rect": [
+        619.208251953125,
+        387.50823974609375,
+        202.9581298828125,
+        287.956298828125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.997117, 0.0758837, -0.0758837, 0.997117, -155, 286.51)",
+      "width": "182.625px",
+      "layout": "coastal",
+      "viewport": "1280x720",
+      "centerError": 0.0077972412109375,
+      "widthError": 0.015437946494586186
+    },
+    {
+      "layout": "arcane-table",
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.63345,
+        "destWidth": 182.3442782491139,
+        "destX": 691.8522033691406,
+        "destY": 721.7099304199219,
+        "key": "flight-pile-self-4-1789467098529",
+        "srcRotation": 0,
+        "srcWidth": 51,
+        "srcX": 952.5,
+        "srcY": 359.5625
+      },
+      "from": "0.2796907064466545",
+      "height": "274.438px",
+      "mid": "0.6758608179009945",
+      "progress": "0",
+      "rect": [
+        927.0000610351562,
+        321.1836853027344,
+        50.9998779296875,
+        76.75762939453125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.279691, 0, 0, 0.279691, 0, 0)",
+      "width": "182.344px",
+      "viewport": "1280x720",
+      "centerError": 0,
+      "widthError": 0.00002429599999942411
+    },
+    {
+      "layout": "arcane-table",
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.63345,
+        "destWidth": 182.3442782491139,
+        "destX": 691.8522033691406,
+        "destY": 721.7099304199219,
+        "key": "flight-pile-self-4-1789467098529",
+        "srcRotation": 0,
+        "srcWidth": 51,
+        "srcX": 952.5,
+        "srcY": 359.5625
+      },
+      "from": "0.2796907064466545",
+      "height": "274.438px",
+      "mid": "0.6758608179009945",
+      "progress": "100",
+      "rect": [
+        589.8936767578125,
+        577.57470703125,
+        203.9171142578125,
+        288.2705078125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.996732, 0.0807808, -0.0807808, 0.996732, -260.648, 362.147)",
+      "width": "182.344px",
+      "viewport": "1280x720",
+      "centerError": 0.00004315837287515549,
+      "widthError": 0.0002584216994705457
+    },
+    {
+      "layout": "classic",
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.63345,
+        "destWidth": 182.3442782491139,
+        "destX": 691.8522033691406,
+        "destY": 647.5693054199219,
+        "key": "flight-pile-self-5-1789467189199",
+        "srcRotation": 0,
+        "srcWidth": 51,
+        "srcX": 952.5,
+        "srcY": 304.421875
+      },
+      "from": "0.2796907064466545",
+      "height": "274.438px",
+      "mid": "0.6758608179009945",
+      "progress": "0",
+      "rect": [
+        927.0000610351562,
+        266.0430603027344,
+        50.9998779296875,
+        76.75762939453125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.279691, 0, 0, 0.279691, 0, 0)",
+      "width": "182.344px",
+      "viewport": "1280x720",
+      "centerError": 0,
+      "widthError": 0.00002429599999942411
+    },
+    {
+      "layout": "classic",
+      "anchors": {
+        "count": 1,
+        "destRotation": 4.63345,
+        "destWidth": 182.3442782491139,
+        "destX": 691.8522033691406,
+        "destY": 647.5693054199219,
+        "key": "flight-pile-self-5-1789467189199",
+        "srcRotation": 0,
+        "srcWidth": 51,
+        "srcX": 952.5,
+        "srcY": 304.421875
+      },
+      "from": "0.2796907064466545",
+      "height": "274.438px",
+      "mid": "0.6758608179009945",
+      "progress": "100",
+      "rect": [
+        589.8936767578125,
+        503.43408203125,
+        203.9171142578125,
+        288.2705078125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.996732, 0.0807808, -0.0807808, 0.996732, -260.648, 343.147)",
+      "width": "182.344px",
+      "viewport": "1280x720",
+      "centerError": 0.00004315837287515549,
+      "widthError": 0.0002584216994705457
+    },
+    {
+      "layout": "coastal",
+      "viewport": "1280x800",
+      "anchors": {
+        "count": 1,
+        "destRotation": 5.0796,
+        "destWidth": 213.3279849932952,
+        "destX": 677.0124816894531,
+        "destY": 575.6015472412109,
+        "key": "flight-pile-self-6-1789467456076",
+        "srcRotation": 0,
+        "srcWidth": 101.328125,
+        "srcX": 875.6796875,
+        "srcY": 254.9609375
+      },
+      "from": "0.4749874940373373",
+      "height": "321.078px",
+      "mid": "0.7637443723168019",
+      "progress": "0",
+      "rect": [
+        825.011474609375,
+        178.70687866210938,
+        101.32080078125,
+        152.50811767578125
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.474988, 0, 0, 0.474988, 0, 0)",
+      "width": "213.312px",
+      "centerError": 0.0078125,
+      "widthError": 0.007484743999995658
+    },
+    {
+      "layout": "coastal",
+      "viewport": "1280x800",
+      "anchors": {
+        "count": 1,
+        "destRotation": 5.0796,
+        "destWidth": 213.3279849932952,
+        "destX": 677.0124816894531,
+        "destY": 575.6015472412109,
+        "key": "flight-pile-self-6-1789467456076",
+        "srcRotation": 0,
+        "srcWidth": 101.328125,
+        "srcX": 875.6796875,
+        "srcY": 254.9609375
+      },
+      "from": "0.4749874940373373",
+      "height": "321.078px",
+      "mid": "0.7637443723168019",
+      "progress": "100",
+      "rect": [
+        556.55322265625,
+        406.2496948242187,
+        240.90289306640625,
+        338.7037353515625
+      ],
+      "scene": "flight-pile-self",
+      "to": "1",
+      "transform": "matrix(0.996073, 0.0885397, -0.0885397, 0.996073, -198.667, 320.641)",
+      "width": "213.312px",
+      "centerError": 0.007812514901146983,
+      "widthError": 0.015910354896590206
+    }
+  ]
+}

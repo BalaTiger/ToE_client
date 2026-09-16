@@ -1,3 +1,9 @@
+import { CARD_FLIGHT_POSE } from './cardSizing';
+
+const duelIncomingPose = CARD_FLIGHT_POSE.mid.replaceAll('--', '--duel-in-');
+const duelOutgoingPose = CARD_FLIGHT_POSE.mid.replaceAll('--', '--duel-out-');
+const duelRevealPose = 'scale(var(--duel-mid-scale)) perspective(var(--flight-perspective)) translateZ(0px) rotateX(0deg) rotateY(0deg) rotateZ(0deg)';
+
 export const AREA_CARD_ANIMATION_STYLES = `
   .etherealize-overlay {
     position: fixed;
@@ -731,10 +737,10 @@ export const AREA_CARD_ANIMATION_STYLES = `
     100% { opacity: 0; transform: translateY(12px); }
   }
   @keyframes geomagneticRestoreFly {
-    0% { opacity: 0; transform: translate(0,0) rotate(-8deg) scale(0.78); }
-    16% { opacity: 1; transform: translate(0,-18px) rotate(4deg) scale(0.98); }
-    58% { opacity: 1; transform: translate(calc(var(--gm-restore-tx, -220px) * 0.56), calc(var(--gm-restore-ty, -120px) * 0.42 - 34px)) rotate(178deg) scale(0.88); }
-    100% { opacity: 0.2; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) rotate(360deg) scale(0.48); }
+    0% { opacity: 0; transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; }
+    16% { opacity: 1; transform: translate(0,-18px) ${CARD_FLIGHT_POSE.from}; }
+    58% { opacity: 1; transform: translate(calc(var(--gm-restore-tx, -220px) * 0.56), calc(var(--gm-restore-ty, -120px) * 0.42 - 34px)) ${CARD_FLIGHT_POSE.mid}; }
+    100% { opacity: 0.2; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) ${CARD_FLIGHT_POSE.to}; }
   }
   @keyframes geomagneticRestoreRipple {
     0%, 62% { opacity: 0; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(0.28); }
@@ -742,11 +748,12 @@ export const AREA_CARD_ANIMATION_STYLES = `
     100% { opacity: 0; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(1.25); }
   }
   @keyframes caveDuelCardPath {
-    0% { transform: translate(var(--fromX), var(--fromY)) rotate(-9deg) scale(0.92); opacity: 0; }
+    0% { transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; opacity: 0; }
     12% { opacity: 1; }
-    38% { transform: translate(var(--midX), var(--midY)) rotate(0deg) scale(1.04); opacity: 1; }
-    68% { transform: translate(var(--midX), var(--midY)) rotate(0deg) scale(1.04); opacity: 1; }
-    100% { transform: translate(var(--toX), var(--toY)) rotate(6deg) scale(0.95); opacity: 1; }
+    18% { transform: translate(calc(var(--midX) * .55), calc(var(--midY) * .55 - 18px)) ${duelIncomingPose}; opacity: 1; }
+    38%, 68% { transform: translate(var(--midX), var(--midY)) ${duelRevealPose}; opacity: 1; }
+    82% { transform: translate(calc(var(--midX) + (var(--tx) - var(--midX)) * .55), calc(var(--midY) + (var(--ty) - var(--midY)) * .55 - 18px)) ${duelOutgoingPose}; opacity: 1; }
+    100% { transform: translate(var(--tx), var(--ty)) ${CARD_FLIGHT_POSE.to}; opacity: 1; }
   }
   @keyframes caveDuelScorePop {
     0% { opacity: 0; transform: translateY(10px) scale(0.7); }
