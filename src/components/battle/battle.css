@@ -113,15 +113,43 @@
 .toe-log-heading { border-bottom: 1px solid var(--toe-line-dim, #3a3527); padding-bottom: 6px; }
 .toe-log-line { text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
 .toe-log-line[data-turn-heading="true"] { margin-top: 7px; padding-top: 5px; border-top: 1px solid rgba(173, 152, 109, .16); }
-.toe-stat-track { box-shadow: inset 0 1px 4px #000; }
-.toe-stat-track::after {
+.toe-stat-track {
+  position: relative;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid;
+  border-color: #8d7e5e #665b43 #554d3a #a08e67;
+  border-radius: 0;
+  background: linear-gradient(180deg, #0008, #0003), var(--toe-stat-track-color, #100e0a);
+  box-shadow: 0 0 0 1px var(--toe-stat-line-color, #262319), inset 0 1px 2px #0009, 0 1px 2px #0008;
+}
+/* A single metal end cap, with no repeated dividers over the fill. */
+.toe-stat-track::before {
   content: '';
   position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(90deg, transparent 0, transparent calc(10% - 1px), rgba(3, 5, 5, .24) calc(10% - 1px), rgba(3, 5, 5, .24) 10%);
+  left: -3px;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  background: linear-gradient(180deg, #b4a27a, #85734f 45%, #51452f);
+  clip-path: polygon(100% 0, 100% 100%, 0 70%, 0 30%);
   pointer-events: none;
 }
-.toe-stat-fill { background-image: linear-gradient(180deg, rgba(240, 222, 190, .12), transparent 45%, rgba(0, 0, 0, .18)) !important; }
+.toe-stat-fill {
+  background-image: linear-gradient(180deg, #f0dec324, transparent 30%, #0001 65%, #0005);
+  box-shadow: inset 0 1px 0 #f3ddba18;
+}
+.toe-san-threshold {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  z-index: 2;
+  background: #c5b88e;
+  box-shadow: 1px 0 0 #15130d88;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
 .toe-stat-value { font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
 .toe-role-selection { width: min(540px,92vw); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 28px 26px; }
 .toe-role-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }

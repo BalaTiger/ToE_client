@@ -6,6 +6,7 @@ import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { LocalGodPowerTag } from './LocalGodPowerTag';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
+import { EncounterSkulls } from '../playerStatus/EncounterSkulls';
 import { PanelFrame } from './PanelFrame';
 import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
@@ -69,6 +70,7 @@ export function SelfPlayerPanel({
         '--toe-coastal-self-frame': `url('${buildPublicUrl('/img/ui/coastal/self-frame.webp')}')`,
         '--toe-coastal-faith-banner': `url('${buildPublicUrl('/img/ui/coastal/faith-banner.webp')}')`,
         '--toe-coastal-body-font': `${Math.max(12, fontSizes.body)}px`,
+        '--toe-encounter-skull-rows': Math.ceil((player.godEncounters || 0) / 8),
         borderRadius: 3,
         padding: isMobile
           ? `${boardCssPx(8)}px ${boardCssPx(9)}px`
@@ -138,6 +140,9 @@ export function SelfPlayerPanel({
         }}
       >
         {coastal && <CoastalPortrait />}
+        {coastal && player.godEncounters > 0 && <div className="toe-self-skull-anchor">
+          <EncounterSkulls count={player.godEncounters} playerIndex={0} />
+        </div>}
         <div className="toe-self-details">
           <div className="toe-self-title" title={coastal ? ri.goal : undefined} style={isShortDesktop ? { display: 'flex', alignItems: 'center', gap: 8 } : undefined}>
             <div
@@ -270,6 +275,7 @@ export function SelfPlayerPanel({
         </div>
       </div>
 
+      {!coastal && <EncounterSkulls count={player.godEncounters} playerIndex={0} dimmed={isSelfDeadPanelDimmed} />}
       {isMultiplayer && (
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 50 }}>
           <button className="toe-button" aria-label="发送表情"

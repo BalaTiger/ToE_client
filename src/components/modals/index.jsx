@@ -1,15 +1,8 @@
 ﻿import React, { useState, useEffect, useMemo } from 'react';
-import {
-  GOD_DEFS,
-  getCardDisplayKey,
-} from '../../constants/card';
-import { ROLE_CULTIST, isRevealedCultist, shouldHideBlindZoneIdentity } from '../../game';
-import { formatGodEncounterProgress, getLatestGodEncounterProgress } from '../../game/balancePatches';
-import { DDCard, DDCardBack, CardFaceImage, GodCardDisplay } from '../cards';
-import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
+import { GOD_DEFS } from '../../constants/card';
+import { DDCard, DDCardBack, CardFaceImage } from '../cards';
 
 import { buildPublicUrl } from '../../utils/url';
-import { captureDecisionCardAnchors } from '../../utils/dom';
 
 function getDecisionModalMetrics(scaleRatio = 1) {
   const vw = typeof window === 'undefined' ? 1200 : window.innerWidth || 1200;
@@ -35,105 +28,6 @@ function getDecisionModalMetrics(scaleRatio = 1) {
     },
     cardScale: Math.min(1.28, Math.max(0.58, uiScale)),
   };
-}
-
-// ── God Choice Modal (player encounters a god card) ────────────
-function GodChoiceModal({
-  godCard,
-  player,
-  onWorship,
-  onKeepHand,
-  onDiscard,
-  isConvert,
-  forcedConvert,
-  canChoose = true,
-  thinkingText = '',
-  allowWorship = true,
-  allowKeepHand = true,
-  allowDiscard = true,
-  keepButtonRef = null,
-  scaleRatio = 1,
-}) {
-  if (!godCard) return null;
-  const def = GOD_DEFS[godCard.godKey];
-  const isCultist = player.role === ROLE_CULTIST;
-  const alreadyWorship = player.godName === godCard.godKey;
-  const canUpgrade = alreadyWorship && (player.godLevel || 0) < 3;
-  const isBystander = !canChoose && thinkingText;
-  const immuneEncounter = isRevealedCultist(player);
-  const encounterProgress = getLatestGodEncounterProgress(player);
-  const tm = getDecisionModalMetrics(scaleRatio);
-  const ui = tm.uiScale;
-  return (
-    <div className="toe-dialog-backdrop" style={tm.overlay}>
-      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="god-choice" role="dialog" onAnimationEnd={captureDecisionCardAnchors} onPointerDownCapture={captureDecisionCardAnchors} style={{
-         padding: `${20*ui}px ${28*ui}px`, maxWidth: 660*ui, width: 'min(94vw, 100%)', textAlign: 'center',
-        animation: 'animPop 0.22s ease-out',
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 12*ui,
-        ...tm.panel,
-      }}>
-        <div className="toe-title" style={{   fontSize: 19.5*ui, letterSpacing: 2, marginBottom: 4*ui }}>
-          {forcedConvert ? '邪祀者强制改信——' : '邪神降临——'}
-          <span style={{ color: def.col, filter: `drop-shadow(0 0 6px ${def.col}88)` }}>{godCard.name}</span>
-        </div>
-        <div style={{ fontSize: 16.5*ui, color: '#c89058', fontStyle: 'italic',  marginBottom: 4*ui }}>
-          {'💀'.repeat(player.godEncounters)} {formatGodEncounterProgress(encounterProgress).replace(/次(?=，|$)/, '次遭遇邪神')}
-          {immuneEncounter ? '（邪祀者免疫伤害）' : `，失去 ${encounterProgress.sanLoss} SAN`}
-          {isConvert && !forcedConvert && <span style={{ color: '#e08888', marginLeft: 8*ui }}>（改信将失去 1 SAN）</span>}
-        </div>
-        {/* Power gain preview */}
-        {!forcedConvert && (
-          <div style={{
-            fontSize: 12*ui, color: def.col,  letterSpacing: 1,
-            marginBottom: 8*ui, opacity: 0.94,
-            background: def.bgCol, border: `1px solid ${def.col}55`,
-            borderRadius: 3, padding: `${4*ui}px ${12*ui}px`, display: 'inline-block',
-            alignSelf: 'center'
-          }}>
-            {canUpgrade
-              ? `⬆ 升级后你将获得：${def.power} Lv.${(player.godLevel || 0) + 1}`
-              : `⛧ 信仰后你将获得邪神之力：${def.power} Lv.1`}
-          </div>
-        )}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24*ui, flexWrap: 'wrap' }}>
-          <CardFaceImage card={godCard} godLevel={alreadyWorship ? (player.godLevel + 1) : 1} width={176*tm.cardScale} />
-          <div style={{ flex: '1 1 210px', maxWidth: 320*ui }}>
-            <GodCardDisplay card={godCard} level={alreadyWorship ? (player.godLevel + 1) : 1} scale={tm.cardScale} />
-          </div>
-        </div>
-        {isBystander ? (
-          <div style={{  fontStyle: 'italic', color: '#c8a96e', fontSize: 15*ui, marginTop: 8*ui }}>
-            {thinkingText}
-          </div>
-        ) : (
-          <div style={{ display: 'flex', gap: 12*ui, flexWrap: 'wrap', justifyContent: 'center', marginTop: 8*ui }}>
-            {!forcedConvert && (
-              <button className="toe-button toe-button-primary" type="button" disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: `${9*ui}px ${22*ui}px`,     fontSize: 16.5*ui,  cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1,  opacity: allowWorship ? 1 : 0.45 }}>
-                {canUpgrade ? '⬆ 升级邪神之力' : isConvert ? '⛧ 改信新神' : '⛧ 信仰邪神'}
-              </button>
-            )}
-            {!alreadyWorship && !forcedConvert && isCultist && allowKeepHand && (
-              <button className="toe-button toe-button-primary" type="button" ref={keepButtonRef} onClick={onKeepHand} style={{ padding: `${9*ui}px ${22*ui}px`,     fontSize: 16.5*ui,  cursor: 'pointer', letterSpacing: 1, }}>
-                ☽ 收入手牌
-              </button>
-            )}
-            {!forcedConvert && (
-              <button className="toe-button toe-button-danger" type="button" disabled={!allowDiscard} onClick={allowDiscard ? onDiscard : undefined} style={{ padding: `${9*ui}px ${22*ui}px`,     fontSize: 16.5*ui,  cursor: allowDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1, opacity: allowDiscard ? 1 : 0.45 }}>
-                放弃
-              </button>
-            )}
-            {forcedConvert && (
-              <button className="toe-button toe-button-primary" type="button" disabled={!allowWorship} onClick={allowWorship ? onWorship : undefined} style={{ padding: `${9*ui}px ${22*ui}px`,     fontSize: 16.5*ui,  cursor: allowWorship ? 'pointer' : 'not-allowed', letterSpacing: 1,  opacity: allowWorship ? 1 : 0.45 }}>
-                ⛧ 接受改信
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
 }
 
 // ── NYA Borrow Modal ──────────────────────────────────────────
@@ -172,76 +66,6 @@ function NyaBorrowModal({ deadPlayers, godLevel, onBorrow, onSkip }) {
             不借用，直接摸牌
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ── Draw Reveal Modal ─────────────────────────────────────────
-function DrawRevealModal({ drawReveal, onKeep, onDiscard, canChoose, thinkingText, decisionError = null, canKeep = true, canDiscard = true, keepButtonRef, scaleRatio = 1 }) {
-  if (!drawReveal?.card) return null;
-  const { card } = drawReveal;
-  const isBystander = !canChoose && thinkingText;
-  const hideIdentity = shouldHideBlindZoneIdentity(drawReveal, canChoose);
-  const tm = getDecisionModalMetrics(scaleRatio);
-  const ui = tm.uiScale;
-  return (
-    <div className="toe-dialog-backdrop" style={{ ...tm.overlay, zIndex: 300 }}>
-      <div className="toe-dialog toe-dialog--decision" data-ui-dialog="draw-reveal" role="dialog" onAnimationEnd={captureDecisionCardAnchors} onPointerDownCapture={captureDecisionCardAnchors} style={{
-         padding: `${20*ui}px ${28*ui}px`, maxWidth: 600*ui, width: 'min(94vw, 100%)', textAlign: 'center',
-        animation: 'animPop 0.22s ease-out',
-        ...tm.panel,
-      }}>
-        <div className="toe-title" style={{   fontSize: 15*ui, letterSpacing: 3, marginBottom: 16*ui, textTransform: 'uppercase' }}>── 区域探寻 ──</div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24*ui, flexWrap: 'wrap' }}>
-          {hideIdentity ? (
-            <div style={{ flexShrink: 0 }}>
-              <DDCardBack expansionKey={card.expansion} frameStyle={{ width: 176*tm.cardScale, height: 176*tm.cardScale*CARD_FACE_RATIO }} />
-              <div className="toe-title" style={{ fontSize: 20*ui, marginTop: 10*ui }}>{getCardDisplayKey(card)}</div>
-            </div>
-          ) : <CardFaceImage card={card} width={176*tm.cardScale} />}
-          <div className="toe-panel" style={{ flex: '1 1 190px', maxWidth: 280*ui, padding: 20*ui, textAlign: 'left', alignSelf: 'stretch', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-            <div className="toe-title" style={{ fontSize: 19*ui, marginBottom: 14*ui }}>{hideIdentity ? '未知区域' : card.name}</div>
-            <div className="toe-subtitle" style={{ fontSize: 14*ui, lineHeight: 1.9 }}>{hideIdentity ? '此区域的身份暂时隐藏，等待探索者作出决定。' : card.desc}</div>
-          </div>
-        </div>
-
-        {isBystander ? (
-          <div style={{  fontStyle: 'italic', color: '#c8a96e', fontSize: 15*ui, marginTop: 16*ui }}>
-            {thinkingText}
-          </div>
-        ) : (
-          <>
-          {decisionError && (
-            <div role="alert" style={{ color: '#e08888', fontSize: 12*ui, lineHeight: 1.5, marginTop: 12*ui, marginBottom: 4*ui }}>
-              结算准备失败，请重试。
-            </div>
-          )}
-          <div style={{ display: 'flex', gap: 12*ui, justifyContent: 'center', flexWrap: 'wrap', marginTop: 16*ui }}>
-            <button className="toe-button toe-button-primary" type="button" ref={keepButtonRef} disabled={!canKeep} onClick={canKeep ? onKeep : undefined} style={{
-              padding: `${10*ui}px ${22*ui}px`,
-                fontWeight: 700, fontSize: 14*ui,
-               cursor: canKeep ? 'pointer' : 'not-allowed', letterSpacing: 1,
-              opacity: canKeep ? 1 : 0.45,
-               transition: 'all .15s',
-            }}>
-              收入手牌
-              <div style={{ fontSize: 10.5*ui, opacity: 0.78, marginTop: 4*ui, fontWeight: 400, }}>
-                (触发效果)
-              </div>
-            </button>
-            <button className="toe-button toe-button-danger" type="button" disabled={!canDiscard} onClick={canDiscard ? onDiscard : undefined} style={{
-              padding: `${10*ui}px ${22*ui}px`,
-                fontWeight: 700, fontSize: 14*ui,
-               cursor: canDiscard ? 'pointer' : 'not-allowed', letterSpacing: 1,
-              opacity: canDiscard ? 1 : 0.45,
-              transition: 'all .15s',
-            }}>
-              弃置此牌
-            </button>
-          </div>
-          </>
-        )}
       </div>
     </div>
   );
@@ -534,9 +358,7 @@ function RoadmapModal({ onClose }) {
 }
 
 export {
-  GodChoiceModal,
   NyaBorrowModal,
-  DrawRevealModal,
   TreasureDodgeModal,
   PeekHandModal,
   TortoiseOracleModal,

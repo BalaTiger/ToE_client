@@ -1,5 +1,5 @@
 import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
-import { GodChoiceModal, NyaBorrowModal, DrawRevealModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
+import { NyaBorrowModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
 import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, InspectionPile, PileDisplay, PlayerPanel } from './components/board';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
@@ -382,6 +382,7 @@ import { DamageLinkOverlay } from './components/anim/DamageLinkOverlay';
 import { GLOBAL_STYLES } from './components/GlobalStyles';
 import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from './components/anim/WinAnims';
 import { GlobalAnimLayer } from './components/anim/GlobalAnimLayer';
+import { GameLayerPortal } from './ui/GameLayerPortal';
 import { loadEffectImage } from './components/anim/effectNoise';
 import { ApophisNightBadge } from './components/anim/ApophisOverlays';
 import { formatFileSize, useResourcePreload } from './hooks/useResourcePreload';
@@ -10424,20 +10425,25 @@ export default function Game(){
       animExiting={animExiting}
       expansionKey={gs.expansionKey}
       disabled={suppressAnim}
+      decisionProps={{...battleScreenProps,decisionSubmitting}}
+      pendingState={pendingGsRef.current}
       playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
     />
     {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}
-    {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
+    <GameLayerPortal>
+      {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
+      {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
+      {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+    </GameLayerPortal>
     {flyingEmojis.map(fe=>(
       <FlyingEmoji key={fe.id} {...fe} onDone={handleFlyingEmojiDone}/>
     ))}
-    {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
-    {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
     {!suppressAnim&&petrifyTargets.length>0&&<PetrifyAnim targets={petrifyTargets}/>}
     {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
     {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
     {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
     {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>}
+    <GameLayerPortal>
     {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} confirmCountdownSec={gs._isMP?3:null} onConfirm={revealWin}/>}
     {phase==='GOD_RESURRECTION'&&(!showTutorial||isTutorialGodResurrection)&&(
       <GodResurrectionAnim onDone={isTutorialGodResurrection
@@ -10445,6 +10451,7 @@ export default function Game(){
         :()=>{setShowGodResurrection(true);revealWin();}}
       />
     )}
+    </GameLayerPortal>
   </>);
 }
 // ══════════════════════════════════════════════════════════════

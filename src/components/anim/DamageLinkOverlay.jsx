@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { getGameLayerTarget } from '../../ui/gameLayers';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 import { getAllDamageLinks } from '../../game/damageLinks';
 
@@ -211,7 +212,7 @@ function DamageLinkSvg({ link }) {
         })}
       </svg>
     </div>,
-    document.body
+    getGameLayerTarget('scene')
   );
 }
 

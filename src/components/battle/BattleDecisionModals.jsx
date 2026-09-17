@@ -5,9 +5,7 @@ import { isAiSeat } from '../../game/rotateState';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard } from '../cards';
 import {
-  GodChoiceModal,
   NyaBorrowModal,
-  DrawRevealModal,
   TreasureDodgeModal,
   TortoiseOracleModal,
   PeekHandModal,
@@ -23,8 +21,6 @@ export function BattleDecisionModals({
   canShowTurnDecisionModal,
   decisionError,
   runDecision,
-  isLocalGodChoice,
-  isLocalDrawDecision,
   isLocalNyaBorrowPhase,
   isLocalTortoiseSelectPhase,
   isLocalTreasureDodgePhase,
@@ -35,33 +31,23 @@ export function BattleDecisionModals({
   isLocalSphinxGuessPhase,
   isMobile,
   visualMe,
-  showTutorial,
   tutorialStep,
-  isTutorialActionAllowed,
-  isTutorialDrawKeepStep,
   isScriptedTutorial,
   pendingZhuDrawCard,
   pendingZhuGodCard,
   pendingZhuSphinxCard,
   pendingZhuAiDrawCard,
   pendingZhuAnyCard,
-  pendingZhuDrawAnyCard,
-  pendingZhuGodAnyCard,
   pendingZhuSphinxAnyCard,
   privatePeek,
   scaleRatio,
-  drawRevealKeepButtonRef,
-  godKeepHandButtonRef,
   dodgeRollButtonRef,
-  godResolvePlayer,
   nyaBorrow,
   nyaSkip,
   handleZhuHideDrawnCard,
   handleZhuHideGodCard,
   handleZhuHideTopCardDuringSphinx,
   handleZhuHideAiDrawCard,
-  handleDrawKeepFromModal,
-  handleDrawDiscardFromModal,
   handleTreasureDodgeRoll,
   handleTreasureDodgeSkip,
   handleTreasureAOEDodgeRoll,
@@ -80,42 +66,11 @@ export function BattleDecisionModals({
 
   return (
     <>
-      {decisionError && canShowTurnDecisionModal && phase !== 'DRAW_REVEAL' && (
+      {decisionError && canShowTurnDecisionModal && !['DRAW_REVEAL', 'GOD_CHOICE'].includes(phase) && (
         <div role="alert" style={{ position: 'fixed', top: '8vh', left: '50%', transform: 'translateX(-50%)', zIndex: 1200, padding: '8px 14px', border: '1px solid #a64f4f', borderRadius: 3, background: '#2a1111ee', color: '#e8a0a0', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 12, letterSpacing: 1, pointerEvents: 'none' }}>
           结算准备失败，请重试。
         </div>
       )}
-      {/* God choice modal */}
-      {!pendingZhuGodAnyCard && canShowTurnDecisionModal && phase === 'GOD_CHOICE' && gs.abilityData?.godCard && (isLocalGodChoice || gs._isMP) && (() => {
-        const godCard = gs.abilityData.godCard;
-        const actorIdx = gs.abilityData?.drawerIdx ?? gs.currentTurn ?? 0;
-        const actor = gs.players[actorIdx] || me;
-        const canChooseGod = isLocalGodChoice && actorIdx === 0;
-        const gk = godCard.godKey;
-        const alreadyWorship = actor.godName === gk;
-        const isConvert = !!(actor.godName && actor.godName !== gk);
-        const forcedConvert = gs.abilityData?.forcedConvert || false;
-        const canUpgrade = alreadyWorship && (actor.godLevel || 0) < 3;
-        const thinkingText = gs._isMP && !canChooseGod ? `${actor.name || '对方'}正在回应邪神…` : '';
-        const lockTutorialGodKeep = showTutorial && tutorialStep === TUTORIAL_FLOW.CULTIST_GOD_KEEP_HAND;
-        return (
-          <GodChoiceModal
-            godCard={godCard} player={actor}
-            isConvert={isConvert} forcedConvert={forcedConvert}
-            canChoose={canChooseGod}
-            thinkingText={thinkingText}
-            allowWorship={!lockTutorialGodKeep}
-            allowKeepHand={!lockTutorialGodKeep || isTutorialActionAllowed({ type: 'godKeepHand' })}
-            allowDiscard={!lockTutorialGodKeep}
-            onWorship={() => runDecision(`god-choice:worship:${gk}`, () => godResolvePlayer(alreadyWorship && canUpgrade ? 'upgrade' : 'worship'))}
-            onKeepHand={() => runDecision(`god-choice:keep:${gk}`, () => godResolvePlayer('keepHand'))}
-            onDiscard={() => runDecision(`god-choice:discard:${gk}`, () => godResolvePlayer('discard'))}
-            keepButtonRef={godKeepHandButtonRef}
-            scaleRatio={scaleRatio}
-          />
-        );
-      })()}
-
       {/* NYA borrow modal */}
       {canShowTurnDecisionModal && phase === 'NYA_BORROW' && isLocalNyaBorrowPhase(gs) && (() => {
         const deadOthers = gs.players.filter((p, i) => i > 0 && p.isDead);
@@ -154,22 +109,6 @@ export function BattleDecisionModals({
         <div className="toe-dialog" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',    padding: '18px 22px',  fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 14, letterSpacing: 1, zIndex: 519, pointerEvents: 'none' }}>
           请等待其他玩家选择…
         </div>
-      )}
-
-      {/* Draw reveal modal */}
-      {!pendingZhuDrawAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'DRAW_REVEAL' && gs.drawReveal && gs.drawReveal.needsDecision && !gs.drawReveal.forcedKeep && (
-        <DrawRevealModal
-          drawReveal={gs.drawReveal}
-          onKeep={handleDrawKeepFromModal}
-          onDiscard={handleDrawDiscardFromModal}
-          decisionError={decisionError}
-          canChoose={isLocalDrawDecision}
-          thinkingText={gs._isMP && !isLocalDrawDecision ? `${gs.drawReveal.drawerName || gs.players[gs.currentTurn]?.name || '对方'}正在思考…` : ''}
-          canKeep={!isTutorialDrawKeepStep || isTutorialActionAllowed({ type: 'drawKeep' })}
-          canDiscard={!isTutorialDrawKeepStep}
-          keepButtonRef={drawRevealKeepButtonRef}
-          scaleRatio={scaleRatio}
-        />
       )}
 
       {/* Treasure hunter dodge modal */}

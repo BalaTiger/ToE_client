@@ -1,5 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
+import { getGameLayerTarget } from '../../ui/gameLayers';
 
 // Fullscreen light flashes must sit above every interactive or diagnostic UI.
 // Keep the animation body on its original layer and portal only the light itself.
@@ -23,6 +24,6 @@ export function FullscreenLightLayer({ children, className, style }) {
     >
       {children}
     </div>,
-    document.body,
+    getGameLayerTarget('overlay'),
   );
 }

@@ -1,0 +1,59 @@
+.toe-reveal-decision-actions {
+  --toe-action-scale: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: min(544px, calc(100vw - 24px));
+  gap: 3px;
+  color: #d8c9ae;
+  font-family: var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'SimSun', serif);
+  text-align: center;
+  text-shadow: 0 1px 3px #000;
+  pointer-events: auto;
+}
+
+.toe-reveal-decision-buttons {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 176px));
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  gap: 4px 8px;
+}
+.toe-reveal-decision-buttons:has(> :only-child) { grid-template-columns: minmax(0, 176px); }
+.toe-reveal-decision-buttons:has(> :nth-child(3)) { grid-template-columns: repeat(3, minmax(0, 176px)); }
+
+/* The painted plaques retain their native ratio; their touch targets stay at least 44 px tall. */
+.toe-reveal-decision-actions .toe-button.toe-reveal-choice {
+  box-sizing: border-box;
+  width: 100%;
+  height: 48px;
+  min-height: 44px;
+  padding: 6px 8px;
+  gap: 6px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: #ded1b6;
+  font-family: inherit;
+  font-size: clamp(14px, 1.5vw, 16px);
+  font-weight: 600;
+  letter-spacing: 0;
+  cursor: pointer;
+}
+
+.toe-reveal-decision-actions .toe-reveal-choice::before { background-size: contain; }
+.toe-reveal-decision-actions .toe-reveal-choice .toe-turn-icon { font-size: 18px; }
+.toe-reveal-decision-buttons:has(> :nth-child(3)) .toe-reveal-choice { font-size: 14px; }
+.toe-reveal-choice-label { position: relative; white-space: nowrap; line-height: 1.2; }
+.toe-reveal-decision-actions .toe-reveal-choice:disabled { cursor: not-allowed; }
+.toe-reveal-decision-note, .toe-reveal-decision-error { font-size: 12px; line-height: 1.4; }
+.toe-reveal-decision-note { color: #c3b698; }
+.toe-reveal-convert-cost, .toe-reveal-decision-error { color: #e0a29a; }
+
+@media (max-width: 359px) {
+  .toe-reveal-decision-buttons { display: flex; flex-wrap: wrap; }
+  .toe-reveal-decision-actions .toe-reveal-choice { flex: 0 1 140px; }
+}

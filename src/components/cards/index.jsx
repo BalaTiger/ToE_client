@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { createPortal } from 'react-dom';
+import { getGameLayerTarget } from '../../ui/gameLayers';
 import { CS, GOD_CS, GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle } from '../../constants/card';
 import { AnimatedCardBack } from './AnimatedCardBack';
 import { CardFaceImage } from './CardFaceImage';
@@ -151,7 +152,7 @@ function CardFaceTooltip({card,godLevel=1,position}){
         </div>
       </div>
     </>,
-    document.body
+    getGameLayerTarget(position.gameLayer || 'scene')
   );
 }
 

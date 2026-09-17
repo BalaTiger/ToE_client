@@ -1,6 +1,7 @@
 import { Children, cloneElement, useLayoutEffect, useRef, useState } from 'react';
 import { buildPublicUrl } from '../../utils/url';
 import { COASTAL_CORNER, getCoastalGeometry } from './coastalGeometry';
+import { CoastalTorch } from './CoastalTorch';
 import './coastal-layout.css';
 
 export function CoastalOpponents({ children, currentTurn, compact, ref }) {
@@ -17,7 +18,7 @@ export function CoastalOpponents({ children, currentTurn, compact, ref }) {
 }
 
 // The existing regions keep their refs and game callbacks when their positions change.
-export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, turn, turnLabel, counts, compact, width = 1200, height = 620 }) {
+export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, turn, turnLabel, counts, compact, paused = false, sceneShake, width = 1200, height = 620 }) {
   const [self, piles, log] = Children.toArray(middle.props.children);
   const boardRef = useRef(null);
   const rolesRef = useRef(null);
@@ -78,7 +79,8 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
       <img className="toe-coastal-faith-drape" src={buildPublicUrl('/img/ui/coastal/faith-banner.webp')} alt="" />
       <img className="toe-coastal-log-book" src={buildPublicUrl('/img/ui/coastal/corner-b-journal.webp')} alt="" />
     </div>
-    <img className="toe-coastal-foreground" src={buildPublicUrl('/img/ui/coastal/foreground.webp')} alt="" aria-hidden="true" />
+    <img className="toe-coastal-foreground" src={buildPublicUrl('/img/ui/coastal/foreground-torch.webp')} alt="" aria-hidden="true" />
+    <CoastalTorch paused={paused} sceneShake={sceneShake} />
     <div className="toe-coastal-self">{self}</div>
     <div ref={rolesRef} className="toe-coastal-roles">{opponents}</div>
     <div className="toe-coastal-turn">

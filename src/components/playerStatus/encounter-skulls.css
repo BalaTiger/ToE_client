@@ -1,0 +1,30 @@
+.toe-encounter-skulls {
+  --toe-skull-size: 18px;
+  --toe-skull-gap: 2px;
+  display: grid;
+  grid-template-columns: repeat(var(--toe-skull-columns), minmax(0, 1fr));
+  gap: var(--toe-skull-gap);
+  width: calc(var(--toe-skull-columns) * var(--toe-skull-size) + (var(--toe-skull-columns) - 1) * var(--toe-skull-gap));
+  max-width: calc(100% - 18px);
+  line-height: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.toe-encounter-skulls img {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  filter: drop-shadow(0 2px 1px #000b);
+}
+/* Classic and arch layouts attach the first row to the actual outer frame. */
+.toe-player-panel > .toe-encounter-skulls {
+  position: absolute;
+  top: calc(100% - 9px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+.toe-player-panel:has(> .toe-encounter-skulls) {
+  margin-bottom: calc(var(--toe-encounter-skull-rows) * 20px - 9px);
+}

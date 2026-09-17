@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BattleScreen } from '../components/battle/BattleScreen';
+import { applyGameGamma } from '../ui/gameLayers';
+import { buildGammaFilter } from '../hooks/useGamePreferences';
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from '../components/lobby';
 import { AboutModal, RoadmapModal, FullLogModal } from '../components/modals';
 import { GLOBAL_STYLES } from '../components/GlobalStyles';
@@ -12,6 +14,7 @@ import { GodResurrectionAnim, TreasureMapAnim, RoleRevealAnim } from '../compone
 import { DiceRollAnim } from '../components/anim/GenericAnimOverlay';
 import { CardTransferOverlay } from '../components/anim/MoveOverlays';
 import { CardDrawFlight } from '../components/anim/CardFlipAnim';
+import { GlobalAnimLayer } from '../components/anim/GlobalAnimLayer';
 import { FIXED_ZONE_CARD_VARIANTS_BY_KEY, GOD_DEFS, INSPECTION_DECK, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { getBattleTheme, getBattleBackgroundImage } from '../constants/theme';
 import { RINFO } from '../game/setup';
@@ -33,6 +36,7 @@ const SCENES = [
   ['battle-coastal-small', '3号布局 · 两张手牌靠近按钮', '对局'],
   ['battle-coastal-many', '3号布局 · 八张手牌与累积区域牌', '对局'],
   ['battle-coastal-effects', '3号布局 · 场上持续效果与亮牌', '对局'],
+  ['battle-coastal-zhu', '3号布局 · 烛九阴二级侧抽亮牌', '对局'],
   ['battle-coastal-clarity', '3号布局 · 信仰标签与长效果文字', '对局'],
   ['battle-ai', '等待其他旅者行动', '对局', 'AI_TURN'],
   ['battle-crowded', '七名其他角色 · 回合置顶', '对局', 'AI_TURN'],
@@ -227,6 +231,7 @@ function makeState(scene, expansionKey) {
     });
     if (id === 'battle-coastal-small') players[0].hand = players[0].hand.slice(0, 2);
     if (id === 'battle-coastal-effects') players[0].godName = 'ZHU';
+    if (id === 'battle-coastal-zhu') Object.assign(players[0], { godName: 'ZHU', godLevel: 2 });
     if (id === 'battle-coastal-clarity') Object.assign(players[0], {
       godName: null, godLevel: 0, hasBelievedGod: false,
       hand: [godCard('SHU', 0), ZONES.find(card => card.key === 'A3'), godCard('SHU', 1), godCard('VRI')],
@@ -270,6 +275,10 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   const state = useMemo(() => makeState(scene, expansionKey), [scene, expansionKey]);
   const [rects, setRects] = useState({});
   const [preferences, setPreferences] = useState({ gamma: 1, musicVolume: 0.6, sfxVolume: 0.8 });
+  useEffect(() => {
+    applyGameGamma(buildGammaFilter(preferences.gamma));
+    return () => applyGameGamma('');
+  }, [preferences.gamma]);
   const [refs] = useState(() => ({
     ...Object.fromEntries(['skillButtonRef', 'drawRevealKeepButtonRef', 'godKeepHandButtonRef', 'dodgeRollButtonRef', 'swapBlindHandRef'].map(name => [name, { current: null }])),
     mobileGodCardRefs: { current: new Map() }, animQueueRef: { current: [] }, pendingGsRef: { current: null },
@@ -344,7 +353,8 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     settingsDefaultOpen: id === 'settings',
     mpTurnSec: 36, mpDiscardSec: 12, mpHuntSec: 18, mpDecisionSec: 20,
     houndsTimerVisible: id === 'battle-status' || id === 'battle-coastal-effects', houndsSecLeft: 17,
-    zhuLitCardsForView: id === 'battle-coastal-effects' ? state.deck.slice(0, 7).map((card, deckIndex) => ({ card, deckIndex })) : [],
+    zhuLitCardsForView: id === 'battle-coastal-effects' ? state.deck.slice(0, 7).map((card, deckIndex) => ({ card, deckIndex }))
+      : id === 'battle-coastal-zhu' ? state.deck.slice(1, 4).map((card, index) => ({ card, deckIndex: index + 1 })) : [],
     serverAnnouncement: id === 'announcement' ? '服务器将于 10 分钟后维护，请在当前对局结束后返回主界面。' : null,
     globalStyles: GLOBAL_STYLES,
     drawBackgroundCameraActive: id === 'battle-camera',
@@ -373,7 +383,10 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     },
     completeTutorial: () => onScene('battle'),
   };
-  return <BattleScreen {...baseProps} />;
+  return <>
+    <BattleScreen {...baseProps} />
+    <GlobalAnimLayer decisionProps={baseProps} expansionKey={expansionKey} />
+  </>;
 }
 
 function LobbyFixture({ scene, onAction, onScene }) {

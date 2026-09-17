@@ -19,6 +19,9 @@ vi.mock('../../utils/dom', async importOriginal => ({
   getPlayerHandCardAnchor: vi.fn(() => anchors.hand),
   getRevealCardAnchor: vi.fn(() => anchors.reveal),
 }));
+vi.mock('../../hooks/useWindowSize', () => ({
+  useWindowSize: () => ({ w: window.innerWidth, h: window.innerHeight }),
+}));
 
 const card = { id: 'ordinary', isZone: true, key: 'A1', letter: 'A', name: '不应公开的普通牌', type: 'selfDamageHP', val: 1 };
 const inspection = { id: 'inspection', name: '揭开真相', effect: 'drawCard', type: 'positive' };
@@ -124,5 +127,68 @@ describe('income flight facing', () => {
     expect(markup).toContain(`data-card-transfer-side="${faceUp ? 'front' : 'back'}"`);
     expect(markup.includes('data-card-face-id="ordinary"')).toBe(faceUp);
     expect(markup.includes(card.name)).toBe(faceUp);
+  });
+});
+
+describe('retained reveal decisions', () => {
+  it.each([
+    ['draw-reveal', card],
+    ['god-choice', { id: 'god', isGod: true, godKey: 'CTH', name: '克苏鲁' }],
+  ])('holds the exact last frame for %s without replaying entry or reveal effects', (decisionKind, revealedCard) => {
+    const markup = renderToString(<CardFlipAnim card={revealedCard} targetPid={0} settled decisionKind={decisionKind}>
+      <button>收入手牌</button>
+    </CardFlipAnim>);
+    expect(markup).toContain(`data-ui-dialog="${decisionKind}"`);
+    expect(markup).toContain('data-card-reveal-settled="true"');
+    expect(markup).toContain('data-card-reveal-options');
+    expect(markup).toContain('transform:translateY(0)');
+    expect(markup).toContain('transform:rotateY(1080deg)');
+    expect(markup).toContain('width:225px');
+    expect(markup).not.toContain('animation:cardRise');
+    expect(markup).not.toContain('animation:cardFlip');
+    expect(markup).not.toContain('animFadeIn');
+    expect(markup).not.toContain('data-card-draw-flight');
+    expect(markup).not.toContain('burstPulse');
+    expect(markup).not.toContain('smokeRise');
+    expect(markup).not.toContain('flowerBloom');
+  });
+
+  it('keeps the Blind Fish scotoma in the decision frame', () => {
+    const markup = renderToString(<CardFlipAnim card={{ ...card, blindZoneIdentity: true }} targetPid={0} settled decisionKind="draw-reveal" />);
+    expect(markup).toContain('blindFishScotomaDrift');
+    expect(markup).toContain('data-card-flip-atmosphere="neutral"');
+    expect(markup).not.toContain('smokeRise');
+  });
+
+  it('keeps the settled card visible without dimming queued stat effects behind it', () => {
+    const markup = renderToString(<CardFlipAnim card={card} targetPid={0} settled showBackdrop={false} decisionKind="draw-reveal" />);
+    expect(markup).toContain('data-card-reveal-settled="true"');
+    expect(markup).toContain('data-card-face-id="ordinary"');
+    const overlay = markup.match(/<div data-ui-dialog="draw-reveal"[^>]+>/)?.[0];
+    expect(overlay).toContain('background:transparent');
+    expect(overlay).not.toContain('background:rgba(');
+    expect(markup).not.toContain('animation:cardRise');
+    expect(markup).not.toContain('animation:cardFlip');
+  });
+
+  it('suppresses only the requested exit fade while the queue finishes', () => {
+    const retained = renderToString(<CardFlipAnim card={card} skipTravel exiting preserveOnExit />);
+    expect(retained).not.toContain('animFadeOut');
+    expect(retained).toContain('animation:cardRise');
+    const ordinary = renderToString(<CardFlipAnim card={card} skipTravel exiting />);
+    expect(ordinary).toContain('animFadeOut');
+  });
+
+  it('does not arm travel or onSettled timers when mounted directly at a decision', () => {
+    const effects = [];
+    const onSettled = vi.fn();
+    vi.spyOn(React, 'useEffect').mockImplementation(effect => { effects.push(effect); });
+    vi.spyOn(globalThis, 'setTimeout');
+    renderToString(<CardFlipAnim card={card} settled onSettled={onSettled} />);
+    // The first two component effects own travel and reveal completion.
+    expect(effects.length).toBeGreaterThanOrEqual(2);
+    effects.slice(0, 2).forEach(effect => effect());
+    expect(setTimeout).not.toHaveBeenCalled();
+    expect(onSettled).not.toHaveBeenCalled();
   });
 });

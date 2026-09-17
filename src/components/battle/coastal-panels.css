@@ -36,12 +36,16 @@
 [data-ui-layout='coastal'] .toe-coastal-portrait img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 38%; }
 [data-ui-layout='coastal'] [data-stat-label] { width: 100% !important; }
 [data-ui-layout='coastal'] [data-stat-label='SAN'] .toe-stat-fill { background-color: #3e9195 !important; }
-[data-ui-layout='coastal'] .toe-san-threshold { top: -2px !important; bottom: -2px !important; background: #b3aa87; opacity: .85; }
-[data-ui-layout='coastal'] .toe-san-threshold > div { display: none; }
 
 [data-ui-layout='coastal'] .toe-self-player-panel { width: 100% !important; min-width: 0 !important; flex-basis: auto !important; min-height: 0 !important; padding: 0 !important; box-shadow: none; }
 [data-ui-layout='coastal'] .toe-self-content { display: grid; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 51px 43px auto; gap: 3px 8px; position: relative; }
 [data-ui-layout='coastal'] .toe-self-content::before { content: ''; position: absolute; top: -5px; left: -8px; width: calc(100% + 16px); height: auto; aspect-ratio: 806 / 364; background: var(--toe-coastal-self-frame) center / contain no-repeat; pointer-events: none; z-index: -1; }
+/* Share the frame's native canvas; its lower metal rail is at y=256/364. */
+[data-ui-layout='coastal'] .toe-self-skull-anchor { position: absolute; top: -5px; left: -8px; width: calc(100% + 16px); aspect-ratio: 806 / 364; pointer-events: none; z-index: 3; }
+[data-ui-layout='coastal'] .toe-self-skull-anchor > .toe-encounter-skulls { position: absolute; top: calc(70.33% - 9px); left: 62%; max-width: 60%; transform: translateX(-50%); }
+[data-ui-layout='coastal'] .toe-self-content:has(.toe-self-skull-anchor) .toe-self-faith { margin-top: calc(20px + max(0, var(--toe-encounter-skull-rows) - 1) * 20px); }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-skull-anchor { top: 1px; left: -14px; width: calc(100% + 56px); }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content:has(.toe-self-skull-anchor) .toe-self-faith { margin-top: calc(8px + max(0, var(--toe-encounter-skull-rows) - 1) * 20px); }
 [data-ui-layout='coastal'] .toe-self-content > .toe-coastal-portrait { grid-column: 1; grid-row: 1 / span 2; width: 54px; height: 54px; margin: 27px 0 15px 16px; border-radius: 50%; }
 [data-ui-layout='coastal'] .toe-self-details { display: contents; }
 [data-ui-layout='coastal'] .toe-self-title { grid-column: 2; grid-row: 1; display: flex !important; align-items: center; gap: 8px; min-width: 0; margin-right: 15px; padding: 22px 0 6px; border-bottom: 1px solid #9b865b88; }
@@ -86,6 +90,10 @@
 /* The core and artwork share the native 458:390 ratio; hanging tags do not stretch it. */
 [data-ui-layout='coastal'] .toe-opponent-core { display: grid; position: relative; box-sizing: border-box; width: 100%; aspect-ratio: 458 / 390; grid-template-columns: 29cqw minmax(0, 1fr); grid-template-rows: 10cqw 8cqw 8cqw minmax(0, 1fr); gap: 1.5cqw 3cqw; padding: 20cqw 8cqw 8cqw; }
 [data-ui-layout='coastal'] .toe-opponent-panel::after { content: ''; position: absolute; top: 0; left: 0; width: 100%; aspect-ratio: 458 / 390; background: var(--toe-coastal-opponent-frame) center / contain no-repeat; z-index: -1; pointer-events: none; }
+/* The first skull row straddles the lower rail; further rows push tags down. */
+[data-ui-layout='coastal'] .toe-opponent-panel:has(> .toe-encounter-skulls) { margin-bottom: 0; }
+[data-ui-layout='coastal'] .toe-opponent-panel:has(> .toe-encounter-skulls) .toe-opponent-core { padding-bottom: 10.5cqw; }
+[data-ui-layout='coastal'] .toe-opponent-panel > .toe-encounter-skulls { --toe-skull-size: 11cqw; --toe-skull-gap: .6cqw; position: relative; inset: auto; transform: none; margin: -9.6cqw auto 3cqw; max-width: 90%; }
 [data-ui-layout='coastal'] .toe-opponent-core > .toe-coastal-portrait-framed { position: absolute; top: 8cqw; left: -6cqw; z-index: 1; width: 43cqw; height: auto; aspect-ratio: 439 / 448; background-color: transparent; background-size: contain; background-position: center; background-repeat: no-repeat; overflow: visible; }
 [data-ui-layout='coastal'] .toe-coastal-portrait-framed img { position: absolute; top: 16%; left: 16%; width: 68%; height: auto; aspect-ratio: 1; border-radius: 50%; }
 [data-ui-layout='coastal'] .toe-opponent-heading { grid-column: 2; grid-row: 1; flex-wrap: nowrap; gap: 3cqw !important; margin-bottom: 0 !important; padding-bottom: 1px !important; min-width: 0; height: auto; border-bottom: 1px solid #9b865b88 !important; }

@@ -73,19 +73,21 @@ describe('coastal shared play space', () => {
       const aligned = getCoastalGeometry({ width, height: 750, handCount: 5, centerX, effectsHeight: 185 });
       expect(aligned.piles.left + aligned.piles.width / 2).toBeCloseTo(centerX);
       expect(aligned.piles.width).toBe(original.piles.width);
-      expect(aligned.effects.left).toBe(original.effects.left);
-      expect(aligned.effects.width).toBe(original.effects.width);
+      expect(aligned.effects.left).toBe(aligned.piles.left);
+      expect(aligned.effects.width).toBe(aligned.piles.width);
       expect(aligned.piles.left + aligned.piles.width).toBeLessThan(aligned.actions.left);
       expect(aligned.hand.top - COASTAL_HAND_HOVER - COASTAL_HAND_SELECTED_LIFT - aligned.piles.top - aligned.piles.height)
         .toBeGreaterThanOrEqual(COASTAL_PILE_CLEARANCE - .001);
     },
   );
 
-  it.each([0, 56, 185, 320])('keeps a %ipx persistent-effect column clear of roles, piles, and hovered cards', effectsHeight => {
+  it.each([0, 56, 64])('keeps a %ipx persistent-effect row clear of roles, torch, piles, and hovered cards', effectsHeight => {
     const geometry = getCoastalGeometry({ height: 620, handCount: 8, rolesBottom: 190, effectsHeight });
     const { effects, piles, hand } = geometry;
     expect(effects.top).toBeGreaterThan(geometry.rolesBottom);
-    expect(effects.left + effects.width + 12).toBeLessThanOrEqual(piles.left);
+    expect(effects.left).toBeGreaterThan(300);
+    expect(effects.left + effects.width / 2).toBeCloseTo(piles.centerX);
+    expect(piles.top - effects.top - effects.height).toBeGreaterThanOrEqual(12);
     expect(hand.top - COASTAL_HAND_HOVER - COASTAL_HAND_SELECTED_LIFT - effects.top - effects.height)
       .toBeGreaterThanOrEqual(COASTAL_PILE_CLEARANCE - .001);
   });

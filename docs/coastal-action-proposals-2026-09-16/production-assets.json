@@ -1,0 +1,63 @@
+{
+  "masters": {
+    "buttons-b-master.png": "exec-f9985c7d-a78e-466d-9b8e-25f952299418.png",
+    "encounter-skull-master.png": "exec-c7e028a2-02c3-4b03-81df-4d2f03b35aee.png",
+    "option-b-skull-mockup.png": "exec-718fbe22-8187-45d0-8e8c-1c8d477259f8.png"
+  },
+  "records": [
+    {
+      "file": "public\\img\\ui\\coastal\\action-skill-b.webp",
+      "rect": {
+        "left": 58,
+        "top": 96,
+        "width": 1140,
+        "height": 242
+      },
+      "width": 1140,
+      "height": 242,
+      "bytes": 84990
+    },
+    {
+      "file": "public\\img\\ui\\coastal\\action-rest-b.webp",
+      "rect": {
+        "left": 58,
+        "top": 374,
+        "width": 1140,
+        "height": 242
+      },
+      "width": 1140,
+      "height": 242,
+      "bytes": 87412
+    },
+    {
+      "file": "public\\img\\ui\\coastal\\action-multiply-b.webp",
+      "rect": {
+        "left": 58,
+        "top": 652,
+        "width": 1140,
+        "height": 242
+      },
+      "width": 1140,
+      "height": 242,
+      "bytes": 78354
+    },
+    {
+      "file": "public\\img\\ui\\coastal\\action-end-b.webp",
+      "rect": {
+        "left": 58,
+        "top": 930,
+        "width": 1140,
+        "height": 242
+      },
+      "width": 1140,
+      "height": 242,
+      "bytes": 86322
+    },
+    {
+      "file": "public\\img\\ui\\coastal\\encounter-skull.webp",
+      "width": 256,
+      "height": 256,
+      "bytes": 22566
+    }
+  ]
+}

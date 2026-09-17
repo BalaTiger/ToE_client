@@ -14,6 +14,7 @@ export function useCardHoverTooltip() {
     const centerX = rect.left + rect.width / 2;
     const centerY = rect.top + rect.height / 2;
     return {
+      gameLayer: cardRef.current?.closest?.('[data-game-layer]')?.dataset.gameLayer || 'scene',
       left: rect.left,
       right: rect.right,
       top: rect.top,

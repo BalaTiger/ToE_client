@@ -55,15 +55,32 @@
 .toe-hand-area[data-hand-composition="coastal"] .toe-turn-actions:empty,
 .toe-hand-area[data-hand-composition="coastal"] .toe-hand-controls:not(:has(button)) { display: none; }
 .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque {
+  display: grid;
+  grid-template-columns: calc(22px * var(--toe-action-scale)) minmax(0, 1fr);
+  box-sizing: border-box;
   width: 100%;
   height: auto;
   min-height: calc(44px * var(--toe-action-scale));
   aspect-ratio: 3.75;
-  padding: 10px 16px;
+  padding: 10px 11% 10px 24%;
   gap: 12px;
   filter: drop-shadow(0 3px 2px #000c);
 }
-.toe-hand-area[data-hand-composition="coastal"] .toe-turn-label { font-size: calc(15px * var(--toe-action-scale)); }
+/* Keep the old hit boxes and row rhythm while fitting the painted plates intact. */
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque::before { background-size: contain; }
+.toe-hand-area[data-hand-composition="coastal"] .toe-turn-icon { font-size: calc(22px * var(--toe-action-scale)); }
+[data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque .toe-turn-label {
+  min-width: 0;
+  font-size: calc(18px * var(--toe-action-scale));
+  font-weight: 500 !important;
+  color: #d8c9ae !important;
+  text-align: left;
+  letter-spacing: .7px;
+  line-height: 1.1;
+  gap: 0;
+}
+[data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque:disabled .toe-turn-label { color: #979382 !important; }
+[data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque:hover:not(:disabled) .toe-turn-label { color: #e5d8bc !important; }
 .toe-hand-area[data-hand-composition="coastal"] > [data-self-hand-strip] {
   grid-column: 2;
   grid-row: 1;
@@ -148,11 +165,14 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 .toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-plaque {
+  grid-template-columns: calc(18px * var(--toe-action-scale)) minmax(0, 1fr);
   width: calc(120px * var(--toe-action-scale));
   height: calc(44px * var(--toe-action-scale));
-  padding: calc(6px * var(--toe-action-scale));
+  padding: calc(6px * var(--toe-action-scale)) 8%;
   gap: calc(6px * var(--toe-action-scale));
 }
+.toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-icon { font-size: calc(18px * var(--toe-action-scale)); }
+[data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-turn-plaque .toe-turn-label { font-size: calc(13px * var(--toe-action-scale)); }
 .toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) .toe-main-actions .toe-turn-plaque { width: 100%; }
 .toe-hand-area[data-hand-composition="coastal"]:not([data-hand-layout="desktop"]) > [data-self-hand-strip] {
   grid-column: 1;

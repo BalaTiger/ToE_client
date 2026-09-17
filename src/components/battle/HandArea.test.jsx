@@ -4,6 +4,7 @@ import { DDCard } from '../cards';
 import { HandArea } from './HandArea';
 import { HandTableDecor, HandTableSurface } from './HandTableDecor';
 import { getCoastalGeometry } from './coastalGeometry';
+import { ActionIcon } from './ActionIcon';
 
 const runtime = vi.hoisted(() => ({ layout: 'coastal', space: null, measure: null }));
 vi.mock('../../ui/UiAppearance', () => ({
@@ -103,6 +104,7 @@ describe('coastal hand composition', () => {
     const controls = descendants(HandArea(props)).find(node => node?.props?.className === 'toe-hand-controls');
     const buttons = descendants(controls).filter(node => node?.type === 'button');
     expect(buttons).toHaveLength(4);
+    expect(descendants(controls).filter(node => node?.type === ActionIcon).map(node => node.props.kind)).toEqual(['treasure', 'rest', 'multiply', 'end']);
     buttons[0].props.onClick();
     buttons[1].props.onClick();
     buttons[2].props.onClick();
@@ -111,6 +113,25 @@ describe('coastal hand composition', () => {
     expect(props.doRest).toHaveBeenCalledOnce();
     expect(props.setGs).toHaveBeenCalledWith(expect.objectContaining({ phase: 'MULTIPLY_SELECT_TARGET' }));
     expect(props.endTurn).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    ['追猎者', '☩', 'hunt'],
+    ['邪祀者', '☽', 'cult'],
+    ['邪祀者', '✦', 'treasure'],
+    ['寻宝者', '☩', 'hunt'],
+    ['寻宝者', '☽', 'cult'],
+  ])('uses the upstream effective skill %s / %s, including borrowed professions', (role, effectiveIcon, icon) => {
+    const props = makeProps();
+    props.me.role = role;
+    props.skillRi = { icon: effectiveIcon };
+    const skill = descendants(HandArea(props)).find(node => node?.props?.className?.includes('toe-turn-skill'));
+    const renderedIcon = descendants(skill).find(node => node?.type === ActionIcon);
+    expect(renderedIcon.props.kind).toBe(icon);
+    const svg = ActionIcon(renderedIcon.props);
+    expect(svg.type).toBe('svg');
+    expect(svg.props['aria-hidden']).toBe('true');
+    expect(svg.props.viewBox).toBe('0 0 24 24');
   });
 
   it.each([.55, 1, 1.6])('keeps worship and upgrade hints readable at board scale %s without widening cards', scaleRatio => {
@@ -145,6 +166,7 @@ describe('coastal hand composition', () => {
     const controls = descendants(HandArea(props)).find(node => node?.props?.className === 'toe-hand-controls');
     const buttons = descendants(controls).filter(node => node?.type === 'button');
     expect(buttons).toHaveLength(2);
+    expect(descendants(controls).filter(node => node?.type === ActionIcon).map(node => node.props.kind)).toEqual(['cancel', 'confirm']);
     expect(buttons[1].props.disabled).toBe(false);
     buttons[0].props.onClick();
     buttons[1].props.onClick();

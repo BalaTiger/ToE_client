@@ -5,6 +5,8 @@ import App from './App.jsx'
 import { buildPublicUrl } from './utils/url'
 import { UiAppearanceProvider } from './ui/UiAppearance.jsx'
 import { mountMobileLandscape } from './ui/mobileLandscape.js'
+import { mountGameLayers } from './ui/gameLayers.js'
+import './ui/game-layers.css'
 
 document.body.style.setProperty('--toe-html-bg', `url('${buildPublicUrl('/bg.webp')}')`)
 
@@ -13,6 +15,7 @@ const VisualGallery = import.meta.env.DEV && new URLSearchParams(window.location
   : null;
 
 const mobileLandscapeHost = mountMobileLandscape();
+if (!mobileLandscapeHost) mountGameLayers();
 if (!mobileLandscapeHost) createRoot(document.getElementById('root')).render(
   <StrictMode>
     <UiAppearanceProvider>

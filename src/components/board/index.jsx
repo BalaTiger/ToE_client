@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { createPortal } from 'react-dom';
+import { getGameLayerTarget } from '../../ui/gameLayers';
 import { GOD_DEFS } from '../../constants/card';
 import { getBoardTheme } from '../../constants/theme';
 import { RINFO } from '../../game';
@@ -11,6 +12,7 @@ import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { DiceFace } from '../anim/DiceFace';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
+import { EncounterSkulls } from '../playerStatus/EncounterSkulls';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 import { PILE_CARD_TILT } from '../../utils/cardPlane';
@@ -48,41 +50,10 @@ function StatBar({label,val,color,trackColor,scaleRatio,viewportWidth,labelColor
   return(
     <div data-stat-label={label} data-stat-low={val<=3} style={{display:'grid',gridTemplateColumns:`${labelCol} minmax(0,1fr) ${valueCol}`,alignItems:'center',columnGap:columnGap,marginBottom:4,width:rowWidth,marginLeft:'auto',marginRight:'auto',boxSizing:'border-box',overflow:'visible'}}>
       <span className="toe-stat-value" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",color:labelColor,fontSize:statFont,fontWeight:700,letterSpacing:0.3,textAlign:'left',whiteSpace:'nowrap',minWidth:0,paddingRight:labelPaddingRight}}>{label}</span>
-      <div className="toe-stat-track" style={{height:barHeight,background:trackColor||'#110804',border:`1.2px solid ${lineColor}`,borderRadius:2,overflow:'visible',position:'relative',minWidth:0,width:'100%'}}>
-        <div className="toe-stat-fill" style={{height:'100%',width:`${Math.min(10,val)*10}%`,background:color,transition:'width .35s',borderRadius:1}}/>
+      <div className="toe-stat-track" style={{height:barHeight,'--toe-stat-track-color':trackColor||'#110804','--toe-stat-line-color':lineColor,minWidth:0,width:'100%'}}>
+        <div className="toe-stat-fill" style={{height:'100%',width:`${Math.min(10,val)*10}%`,backgroundColor:color,transition:'width .35s'}}/>
         {label === 'SAN' && (
-          <div className="toe-san-threshold" style={{
-            position: 'absolute',
-            left: '60%',
-            top: '-3px',
-            bottom: '-3px',
-            width: '1px',
-            zIndex: 2,
-            transform: 'translateX(-50%)'
-          }}>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: '50%',
-              width: 0,
-              height: 0,
-              borderLeft: '1px solid transparent',
-              borderRight: '1px solid transparent',
-              borderBottom: '12px solid #a78bfa',
-              transform: 'translateX(-50%)'
-            }}/>
-            <div style={{
-              position: 'absolute',
-              top: 0,
-              left: '50%',
-              width: 0,
-              height: 0,
-              borderLeft: '1px solid transparent',
-              borderRight: '1px solid transparent',
-              borderTop: '12px solid #a78bfa',
-              transform: 'translateX(-50%)'
-            }}/>
-          </div>
+          <div className="toe-san-threshold" aria-hidden="true" style={{left:'60%'}}/>
         )}
       </div>
       <span className="toe-stat-value" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",color:val<=3?'#e09b87':valueColor,fontVariantNumeric:'tabular-nums',fontSize:statFont,textAlign:'right',fontWeight:700,whiteSpace:'nowrap',minWidth:0,justifySelf:'end'}}>{val}</span>
@@ -163,7 +134,7 @@ function getCardBackFrameColors(expansionKey){
 
 function PileCardFaceImage({card,cardW,cardH,boxShadow='none'}){
   if(!card)return null;
-  const faceW=Math.min(cardW,Math.round(cardH/CARD_FACE_RATIO));
+  const faceW=Math.min(cardW,cardH/CARD_FACE_RATIO);
   return(
     <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
       <CardFaceImage
@@ -178,9 +149,21 @@ function PileCardFaceImage({card,cardW,cardH,boxShadow='none'}){
   );
 }
 
-function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden,depth,thickness}){
+function ZhuLitMiniCard({lit,deckIndex,cardW,cardH,left,top,zIndex,hidden,depth,thickness,interactive}){
   const {hover,tooltipPosition,cardRef,handleMouseEnter,handleMouseMove,handleMouseLeave}=useCardHoverTooltip();
+  React.useEffect(()=>{
+    if(hover&&(hidden||!interactive))handleMouseLeave();
+  },[hover,hidden,interactive,handleMouseLeave]);
   const litCard=lit?.card;
+  // Fit the complete buried face beneath the covering card. Uniform scaling
+  // preserves its proportions; the other three corners stay inside the pile.
+  const buriedWidth=cardW*.88;
+  const buriedHeight=cardH*.88;
+  const cornerShort=cardW*.215;
+  const cornerAngle=12*Math.PI/180;
+  // Cancel the table pitch's depth parallax so lower layers don't expose
+  // their bottom edges or form a progressively wider fan.
+  const depthInset=deckIndex*thickness*Math.tan(PILE_CARD_TILT*Math.PI/180);
   if(hidden){
     return <PileCardSurface index={deckIndex} isTop={deckIndex===0} cardW={cardW} cardH={cardH} depth={depth} thickness={thickness} style={{left,top,zIndex,opacity:0,pointerEvents:'none'}}/>;
   }
@@ -189,25 +172,37 @@ function ZhuLitMiniCard({lit,deckIndex,scale,cardW,cardH,left,top,zIndex,hidden,
       <PileCardSurface
         cardRef={cardRef} index={deckIndex} isTop={deckIndex===0}
         cardW={cardW} cardH={cardH} depth={depth} thickness={thickness}
-        onMouseEnter={handleMouseEnter}
-        onMouseMove={handleMouseMove}
-        onMouseLeave={handleMouseLeave}
+        data-zhu-lit-interactive={interactive?'true':'false'}
+        onMouseEnter={interactive?handleMouseEnter:undefined}
+        onMouseMove={interactive?handleMouseMove:undefined}
+        onMouseLeave={interactive?handleMouseLeave:undefined}
         style={{
           left,top,zIndex,
           background:'transparent',
           border:'none',
-          pointerEvents:'auto',
+          pointerEvents:interactive?'auto':'none',
         }}
       >
-        <div style={{position:'absolute',inset:0,
-          boxShadow:`0 0 ${Math.round(12*scale)}px ${GOD_DEFS.ZHU.col}88, inset 0 0 10px rgba(255,220,120,0.18)`,
-          '--zhu-rot':'0deg',animation:'zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both',
+        {deckIndex===0?<PileCardFaceImage card={litCard} cardW={cardW} cardH={cardH}/>:<div data-zhu-lit-peek style={{
+          position:'absolute',left:-cornerShort*Math.cos(cornerAngle),top:buriedWidth*Math.sin(cornerAngle)+cardW*.008-depthInset,
+          width:buriedWidth,height:buriedHeight,transform:'rotate(-12deg)',transformOrigin:'top left',
+          pointerEvents:interactive?'auto':'none',
         }}>
-          <PileCardFaceImage card={litCard} cardW={cardW} cardH={cardH} boxShadow="none"/>
-        </div>
+          <div style={{position:'absolute',inset:0,
+            '--zhu-pop-x':`${cardW/16}px`,animation:'zhuLitCardPop 0.42s cubic-bezier(0.22,1,0.36,1) both',
+          }}>
+            <PileCardFaceImage card={litCard} cardW={buriedWidth} cardH={buriedHeight}/>
+            {interactive&&<svg data-zhu-lit-corner aria-hidden="true" width={buriedWidth} height={buriedHeight}
+              style={{position:'absolute',inset:0,overflow:'visible',pointerEvents:'none'}}>
+              <polyline points={`${buriedWidth},0 0,0 0,${buriedHeight}`} fill="none"
+                stroke={GOD_DEFS.ZHU.col} strokeWidth={1.4} strokeLinejoin="round"
+                style={{filter:`drop-shadow(0 0 2px ${GOD_DEFS.ZHU.col}cc) drop-shadow(0 0 4px ${GOD_DEFS.ZHU.col}80)`}}/>
+            </svg>}
+          </div>
+        </div>}
       </PileCardSurface>
-      {hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
-      {hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
+      {interactive&&hover&&litCard?.isGod&&<GodTooltip def={GOD_DEFS[litCard.godKey]} godLevel={1} position={tooltipPosition}/>}
+      {interactive&&hover&&litCard&&!litCard.isGod&&<AreaTooltip card={litCard} position={tooltipPosition}/>}
     </>
   );
 }
@@ -307,6 +302,9 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
   // Preserve the top-card anchor while aligning every paper layer beneath it.
   const cardLeft=Math.round(Math.max(0,vis-1)*1.4*offsetScale);
   const litByDeckIndex=new Map((zhuLitCards||[]).map(item=>[item.deckIndex,item]));
+  const topLitIndex=Math.min(...[...litByDeckIndex]
+    .filter(([index,lit])=>index>=0&&index<vis&&lit?.card&&lit.card.id!==zhuHiddenCardId)
+    .map(([index])=>index));
   if(vis===0) return(
     <div style={{width:outerW,height:outerH,display:'flex',alignItems:'center',justifyContent:'center',transformStyle:'preserve-3d'}}>
       <PileCardSurface index="empty" isTop cardW={cardW} cardH={cardH} style={{position:'relative',border:'1px dashed #2a1a08',background:'transparent',boxShadow:'none'}}/>
@@ -324,15 +322,17 @@ function DeckPile({count,scale=1,expansionKey='地神的潜影',zhuLitCards=[],z
               key={`zhu-lit-${litCard.id||deckIndex}-${lit.lightNonce||0}`}
               lit={lit}
               deckIndex={deckIndex}
-              scale={scale}
               cardW={cardW}
               cardH={cardH}
               depth={(i+1)*thickness}
               thickness={thickness}
+              // All lit cards share one small peek; only the nearest visible
+              // card owns its corner highlight and hover target.
               left={cardLeft}
               top={0}
               zIndex={i}
               hidden={litCard.id===zhuHiddenCardId}
+              interactive={deckIndex===topLitIndex}
             />
           );
         }
@@ -414,7 +414,7 @@ function DiscardOverlay({cards,onClose}){
         <button className="toe-button" onClick={onClose} style={{padding:'8px 24px'}}>返回对局</button>
       </div>
     </div>,
-    document.body,
+    getGameLayerTarget('overlay'),
   );
 }
 
@@ -644,6 +644,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       width:'100%',
       '--toe-panel-frame-color':isBeingHit?'#cc2222':isSanHit?'#8840cc':isSelectable?selectableColor:isCurrentTurn?'#d6ae51':'#8e7446',
       '--toe-coastal-opponent-frame':`url('${buildPublicUrl('/img/ui/coastal/opponent-frame.webp')}')`,
+      '--toe-encounter-skull-rows':Math.ceil((player.godEncounters||0)/8),
       backgroundColor:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
       boxShadow:isSelectable?`0 0 14px ${selectableColor}88,inset 0 0 12px ${selectableColor}22`:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:'none',
@@ -739,6 +740,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         })}
       </div>
       </div>
+      <EncounterSkulls count={player.godEncounters} playerIndex={playerIndex}/>
       {coastal && <div className="toe-opponent-pendants">
         {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{color:'#a7b79b'}}>♥ 翻面中</span>}
         {statusTags}{zones}

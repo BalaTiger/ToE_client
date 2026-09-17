@@ -1,10 +1,12 @@
 ﻿import React from 'react';
 import { GOD_CS } from '../../constants/card';
+import { renderGameLayer } from '../../ui/gameLayers';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
-import { getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { captureDecisionCardAnchors, getCardRevealMetrics, getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { useWindowSize } from '../../hooks/useWindowSize';
 import { getCardFlightStyle } from './cardSizing';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
 import { getCardFlipGlowColor, getInspectionCardPolarity, petalPath } from './utils';
@@ -129,23 +131,28 @@ export function CardDrawFlight({card,targetPid,from,to,expansionKey='地神的�
   </div>;
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
-  const [traveled,setTraveled]=React.useState(skipTravel);
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled,settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,children}){
+  const [traveled,setTraveled]=React.useState(skipTravel||settled);
+  const viewport=useWindowSize();
   const settledRef=React.useRef(false);
   const settleDelay=card?.isGod?2650:1250;
   React.useEffect(()=>{
+    if(settled)return undefined;
     if(skipTravel){setTraveled(true);return undefined;}
     const t=setTimeout(()=>setTraveled(true),650);
     return()=>clearTimeout(t);
-  },[skipTravel]);
+  },[skipTravel,settled]);
   React.useEffect(()=>{
-    if(!traveled||!onSettled||settledRef.current)return undefined;
+    if(settled||!traveled||!onSettled||settledRef.current)return undefined;
     const t=setTimeout(()=>{
       settledRef.current=true;
       onSettled();
     },settleDelay);
     return()=>clearTimeout(t);
-  },[traveled,onSettled,settleDelay]);
+  },[traveled,onSettled,settleDelay,settled]);
+  React.useLayoutEffect(()=>{
+    if(settled&&decisionKind)captureDecisionCardAnchors();
+  },[settled,decisionKind,viewport.w,viewport.h]);
 
   const isInspection=!!card?.effect;
   if(!card) return null;
@@ -158,18 +165,15 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const primaryGlow=card.isGod&&!isInspection?GOD_CS.glow:getCardFlipGlowColor(cardPolarity);
   const isEvil=cardPolarity==='negative';
   const isNeutralCard=cardPolarity==='neutral';
-  const showAtmosphereEffects=true;
-  const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
-  const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
-  const flipW=Math.round(208*cardScale);
-  const flipH=Math.round(flipW*590/392);
+  const showAtmosphereEffects=!settled;
+  const {x:centerX,y:centerY,width:flipW,height:flipH,scale:cardScale}=getCardRevealMetrics(viewport.w,viewport.h);
   const px=value=>Math.round(value*cardScale);
   // Keep every atmosphere effect anchored to the card rather than the viewport.
   // The unscaled frame is enlarged around the card, then scales with cardScale.
   const atmosphereFrameStyle={
     position:'absolute',
-    left:'50%',
-    top:'50%',
+    left:centerX,
+    top:centerY,
     width:320,
     height:208*590/392,
     pointerEvents:'none',
@@ -195,7 +199,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const src=getSourceCenter();
   const dest=travelOnly ? getPlayerHandCardAnchor(targetPid??0,card) : getRevealCardAnchor();
 
-  if(!traveled) return(
+  if(!traveled&&!settled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
       <CardDrawFlight card={card} targetPid={targetPid} from={src} to={dest} expansionKey={expansionKey}/>
     </div>
@@ -265,17 +269,23 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       }}>✦</div>
     ));
 
-  return(
-    <div style={{
+  return renderGameLayer(
+    <div data-ui-dialog={decisionKind} data-card-reveal-settled={settled?'true':undefined}
+      role={decisionKind?'dialog':undefined} aria-modal={decisionKind?true:undefined}
+      aria-label={decisionKind==='god-choice'?'邪神牌决策':decisionKind?'区域牌决策':undefined}
+      onPointerDownCapture={decisionKind?captureDecisionCardAnchors:undefined}
+      onKeyDownCapture={decisionKind?captureDecisionCardAnchors:undefined}
+      style={{
       position:'fixed',inset:0,zIndex:999,
-      background:isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      background:!showBackdrop?'transparent':isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      transition:'background-color 0.18s ease-out',
       display:'flex',alignItems:'center',justifyContent:'center',
-      animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
-      overflow:'visible',
+      animation:exiting&&!preserveOnExit?'animFadeOut 0.18s ease-in forwards':settled?'none':'animFadeIn 0.12s ease-out forwards',
+      overflow:'clip',
     }}>
       {showAtmosphereEffects&&(
         <div style={{
-          position:'absolute',width:px(320),height:px(320),borderRadius:'50%',
+          position:'absolute',left:centerX-px(320)/2,top:centerY-px(320)/2,width:px(320),height:px(320),borderRadius:'50%',
           background:isNeutralCard
             ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
             :isEvil
@@ -292,7 +302,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
         </div>
       )}
 
-      {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
+      {!settled&&triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
         <div style={{
           position:'absolute',
           left:0,right:0,
@@ -320,14 +330,14 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
 
       <div data-card-flip-atmosphere={cardPolarity} style={atmosphereFrameStyle}>{spirits}</div>
 
-      {displayTriggerName&&(
+      {displayTriggerName&&!children&&(
         <div style={{
           position:'absolute',bottom:'12%',left:'50%',transform:'translateX(-50%)',
           fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,letterSpacing:3,fontSize:13,
           color:isInspection?(inspectionTone==='positive'?'#7ef2aa':inspectionTone==='neutral'?'#c7d3e8':'#e28cff'):(cardPolarity==='negative'?'#c060dd':cardPolarity==='neutral'?'#c7d3e8':'#c8a96e'),
           textShadow:isInspection?(inspectionTone==='positive'?'0 0 16px #2dbf6688':inspectionTone==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #9020cc88'):(cardPolarity==='negative'?'0 0 16px #9020cc88':cardPolarity==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #c8a96e88'),
           textTransform:'uppercase',whiteSpace:'nowrap',
-          animation:'animFadeIn 0.4s ease-out 1.2s both',
+          animation:settled?'none':'animFadeIn 0.4s ease-out 1.2s both',
         }}>{displayTriggerName} 翻开卡牌</div>
       )}
 
@@ -335,10 +345,11 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
         data-card-reveal
         data-inspection-flip-card={isInspection ? 'true' : undefined}
         style={{
-          position:'relative',
+          position:'absolute',left:centerX-flipW/2,top:centerY-flipH/2,
           width:flipW,
           height:flipH,
-          animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',
+          animation:settled?'none':'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',
+          transform:settled?'translateY(0)':undefined,
           perspective:700,
           overflow:'visible',
         }}
@@ -346,7 +357,8 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
         <div style={{
           width:flipW,height:flipH,position:'relative',
           transformStyle:'preserve-3d',
-          animation:'cardFlip 1.2s cubic-bezier(0.2,0,0.3,1) forwards',
+          animation:settled?'none':'cardFlip 1.2s cubic-bezier(0.2,0,0.3,1) forwards',
+          transform:settled?'rotateY(1080deg)':undefined,
         }}>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateY(180deg)',
@@ -377,7 +389,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
             </div>
           )}
         </div>
-        {card?.isGod&&(
+        {!settled&&card?.isGod&&(
           <GodHighlightBurst
             godKey={card.godKey}
             delayMs={1260}
@@ -387,6 +399,11 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
           />
         )}
       </div>
+      {children&&<div data-card-reveal-options style={{
+        position:'absolute',left:centerX,top:centerY+flipH/2+14,
+        transform:'translateX(-50%)',width:Math.min(viewport.w-32,Math.max(flipW+160,360)),
+        zIndex:5,
+      }}>{children}</div>}
     </div>
   );
 }

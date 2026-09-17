@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { applyGameGamma } from '../ui/gameLayers';
 
 export const MUSIC_VOLUME_KEY = 'cthulhu_music_volume';
 export const SFX_VOLUME_KEY = 'cthulhu_sfx_volume';
@@ -79,11 +80,11 @@ export function useGamePreferences() {
   const gammaFilter = buildGammaFilter(gamma);
   useEffect(() => {
     if (typeof document === 'undefined') return undefined;
-    // Applying the filter to a React container changes the containing block for
-    // fixed overlays. The body is viewport-sized and preserves their positioning.
-    document.body.style.filter = gammaFilter;
+    // Viewport-sized sibling hosts keep fixed coordinates stable while allowing
+    // the emissive flame layer to bypass scene/display brightness precisely.
+    applyGameGamma(gammaFilter);
     return () => {
-      document.body.style.filter = '';
+      applyGameGamma('');
     };
   }, [gammaFilter]);
 

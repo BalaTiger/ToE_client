@@ -1,5 +1,6 @@
 ﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
+import { renderGameLayer } from '../../ui/gameLayers';
 import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, VritraImmortalRevealOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
 import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, StartledBatsAnim, UndergroundSpringAnim, VolcanoAnim } from './AreaCardOverlays';
@@ -83,11 +84,19 @@ const ANIM_RENDERERS = {
   DECK_RESHUFFLE: ({ anim, exiting, expansionKey }) => <DeckReshuffleOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
 };
 
+// Local card/board motion remains below the decorative flame. Full-screen
+// transitions belong above it; CardFlipAnim changes layer only after travel.
+const SCENE_ANIM_TYPES = new Set([
+  'DRAW_CARD', 'DISCARD', 'BURY_TO_DECK', 'ZHU_HIDE_CARD',
+  'ETHEREALIZE_GAIN', 'ETHEREALIZE_CONSUME', 'THROW_STONE', 'TSG_SLIME_POP',
+]);
+
 function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影', playEndlessCorridorTunnelSound }) {
   if (!anim || NO_OVERLAY_TYPES.has(anim.type)) return null;
   const render = ANIM_RENDERERS[anim.type];
-  if (render) return render({ anim, exiting, expansionKey, playEndlessCorridorTunnelSound });
-  return <GenericAnimOverlay anim={anim} exiting={exiting} />;
+  const content = render ? render({ anim, exiting, expansionKey, playEndlessCorridorTunnelSound })
+    : <GenericAnimOverlay anim={anim} exiting={exiting} />;
+  return SCENE_ANIM_TYPES.has(anim.type) ? content : renderGameLayer(content);
 }
 
 

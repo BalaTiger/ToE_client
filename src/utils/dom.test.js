@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { _getZoomCompensatedRect, getCardElementAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter } from './dom';
+import { _getZoomCompensatedRect, getCardElementAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter, getRevealCardAnchor } from './dom';
 import { getCardFlightStyle } from '../components/anim/cardSizing';
 import { projectTableCard } from './cardPlane';
 
@@ -67,6 +67,17 @@ describe('zoomed board viewport anchors', () => {
 });
 
 describe('card flight perspective', () => {
+  it.each([[1280, 720], [844, 390], [667, 320], [3440, 1440]])('keeps the reveal and its fallback aligned at %s×%s with room for choices', (innerWidth, innerHeight) => {
+    vi.stubGlobal('window', { innerWidth, innerHeight });
+    vi.stubGlobal('document', { querySelector: () => null });
+    const metrics = getCardRevealMetrics();
+    expect(metrics.height / metrics.width).toBeCloseTo(590 / 392);
+    expect(metrics.y - metrics.height / 2).toBeGreaterThanOrEqual(29.99);
+    expect(innerHeight - metrics.y - metrics.height / 2).toBeGreaterThanOrEqual(107.99);
+    expect(getRevealCardAnchor()).toEqual({ x: metrics.x, y: metrics.y, width: metrics.width, height: metrics.height, rotation: 0 });
+    if (innerWidth === 1280) expect(metrics).toMatchObject({ x: 640, y: 360, width: 225 });
+  });
+
   it.each([
     [-3, 117.51556863476048, 155.827802437665],
     [3, 330.6802523754865, 364.172197562335],

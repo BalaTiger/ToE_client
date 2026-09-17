@@ -5,6 +5,7 @@ import { DeckPile, DiscardPile, InspectionPile, PileDisplay, PlayerPanel } from 
 import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
 import { AnimatedCardBack } from '../cards/AnimatedCardBack';
 import { UiAppearanceProvider } from '../../ui/UiAppearance';
+import { PILE_CARD_TILT } from '../../utils/cardPlane';
 
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -55,19 +56,17 @@ describe('pile card flight anchors', () => {
   it('keeps the lit-card plane stable while its inner pop animation runs', () => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const markup = renderToStaticMarkup(<DeckPile count={7} scale={100 / 36}
-      zhuLitCards={[{ deckIndex: 0, card: { id: 'lit-card', name: '新鲜空气', isZone: true } }]} />);
+      zhuLitCards={[{ deckIndex: 1, card: { id: 'lit-card', name: '新鲜空气', isZone: true } }]} />);
     const topStyle = markup.match(/data-pile-card-top="true"[^>]+style="([^"]+)"/)[1];
     expect(topStyle).toContain('translateZ(4.2px) rotate(0deg)');
     expect(topStyle).not.toContain('animation:');
-    expect(markup).toContain('--zhu-rot:0deg;animation:zhuLitCardPop');
+    expect(markup).toContain('--zhu-pop-x:6.25px;animation:zhuLitCardPop');
   });
 
   it.each([['ordinary', DeckPile, 8], ['inspection', InspectionPile, 5]])(
     'aligns every %s pile layer into a square column without moving its top anchor', (_name, Component, left) => {
       vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
-      const markup = renderToStaticMarkup(createElement(Component, { count: 30, scale: 100 / 36, compactStack: true,
-        zhuLitCards: [{ deckIndex: 0, card: { id: 'lit', name: '新鲜空气', isZone: true } }],
-      }));
+      const markup = renderToStaticMarkup(createElement(Component, { count: 30, scale: 100 / 36, compactStack: true }));
       const planeStyles = [...markup.matchAll(/data-pile-card="[^"]+"[^>]+style="([^"]+)"/g)].map(match => match[1]);
       expect(planeStyles.length).toBeGreaterThan(1);
       for (const style of planeStyles) {
@@ -78,6 +77,101 @@ describe('pile card flight anchors', () => {
       expect(new Set(depths).size).toBe(planeStyles.length);
     },
   );
+
+  it.each([[1, [2]], [2, [1, 2, 3]], [3, [0, 1, 2, 3, 4]]])(
+    'exposes one real corner of complete level %i buried cards without changing their planes', (_level, litIndices) => {
+      vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+      const zhuLitCards = litIndices.map(deckIndex => ({ deckIndex, card: { id: `lit-${deckIndex}`, name: '新鲜空气', isZone: true } }));
+      const planeStyles = markup => [...markup.matchAll(/data-pile-card="[^"]+"[^>]+style="([^"]+)"/g)]
+        .reverse().map(match => Object.fromEntries(match[1].split(';').filter(Boolean).map(property => property.split(':'))));
+      const geometry = [72, 144].map(width => {
+        const props = { count: 7, scale: width / 36, compactStack: true };
+        const normal = planeStyles(renderToStaticMarkup(<DeckPile {...props} />));
+        const markup = renderToStaticMarkup(<DeckPile {...props} zhuLitCards={zhuLitCards} />);
+        const lit = planeStyles(markup);
+        const hidden = planeStyles(renderToStaticMarkup(<DeckPile {...props} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuLitCards[0].card.id} />));
+        expect(lit).toHaveLength(7);
+        lit.forEach((style, deckIndex) => {
+          for (const property of ['left', 'top', 'width', 'height', 'aspect-ratio', '--toe-card-depth', '--toe-card-rotation', 'transform']) {
+            expect(style[property]).toBe(normal[deckIndex][property]);
+            expect(hidden[deckIndex][property]).toBe(style[property]);
+          }
+          expect(style.animation).toBeUndefined();
+        });
+        expect(hidden[litIndices[0]].opacity).toBe('0');
+        const peeks = markup.split(/(?=<div data-pile-card=")/).filter(block => block.includes('data-zhu-lit-peek='));
+        expect(peeks).toHaveLength(litIndices.filter(index => index > 0).length);
+        const poses = peeks.map(block => {
+          const deckIndex = Number(block.match(/data-pile-card="(\d+)"/)[1]);
+          const [, style, animationStyle] = block.match(/data-zhu-lit-peek="[^"]*"[^>]*style="([^"]+)"><div style="([^"]+)"/);
+          expect(style).not.toContain('clip-path:');
+          expect(animationStyle).not.toContain('clip-path:');
+          expect(block).not.toMatch(/clip-path:polygon\(0 0, [\d.]+px 0, 0 [\d.]+px\)/);
+          expect(block.match(/data-card-face-id=/g)).toHaveLength(1);
+          const values = Object.fromEntries(style.split(';').filter(Boolean).map(property => property.split(':')));
+          const buriedWidth = Number.parseFloat(values.width);
+          const buriedHeight = Number.parseFloat(values.height);
+          const left = Number.parseFloat(values.left);
+          const depthDifference = Number.parseFloat(lit[0]['--toe-card-depth']) - Number.parseFloat(lit[deckIndex]['--toe-card-depth']);
+          const top = Number.parseFloat(values.top) + depthDifference * Math.tan(PILE_CARD_TILT * Math.PI / 180);
+          const angle = Number(values.transform.match(/rotate\(([-\d.]+)deg\)/)[1]) * Math.PI / 180;
+          const cosine = Math.cos(angle), sine = Math.sin(angle);
+          expect(buriedHeight / buriedWidth).toBeCloseTo(CARD_FACE_RATIO);
+          const corners = [[0, 0], [buriedWidth, 0], [buriedWidth, buriedHeight], [0, buriedHeight]]
+            .map(([x, y]) => [left + x * cosine - y * sine, top + x * sine + y * cosine]);
+          expect(corners[0][0]).toBeLessThan(0);
+          // The other three corners really fit underneath the covering card;
+          // the exposed triangle comes from occlusion, not a cropped image.
+          for (const [x, y] of corners.slice(1)) {
+            expect(x).toBeGreaterThanOrEqual(0);
+            expect(x).toBeLessThanOrEqual(width);
+            expect(y).toBeGreaterThanOrEqual(0);
+            expect(y).toBeLessThanOrEqual(width * CARD_FACE_RATIO);
+          }
+          const short = -left / cosine;
+          const long = left / sine;
+          expect(short).toBeGreaterThanOrEqual(buriedWidth / 5);
+          expect(short).toBeLessThanOrEqual(buriedWidth / 4);
+          expect(long).toBeLessThan(buriedHeight);
+          const outline = block.match(/<polyline points="([^"]+)"/);
+          if (outline) {
+            const points = outline[1].split(' ').map(point => point.split(',').map(Number));
+            expect(points[0][0]).toBeCloseTo(buriedWidth);
+            expect(points[0][1]).toBe(0);
+            expect(points[1]).toEqual([0, 0]);
+            expect(points[2][0]).toBe(0);
+            expect(points[2][1]).toBeCloseTo(buriedHeight);
+          }
+          return [buriedWidth, buriedHeight, left, top, angle];
+        });
+        for (const pose of poses) pose.forEach((value, index) => expect(value).toBeCloseTo(poses[0][index]));
+        return poses[0].slice(0, -1);
+      });
+      geometry[1].forEach((value, index) => expect(value).toBeCloseTo(geometry[0][index] * 2));
+    },
+  );
+
+  it.each([
+    ['unsorted lit cards', 7, [4, 2, 1], null, 1],
+    ['out-of-range lit cards', 3, [7, -1, 2, 1], null, 1],
+    ['hidden nearest card', 7, [4, 2, 1], 'lit-1', 2],
+    ['uncovered top card', 7, [4, 2, 0], null, 0],
+    ['only visible card hidden', 3, [7, -1, 1], 'lit-1', null],
+    ['no lit cards', 7, [], null, null],
+    ['empty pile', 0, [0, 1], null, null],
+  ])('assigns one corner highlight and hover target with %s', (_case, count, litIndices, hiddenId, expectedIndex) => {
+    vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+    const zhuLitCards = litIndices.map(deckIndex => ({ deckIndex, card: { id: `lit-${deckIndex}`, name: '新鲜空气', isZone: true } }));
+    const markup = renderToStaticMarkup(<DeckPile count={count} zhuLitCards={zhuLitCards} zhuHiddenCardId={hiddenId} />);
+    const litPlanes = [...markup.matchAll(/<div data-pile-card="(\d+)"[^>]*>/g)]
+      .filter(match => match[0].includes('data-zhu-lit-interactive='));
+    const interactivePlanes = litPlanes.filter(match => match[0].includes('data-zhu-lit-interactive="true"'));
+    expect(interactivePlanes.map(match => Number(match[1]))).toEqual(expectedIndex === null ? [] : [expectedIndex]);
+    expect((markup.match(/data-zhu-lit-corner=/g) || []).length).toBe(expectedIndex === null || expectedIndex === 0 ? 0 : 1);
+    for (const [tag, deckIndex] of litPlanes) {
+      expect(tag).toContain(`pointer-events:${Number(deckIndex) === expectedIndex ? 'auto' : 'none'}`);
+    }
+  });
 
   it('contains a static card back when a caller supplies a mismatched box', () => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });

@@ -20,7 +20,7 @@ describe('UI appearance preference', () => {
     expect(values.get('expansionKey')).toBe('SHU');
     values.set('expansionKey', 'CTH');
     expect(readUiAppearance(storage).id).toBe('coastal');
-    expect(readUiAppearance(storage).assets.skill).toContain('/coastal/action-skill.webp');
+    expect(readUiAppearance(storage).assets.skill).toContain('/coastal/action-skill-b.webp');
     expect([...values.keys()]).toEqual(['expansionKey', UI_APPEARANCE_KEY]);
   });
 

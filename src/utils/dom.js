@@ -125,7 +125,7 @@ export function getPileAnchorCenter(selector,fallback){
   return {x:r.left+r.width/2,y:r.top+r.height/2};
 }
 
-// 神选弹窗（GodChoiceModal）大致位于屏幕中上方，用于“邪神牌收入手牌”飞入动画的起点
+// 邪神牌收入手牌从保留的翻牌末帧出发。
 export function getGodChoiceAnchorCenter(){
   const anchor = getGodChoiceCardAnchor();
   return { x: anchor.x, y: anchor.y };
@@ -222,12 +222,24 @@ export function getPileCardAnchor(selector, fallback) {
   return { ...center, width, height: width * CARD_FACE_RATIO, rotation: 0 };
 }
 
+// The reveal and its decision share this frame, including flight fallbacks
+// after the card unmounts. Leave room for choices without shrinking desktops.
+export function getCardRevealMetrics(viewportWidth = window.innerWidth, viewportHeight = window.innerHeight) {
+  const preferredScale = Math.max(1.08, Math.min(1.85, viewportWidth / 1280, viewportHeight / 720));
+  const width = Math.max(1, Math.min(Math.round(208 * preferredScale), viewportWidth - 32, (viewportHeight - 138) / CARD_FACE_RATIO));
+  const height = width * CARD_FACE_RATIO;
+  return {
+    x: viewportWidth / 2,
+    y: Math.min(viewportHeight / 2, viewportHeight - 108 - height / 2),
+    width, height, scale: width / 208,
+  };
+}
+
 export function getRevealCardAnchor() {
   const anchor = getCardElementAnchor(document.querySelector('[data-card-reveal]'));
   if (anchor) return anchor;
-  const scale = Math.max(1.08, Math.min(1.85, Math.min(window.innerWidth / 1280, window.innerHeight / 720)));
-  const width = Math.round(208 * scale);
-  return { x: window.innerWidth / 2, y: window.innerHeight / 2, width, height: width * CARD_FACE_RATIO, rotation: 0 };
+  const { x, y, width, height } = getCardRevealMetrics();
+  return { x, y, width, height, rotation: 0 };
 }
 
 const decisionCardAnchors = new Map();

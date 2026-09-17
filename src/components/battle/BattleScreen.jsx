@@ -10,6 +10,8 @@ import { getCoastalViewport } from './coastalViewport';
 import { COASTAL_CORNER } from './coastalGeometry';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { GameLayerPortal } from '../../ui/GameLayerPortal';
+import { getGameLayerTarget } from '../../ui/gameLayers';
 import {
   RINFO,
   ROLE_TREASURE,
@@ -322,6 +324,13 @@ export function BattleScreen(props) {
     '--toe-coastal-viewport-width': `${coastalViewport.width}px`,
     '--toe-coastal-viewport-height': `${coastalViewport.height}px`,
   } : battleBackgroundStyle;
+  useLayoutEffect(() => {
+    const host = getGameLayerTarget('overlay');
+    if (!host || host === document.body) return undefined;
+    const variables = Object.entries(battleBackgroundStyle || {}).filter(([key]) => key.startsWith('--'));
+    variables.forEach(([key, value]) => host.style.setProperty(key, value));
+    return () => variables.forEach(([key]) => host.style.removeProperty(key));
+  }, [battleBackgroundStyle]);
   const OpponentLayout = coastalLayout ? CoastalOpponents : archLayout ? OpponentArc : 'div';
   const BoardLayout = appearance.BattleLayout || (coastalLayout ? CoastalBattleLayout : archLayout ? ArchBattleLayout : ClassicBattleLayout);
   const middleRowRef = useRef(null);
@@ -532,6 +541,7 @@ export function BattleScreen(props) {
       <div className="toe-battle-background" aria-hidden="true" />
       {/* Global vignette */}
       <div style={{position:coastalLayout?'absolute':'fixed',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
+      <GameLayerPortal>
       {pendingRoleSelection&&(
         <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
@@ -677,6 +687,7 @@ export function BattleScreen(props) {
         decipherStoneCarvingConfirm={decipherStoneCarvingConfirm}
       />
 
+      </GameLayerPortal>
       {/* Shake only the board content: transforming the root reanchors and clips its fixed backgrounds/overlays. */}
       <BattleSceneContent shake={sceneShake} paused={isSoloPaused} style={{position:'relative',zIndex:2,width:'100%',maxWidth:DESIGN_WIDTH*scaleRatio,alignSelf:'center',display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
         {/* Header */}
@@ -706,7 +717,7 @@ export function BattleScreen(props) {
           }}>
             <div style={{width:'100%',boxSizing:'border-box',padding:coastalLayout ? 0 : `0 ${(isMobile||isMobileLandscape)?boardCssPx(scaledAreaSafeInsetX):scaledAreaSafeInsetX}px`}}>
 
-        <BoardLayout opponents={opponentPanels} middle={middlePanel} prompt={phasePrompt} hand={handPanel}
+        <BoardLayout opponents={opponentPanels} middle={middlePanel} prompt={phasePrompt} hand={handPanel} paused={isSoloPaused} sceneShake={sceneShake}
           effects={coastalLayout ? <CoastalBoardEffects formula={gs.petrifyingFormula}
             night={!showTutorial && anim?.type !== 'APOPHIS_ECLIPSE' ? (anim && Object.prototype.hasOwnProperty.call(anim, '_apophisNight') ? anim._apophisNight : gs.apophisNight) : null}
             houndsActive={!showTutorial && houndsTimerVisible} secondsLeft={houndsSecLeft} /> : null}
@@ -732,6 +743,7 @@ export function BattleScreen(props) {
               :gs?.apophisNight}
           />}
           {!coastalLayout&&!showTutorial&&<HoundsTimerBadge active={houndsTimerVisible} secondsLeft={houndsSecLeft}/>}
+          <GameLayerPortal>
           {!showTutorial&&pendingSoftGuideId&&<SoftGuideOverlay
             guide={SOFT_GUIDE_DEFS[pendingSoftGuideId]}
             spotlights={softGuideSpotlights}
@@ -770,7 +782,9 @@ export function BattleScreen(props) {
             onTutorialResultNext={handleTutorialResultNext}
             completeTutorial={completeTutorial}
           />}
-        </>,document.body)}
+          </GameLayerPortal>
+        </>,getGameLayerTarget('scene'))}
+      <GameLayerPortal>
       {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
 
       {/* ── Swap Blind-Draw Overlay ── */}
@@ -808,6 +822,7 @@ export function BattleScreen(props) {
             gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});
         }}/>
       )}
+      </GameLayerPortal>
       <style>{globalStyles}</style>
     {/* Keep controls below this root's masks. The root itself must stay untransformed;
         background camera and shake transforms belong to its visual children. */}
@@ -865,7 +880,7 @@ export function BattleScreen(props) {
           ))}
         </div>
       </>,
-      document.body
+      getGameLayerTarget('scene')
     )}
     {/* 停服更新公告 */}
     {serverAnnouncement&&(

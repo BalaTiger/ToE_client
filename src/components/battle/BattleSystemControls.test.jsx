@@ -1,4 +1,5 @@
-import { Children } from 'react';
+import { Children, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BattleScreen } from './BattleScreen';
 import { BattleHeader } from './BattleHeader';
@@ -11,11 +12,11 @@ const appearance = vi.hoisted(() => ({ id: 'coastal', battleLayout: 'coastal' })
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
   useRef: value => ({ current: value }),
-  useState: initial => [typeof initial === 'function' ? initial() : initial, vi.fn()],
+  useState: vi.fn(initial => [typeof initial === 'function' ? initial() : initial, vi.fn()]),
   useEffect: vi.fn(),
   useLayoutEffect: vi.fn(),
 }));
-vi.mock('react-dom', () => ({ createPortal: children => children }));
+vi.mock('react-dom', () => ({ createPortal: vi.fn(children => children) }));
 vi.mock('../../ui/UiAppearance', () => ({ useUiAppearance: () => ({ appearance, appearances: [appearance], setAppearance: vi.fn() }) }));
 
 function collect(node, nodes = []) {
@@ -37,6 +38,7 @@ function renderBattle(overrides = {}) {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   Object.assign(appearance, { id: 'coastal', battleLayout: 'coastal' });
   vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
   vi.stubGlobal('document', { body: {} });
@@ -96,7 +98,8 @@ describe('coastal B system controls', () => {
     const board = battle.find(node => node.type === BattleSceneContent);
     const settings = battle.find(node => node.type === GammaSlider);
     const tree = GammaSlider({ ...settings.props, defaultOpen: true });
-    const [motion, panel] = Children.toArray(tree.props.children);
+    const [motion, popup] = Children.toArray(tree.props.children);
+    const panel = collect(popup).find(node => node.type === 'section');
 
     expect(motion.type).toBe(BattleSceneContent);
     expect(motion.props.shake).toBe(board.props.shake);
@@ -107,12 +110,45 @@ describe('coastal B system controls', () => {
     expect(motion.props.children.props.className).toBe('toe-settings-triggers');
     expect(motion.props.style?.zoom).toBeUndefined();
     expect(panel.props.className).toContain('toe-settings-panel');
+    expect(popup.props['data-settings-popup']).toBe(true);
+    expect(popup.props.style.pointerEvents).toBe('none');
+    expect(panel.props.style.pointerEvents).toBe('auto');
+    expect(popup.props.style.top).toBe(settings.props.battleControls.style.top);
+    expect(popup.props.style.right).toBe(settings.props.battleControls.style.right);
+    expect(popup.props.style.paddingTop).toBe(54 * settings.props.battleControls.style['--toe-coastal-system-scale']);
     expect(tree.props.style.transform).toBeUndefined();
     expect(collect(motion).some(node => node.props.className?.includes('toe-settings-panel'))).toBe(false);
   });
 
   it('keeps the main-menu controls outside the scene-shake implementation', () => {
     expect(collect(GammaSlider({ gamma: 1, startControlScale: .8 })).some(node => node.type === BattleSceneContent)).toBe(false);
+  });
+
+  it('portals only the opened coastal popup and preserves inside/outside click dismissal', () => {
+    const overlayHost = {};
+    const doc = { body: {}, getElementById: id => id === 'toe-overlay-layer' ? overlayHost : null,
+      addEventListener: vi.fn(), removeEventListener: vi.fn() };
+    vi.stubGlobal('document', doc);
+    const tree = GammaSlider({ gamma: 1, defaultOpen: true, battleControls: { style: { top: 70, right: 20, '--toe-coastal-system-scale': .8 } } });
+    const [motion, popup] = Children.toArray(tree.props.children);
+    const panel = collect(popup).find(node => node.type === 'section');
+    expect(createPortal).toHaveBeenCalledTimes(1);
+    expect(createPortal.mock.calls[0][0].props).toBe(popup.props);
+    expect(createPortal.mock.calls[0][1]).toBe(overlayHost);
+    expect(collect(popup).some(node => node.props.className === 'toe-settings-triggers')).toBe(false);
+    expect(collect(motion).some(node => node.props.className === 'toe-settings-triggers')).toBe(true);
+    tree.props.ref.current = { contains: target => target === 'trigger' };
+    panel.props.ref.current = { contains: target => target === 'slider' };
+    const cleanup = useEffect.mock.calls[0][0]();
+    const dismiss = doc.addEventListener.mock.calls[0][1];
+    const setters = useState.mock.results.map(result => result.value[1]);
+    dismiss({ target: 'slider' });
+    dismiss({ target: 'trigger' });
+    expect(setters.every(set => set.mock.calls.length === 0)).toBe(true);
+    dismiss({ target: 'board' });
+    expect(setters.every(set => set.mock.calls.length === 1 && set.mock.calls[0][0] === false)).toBe(true);
+    cleanup();
+    expect(doc.removeEventListener).toHaveBeenCalledWith('pointerdown', dismiss);
   });
 
   it('retains the request-confirmation callback and tutorial restrictions', () => {

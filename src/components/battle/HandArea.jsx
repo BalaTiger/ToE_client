@@ -7,6 +7,7 @@ import { DDCard, GodTooltip } from '../cards';
 import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import { HandTableDecor, HandTableSurface } from './HandTableDecor';
+import { ActionIcon } from './ActionIcon';
 import './hand-composition.css';
 import './coastal-hand.css';
 
@@ -73,6 +74,7 @@ export function HandArea({
   anim,
 }) {
   const { appearance } = useUiAppearance();
+  const skillIcon = skillRi?.icon || ri?.icon;
   const coastalHand = appearance.battleLayout === 'coastal';
   const integratedHand = appearance.battleLayout === 'arch' || coastalHand;
   const stripRef = useRef(null);
@@ -236,7 +238,7 @@ export function HandArea({
                           onClick={useAbility}
                           disabled={skillRestLimited}
                         >
-                          <span className="toe-turn-icon" aria-hidden="true">{skillRi.icon || ri.icon}</span>
+                          <ActionIcon kind={skillIcon === '☩' ? 'hunt' : skillIcon === '☽' ? 'cult' : 'treasure'} />
                           <span className="toe-turn-label">{effectiveSkillName}
                             {skillRestLimited && (
                               <small>{skillDisabled ? '技能受限' : gs.restUsed ? '已休息' : '已用'}</small>
@@ -250,7 +252,7 @@ export function HandArea({
                           onClick={doRest}
                           disabled={restLimited}
                         >
-                          <span className="toe-turn-icon" aria-hidden="true">☕︎</span>
+                          <ActionIcon kind="rest" />
                           <span className="toe-turn-label">休息
                             {restLimited && (
                               <small>{restBlockReason === 'disableRest' ? '失眠' : '已用'}</small>
@@ -263,7 +265,7 @@ export function HandArea({
                           onClick={() => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
                           disabled={multiplyLimited}
                         >
-                          <span className="toe-turn-icon" aria-hidden="true">☣︎</span>
+                          <ActionIcon kind="multiply" />
                           <span className="toe-turn-label">繁衍
                             {multiplyLimited && <small>已用</small>}
                           </span>
@@ -273,7 +275,7 @@ export function HandArea({
                         <button className="toe-button toe-turn-plaque toe-turn-end"
                           onClick={endTurn}
                         >
-                          <span className="toe-turn-icon" aria-hidden="true">⌛︎</span>
+                          <ActionIcon kind="end" />
                           <span className="toe-turn-label">结束回合</span>
                         </button>
                       )}
@@ -283,12 +285,12 @@ export function HandArea({
               })()}
             {showCancelBtn && (
               <button className="toe-button toe-turn-plaque toe-turn-rest" onClick={cancelAction}>
-                <span className="toe-turn-icon" aria-hidden="true">✕</span><span className="toe-turn-label">取消</span>
+                <ActionIcon kind="cancel" /><span className="toe-turn-label">取消</span>
               </button>
             )}
             {phase === 'HUNT_CONFIRM' && !isScriptedTutorial && decisionContext?.localCanAct && !anim && (
               <button className="toe-button toe-turn-plaque toe-turn-rest toe-phase-plaque" onClick={() => huntConfirm(-1)}>
-                <span className="toe-turn-icon" aria-hidden="true">✕</span><span className="toe-turn-label">放弃追捕</span>
+                <ActionIcon kind="cancel" /><span className="toe-turn-label">放弃追捕</span>
               </button>
             )}
           </div>
@@ -299,7 +301,7 @@ export function HandArea({
             onClick={confirmDiscard}
             disabled={!(gs.abilityData.discardSelected || []).length}
           >
-            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认弃牌{(gs.abilityData.discardSelected || []).length > 0 ? ` (${(gs.abilityData.discardSelected || []).length})` : ''}</span>
+            <ActionIcon kind="confirm" /><span className="toe-turn-label">确认弃牌{(gs.abilityData.discardSelected || []).length > 0 ? ` (${(gs.abilityData.discardSelected || []).length})` : ''}</span>
           </button>
         )}
         {phase === 'BURY_ALIVE_SELECT' && canPlayerRespondWithAnyHandCard() && (
@@ -307,7 +309,7 @@ export function HandArea({
             onClick={confirmBuryAliveSelection}
             disabled={gs.abilityData?.buryAliveSelectedIndex == null}
           >
-            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认活埋</span>
+            <ActionIcon kind="confirm" /><span className="toe-turn-label">确认活埋</span>
           </button>
         )}
         {phase === 'IGNITE_TORCH_DISCARD' && canPlayerRespondWithAnyHandCard() && (
@@ -315,7 +317,7 @@ export function HandArea({
             onClick={confirmIgniteTorchDiscard}
             disabled={gs.abilityData?.igniteTorchSelectedIndex == null}
           >
-            <span className="toe-turn-icon" aria-hidden="true">✓</span><span className="toe-turn-label">确认引燃</span>
+            <ActionIcon kind="confirm" /><span className="toe-turn-label">确认引燃</span>
           </button>
         )}
         </div>

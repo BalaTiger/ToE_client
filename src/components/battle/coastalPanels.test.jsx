@@ -78,7 +78,7 @@ describe('coastal panel presentation', () => {
     const props = {
       player: {
         role: '寻宝者', name: '旅者', hp: 10, san: 10, hand: [],
-        godName: 'CTH', godLevel: 2, godEncounters: 8, etherealizeStacks: 2, poisonStacks: 3, isResting: true,
+        godName: 'CTH', godLevel: 2, godEncounters: 8, godEncounterCount: 16, etherealizeStacks: 2, poisonStacks: 3, isResting: true,
         zoneCards: [{ id: 'visible-zone', type: 'blankZone', name: '空白区域牌', isZone: true }],
       },
       playerIndex: 1, scaleRatio: 1, viewportWidth: 1200,
@@ -96,7 +96,10 @@ describe('coastal panel presentation', () => {
     expect(pendants).toContain('梦访拉莱耶 · 2');
     expect(pendants).toContain('title="梦访拉莱耶 Lv.2"');
     expect(pendants).toContain('god-power-chevron-layer');
-    expect(pendants).toContain('💀 8');
+    expect(frame).toContain('data-encounter-skulls="1"');
+    expect(frame.match(/src="[^"]*encounter-skull.webp"/g)).toHaveLength(8);
+    expect(pendants).not.toContain('data-encounter-skulls');
+    expect(pendants).not.toContain('💀');
     expect(pendants).toContain('data-etherealize-badge="1"');
     expect(pendants).toContain('虚化 2');
     expect(pendants).toContain('中毒 3');
@@ -110,7 +113,8 @@ describe('coastal panel presentation', () => {
     expect(arch).not.toContain('toe-opponent-pendants');
     expect(arch).not.toContain('toe-coastal-portrait-framed');
     expect(arch).toContain('梦访拉莱耶 Lv.2');
-    expect(arch).toContain('💀💀💀💀💀💀×8');
+    expect(arch.match(/src="[^"]*encounter-skull.webp"/g)).toHaveLength(8);
+    expect(arch).not.toContain('💀');
     expect(arch).toContain('data-player-god-status="1"');
     expect(arch).toContain('data-rendered-card-id="visible-zone"');
   });
@@ -126,7 +130,11 @@ describe('coastal panel presentation', () => {
     />);
     expect(markup).toContain('当前信仰');
     expect(markup).toContain('梦访拉莱耶 Lv.2');
-    expect(markup).toContain('邪神遭遇');
+    expect(markup).toContain('toe-self-skull-anchor');
+    expect(markup).toContain('aria-label="骷髅标记：2 枚"');
+    expect(markup.match(/src="[^"]*encounter-skull.webp"/g)).toHaveLength(2);
+    expect(markup.slice(markup.indexOf('class="toe-self-faith"'))).not.toContain('data-encounter-skulls');
+    expect(markup).not.toContain('邪神遭遇');
     expect(markup).toContain('虚化 2');
     expect(markup).toContain('中毒 1');
     expect(markup).toContain('portrait-self.webp');

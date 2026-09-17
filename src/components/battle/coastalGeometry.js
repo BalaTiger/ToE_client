@@ -41,6 +41,9 @@ export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, 
   const handRight = actionsLeft - 16;
   const availableWidth = handRight - handLeft;
   const bottomInset = 18;
+  const effectsTop = rolesBottom + 12;
+  // Persistent effects now share the central axis above the piles. Their old
+  // left column is occupied by the torch, whose light must never cover text.
   const pileTopLimit = rolesBottom + 18;
   // Preserve card sizing; positioning uses the tighter clearance below.
   const separation = COASTAL_HAND_HOVER + COASTAL_HAND_SELECTED_LIFT + 20;
@@ -90,7 +93,7 @@ export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, 
     actions: { left: actionsLeft, width: actionsWidth, rightInset, gap: 16, top: controlsTop },
     log: { top: logTop, right: COASTAL_CORNER.logRight, width: COASTAL_CORNER.logWidth, height: logHeight, bookHeight },
     piles: { left: pileLeft, top: pileTop, width: pileWidth, height: pileHeight, cardWidth: pileCardWidth, centerX: pileLeft + pileWidth / 2 },
-    effects: { left: width * .17, width: width * .1 - 12, top: pileTopLimit, height: effectsHeight },
+    effects: { left: pileLeft, width: pileWidth, top: effectsTop, height: effectsHeight },
     bottomInset,
   };
 }

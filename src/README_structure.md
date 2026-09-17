@@ -311,6 +311,31 @@ Keep the continuity invariant `previous.to === next.from` for sequential changes
 the same resource. Add focused `statEvents` tests whenever introducing a new stat-changing
 animation path.
 
+## Reveal Decision Presentation Boundary
+
+`DRAW_REVEAL` and `GOD_CHOICE` remain rule-owned decision phases, held by the
+existing turn-flow manager. Their UI now lives in `CardRevealDecisionLayer`
+under `GlobalAnimLayer`, outside board zoom. `BattleDecisionModals` no longer
+renders separate area-exploration or god-choice panels.
+
+- `DRAW_CARD` completes normally, including encounter inspection/stat tails.
+  Never leave an active animation step waiting for a click: this would block
+  decision transactions and multiplayer replay.
+- The reveal host preserves the playback key and `CardFlipAnim` final frame.
+  `settled` stops one-shot effects without replaying the rise/spin. During
+  subsequent stat effects only the card remains, so its backdrop cannot hide
+  the affected player panels. Restored snapshots can render a settled card
+  without replay history.
+- `RevealDecisionActions` appears below that frame only when the queue and
+  pending state have committed and submission is unlocked. Existing handlers,
+  tutorial restrictions, decision ownership, and multiplayer waiting states
+  are reused. Submission removes the held card before transfer/discard playback.
+- `getCardRevealMetrics` supplies both the responsive frame and flight fallback;
+  `captureDecisionCardAnchors` records the displayed face before pointer/keyboard
+  decisions, including restored snapshots and resize. Blind-zone concealment
+  persists while waiting. Hidden draws, forced keeps and other decisions keep
+  their existing behavior.
+
 ## Maintenance Rule
 
 Update this file whenever a responsibility moves out of `App.jsx`, a module boundary changes, or a refactor plan changes. Avoid creating new long-lived plan documents unless they are clearly temporary and linked from here.

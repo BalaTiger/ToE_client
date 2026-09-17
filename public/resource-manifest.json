@@ -1,6 +1,6 @@
 {
-  "version": "0db4d9145d9fcf6d",
-  "generatedAt": "2026-09-16T07:24:16.065Z",
+  "version": "650908992842fdb4",
+  "generatedAt": "2026-09-16T15:02:14.268Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -2487,6 +2487,24 @@
       "revision": "06543c9f3f4b17e8"
     },
     {
+      "path": "/img/effects/torch/flame-atlas.json",
+      "type": "asset",
+      "size": 4007,
+      "revision": "c064ab59f72b9776"
+    },
+    {
+      "path": "/img/effects/torch/flame-atlas.webp",
+      "type": "image",
+      "size": 1045696,
+      "revision": "850b98e9b77f899f"
+    },
+    {
+      "path": "/img/effects/torch/flame-still.webp",
+      "type": "image",
+      "size": 22152,
+      "revision": "6aef8c6704e44b7a"
+    },
+    {
       "path": "/img/line/line_split-no-bg.webp",
       "type": "image",
       "size": 3830,
@@ -2529,10 +2547,22 @@
       "revision": "48b93d6978379bb9"
     },
     {
+      "path": "/img/ui/coastal/action-end-b.webp",
+      "type": "image",
+      "size": 86322,
+      "revision": "eab03512d1e00a8f"
+    },
+    {
       "path": "/img/ui/coastal/action-end.webp",
       "type": "image",
       "size": 29662,
       "revision": "130074b0671d881e"
+    },
+    {
+      "path": "/img/ui/coastal/action-multiply-b.webp",
+      "type": "image",
+      "size": 78354,
+      "revision": "91d99f049bb3af9c"
     },
     {
       "path": "/img/ui/coastal/action-multiply.webp",
@@ -2541,10 +2571,22 @@
       "revision": "87cdd68f046dae80"
     },
     {
+      "path": "/img/ui/coastal/action-rest-b.webp",
+      "type": "image",
+      "size": 87412,
+      "revision": "ccc8f746ccc577ca"
+    },
+    {
       "path": "/img/ui/coastal/action-rest.webp",
       "type": "image",
       "size": 30846,
       "revision": "dbe3bbeb68828d64"
+    },
+    {
+      "path": "/img/ui/coastal/action-skill-b.webp",
+      "type": "image",
+      "size": 84990,
+      "revision": "56157aa3c42c25d6"
     },
     {
       "path": "/img/ui/coastal/action-skill.webp",
@@ -2595,10 +2637,22 @@
       "revision": "29e6d7768feb74c6"
     },
     {
+      "path": "/img/ui/coastal/encounter-skull.webp",
+      "type": "image",
+      "size": 22566,
+      "revision": "7f39757b8fc19490"
+    },
+    {
       "path": "/img/ui/coastal/faith-banner.webp",
       "type": "image",
       "size": 59036,
       "revision": "32531b544ce91fba"
+    },
+    {
+      "path": "/img/ui/coastal/foreground-torch.webp",
+      "type": "image",
+      "size": 348052,
+      "revision": "613b5fd9128657b8"
     },
     {
       "path": "/img/ui/coastal/foreground.webp",
@@ -2701,6 +2755,12 @@
       "type": "image",
       "size": 31210,
       "revision": "75663b02aec8bb64"
+    },
+    {
+      "path": "/img/ui/coastal/torch-hand.webp",
+      "type": "image",
+      "size": 139358,
+      "revision": "994cf2e0f2831ef1"
     },
     {
       "path": "/img/ui/coastal/turn-dial.webp",

@@ -641,8 +641,7 @@ export const GLOBAL_STYLES = `
     100% { opacity: 0; transform: translateY(70px) scale(0.3); }
   }
   @keyframes zhuLitCardPop {
-    0% { opacity: 0.25; transform: translateX(18px) rotate(0deg) scale(0.98); filter: brightness(0.8); }
-    64% { opacity: 1; transform: translateX(-5px) rotate(calc(var(--zhu-rot) - 3deg)) scale(1.02); filter: brightness(1.35); }
-    100% { opacity: 1; transform: translateX(0) rotate(var(--zhu-rot)) scale(1); filter: brightness(1); }
+    0% { opacity: 0.25; transform: translateX(var(--zhu-pop-x)); filter: brightness(0.8); }
+    100% { opacity: 1; transform: translateX(0); filter: brightness(1); }
   }
 `;

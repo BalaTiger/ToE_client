@@ -2,7 +2,6 @@ import React from 'react';
 
 const PLAYER_STATUS_TAG_ORDER = [
   'godPower',
-  'godEncounters',
   'etherealize',
   'poison',
 ];
@@ -10,27 +9,8 @@ const PLAYER_STATUS_TAG_ORDER = [
 function hasPlayerStatusTags(player) {
   return !!(
     player?.godName ||
-    (player?.godEncounters || 0) > 0 ||
     (player?.etherealizeStacks || 0) > 0 ||
     (player?.poisonStacks || 0) > 0
-  );
-}
-
-function GodEncountersTag({ count, variant, fontSize }) {
-  if ((count || 0) <= 0) return null;
-  const maxSkulls = variant === 'stack' ? 5 : 6;
-  const label = variant === 'stack' ? ' 邪神遭遇' : '';
-  const Tag = variant === 'stack' ? 'div' : 'span';
-  return (
-    <Tag title={`邪神遭遇 ${count} 次`} aria-label={`邪神遭遇 ${count} 次`} style={{
-      ...(variant === 'stack' ? { marginTop: 4 } : null),
-      fontSize,
-      color: '#8b6060',
-      letterSpacing: 1,
-      fontFamily: "'Cinzel',serif",
-    }}>
-      {variant === 'pendant' ? `💀 ${count}` : <>{'💀'.repeat(Math.min(count, maxSkulls))}{count > maxSkulls ? `×${count}` : ''}{label}</>}
-    </Tag>
   );
 }
 
@@ -110,13 +90,9 @@ export function PlayerStatusTags({
   if (!hasPlayerStatusTags(player)) return null;
   const isStack = variant === 'stack';
   const tagFontSize = isStack ? fontSizes.small : 10;
-  const encounterFontSize = isStack ? fontSizes.small : 9;
   const tags = PLAYER_STATUS_TAG_ORDER.map(type => {
     if (type === 'godPower' && player?.godName && renderGodPower) {
       return <React.Fragment key={type}>{renderGodPower(player)}</React.Fragment>;
-    }
-    if (type === 'godEncounters') {
-      return <GodEncountersTag key={type} count={player?.godEncounters || 0} variant={variant} fontSize={encounterFontSize} />;
     }
     if (type === 'etherealize') {
       return <EtherealizeTag key={type} playerIndex={playerIndex} count={player?.etherealizeStacks || 0} variant={variant} fontSize={tagFontSize} />;
