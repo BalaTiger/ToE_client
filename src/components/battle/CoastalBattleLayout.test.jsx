@@ -1,10 +1,12 @@
-import { Children } from 'react';
+import { Children, Fragment } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CoastalBattleLayout, CoastalOpponents } from './CoastalBattleLayout';
 import { SelfPlayerPanel } from './SelfPlayerPanel';
 import { PileDisplay } from '../board';
 import { BattleLogPanel } from '../log/BattleLogPanel';
 import { HandArea } from './HandArea';
+import { CoastalTorch } from './CoastalTorch';
+import { SailingSpray, SailingTorchMist } from './SailingSpray';
 
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
@@ -21,6 +23,71 @@ function slot(root, name) {
 }
 
 describe('coastal battle composition', () => {
+  it('places the main spray behind the foreground and torch using the expanded board geometry', () => {
+    const root = CoastalBattleLayout({
+      middle: <div><SelfPlayerPanel /><div /><div /></div>, hand: <div />,
+      counts: {}, sailingEnabled: true, width: 1000, height: 400,
+    });
+    const children = Children.toArray(root.props.children);
+    const sprayIndex = children.findIndex(child => child.type === SailingSpray);
+    const foregroundIndex = children.findIndex(child => child.props.className === 'toe-coastal-foreground');
+    const torchIndex = children.findIndex(child => child.type === CoastalTorch);
+    expect(sprayIndex).toBeGreaterThanOrEqual(0);
+    expect(sprayIndex).toBeLessThan(foregroundIndex);
+    expect(sprayIndex).toBeLessThan(torchIndex);
+    const geometry = slot(root, 'hand').props.children.props.coastalGeometry;
+    expect(geometry.height).toBeGreaterThan(400);
+    expect(children[sprayIndex].props).toMatchObject({ width: geometry.width, height: geometry.height });
+  });
+
+  it('keeps wake and foam in independent sibling layers whose paths follow the foreground dimensions', () => {
+    const pathsAt = (width, height) => {
+      const spray = SailingSpray({ active: true, width, height });
+      expect(spray.type).toBe(Fragment);
+      const layers = Children.toArray(spray.props.children);
+      expect(layers.map(layer => layer.props.className)).toEqual([
+        'toe-sailing-spray toe-sailing-wake', 'toe-sailing-spray toe-sailing-crest',
+      ]);
+      const paths = layers.map(layer => Children.toArray(layer.props.children).map(rider =>
+        rider.props.style.offsetPath.match(/-?\d+(?:\.\d+)?/g).map((value, index) =>
+          Number(value) / (index % 2 ? height : width))));
+      expect(paths[0]).toEqual(paths[1]);
+      for (const path of paths[0]) expect(path.slice(0, 2)).toEqual([.5, .87]);
+      expect(paths[0][0].at(-2)).toBeLessThan(.5);
+      expect(paths[0][1].at(-2)).toBeGreaterThan(.5);
+      return paths[0].flat();
+    };
+    const wide = pathsAt(1200, 620), tall = pathsAt(800, 800);
+    wide.forEach((point, index) => expect(point).toBeCloseTo(tall[index], 5));
+  });
+
+  it.each([false, true])('gates sea effects by theme and shares activity/pause with both wet surfaces: %s', sailingEnabled => {
+    const root = CoastalBattleLayout({
+      middle: <div><SelfPlayerPanel /><div /><div /></div>, hand: <div />,
+      counts: {}, sailingEnabled, sailingActive: true, paused: true,
+    });
+    const children = Children.toArray(root.props.children);
+    const spray = children.find(child => child.type === SailingSpray);
+    expect(!!spray).toBe(sailingEnabled);
+    if (sailingEnabled) expect(spray.props).toMatchObject({ active: true, paused: true });
+    const torch = children.find(child => child.type === CoastalTorch);
+    expect(torch.props).toMatchObject({ sailingEnabled, sailingActive: true, sailingPaused: true });
+    const self = slot(root, 'self').props.children;
+    if (sailingEnabled) expect(self.props).toMatchObject({ sailingEnabled: true, sailingActive: true, sailingPaused: true });
+    else expect(self.props.sailingEnabled).toBeUndefined();
+  });
+
+  it('throws the few foreground droplets up and left from the sea toward the torch', () => {
+    const mist = SailingTorchMist({ active: true, paused: true });
+    expect(mist.props['data-paused']).toBe(true);
+    const droplets = Children.toArray(mist.props.children);
+    expect(droplets).toHaveLength(3);
+    for (const droplet of droplets) {
+      expect(parseFloat(droplet.props.style['--spray-x'])).toBeLessThan(0);
+      expect(parseFloat(droplet.props.style['--spray-y'])).toBeLessThan(0);
+    }
+  });
+
   it('moves the existing regions without losing refs, game data, or interaction callbacks', () => {
     const refs = Array.from({ length: 5 }, () => ({ current: null }));
     const handleTarget = vi.fn(), handleCard = vi.fn(), confirmDiscard = vi.fn();

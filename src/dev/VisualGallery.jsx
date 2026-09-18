@@ -34,12 +34,13 @@ const SCENES = [
   ['battle-mp', '联机行动与倒计时', '对局'],
   ['battle-spectate', '死亡旁观', '对局'],
   ['battle-status', '信仰、翻面与状态标记', '对局'],
-  ['battle-coastal', '3号布局 · 信仰、状态与五张手牌', '对局'],
-  ['battle-coastal-small', '3号布局 · 两张手牌靠近按钮', '对局'],
-  ['battle-coastal-many', '3号布局 · 八张手牌与累积区域牌', '对局'],
-  ['battle-coastal-effects', '3号布局 · 场上持续效果与亮牌', '对局'],
-  ['battle-coastal-zhu', '3号布局 · 烛九阴二级侧抽亮牌', '对局'],
-  ['battle-coastal-clarity', '3号布局 · 信仰标签与长效果文字', '对局'],
+  ['battle-coastal', '遗迹航路 · 信仰、状态与五张手牌', '对局'],
+  ['battle-coastal-sailing', '遗迹航路 · 行船、浪花与湿润', '对局'],
+  ['battle-coastal-small', '遗迹航路 · 两张手牌靠近按钮', '对局'],
+  ['battle-coastal-many', '遗迹航路 · 八张手牌与累积区域牌', '对局'],
+  ['battle-coastal-effects', '遗迹航路 · 场上持续效果与亮牌', '对局'],
+  ['battle-coastal-zhu', '遗迹航路 · 烛九阴二级侧抽亮牌', '对局'],
+  ['battle-coastal-clarity', '遗迹航路 · 信仰标签与长效果文字', '对局'],
   ['battle-ai', '等待其他旅者行动', '对局', 'AI_TURN'],
   ['battle-crowded', '七名其他角色 · 回合置顶', '对局', 'AI_TURN'],
   ['battle-full', '十一名其他角色 · 满员拱形', '对局', 'AI_TURN'],
@@ -290,6 +291,14 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   const layout = useBattleResponsiveLayout();
   const [rosterTurn, setRosterTurn] = useState(null);
   const [faithPreview, setFaithPreview] = useState('');
+  const [sailingPreview, setSailingPreview] = useState(0);
+  const [sailingActive, setSailingActive] = useState(false);
+  const [wetComparison, setWetComparison] = useState('live');
+  useEffect(() => {
+    if (!sailingPreview) return;
+    const timer = setTimeout(() => setSailingActive(false), 2760);
+    return () => clearTimeout(timer);
+  }, [sailingPreview]);
   const [deathPreview, setDeathPreview] = useState(null);
   const { guillotineTargets, petrifyTargets } = useDamageAnimationEffects({ anim: deathPreview });
   useEffect(() => {
@@ -390,7 +399,7 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
       : id === 'battle-coastal-zhu' ? state.deck.slice(1, 4).map((card, index) => ({ card, deckIndex: index + 1 })) : [],
     serverAnnouncement: id === 'announcement' ? '服务器将于 10 分钟后维护，请在当前对局结束后返回主界面。' : null,
     globalStyles: GLOBAL_STYLES,
-    drawBackgroundCameraActive: id === 'battle-camera',
+    drawBackgroundCameraActive: id === 'battle-camera' || (id === 'battle-coastal-sailing' && sailingActive),
     battleBackgroundStyle: {
       ...Object.fromEntries(Object.entries(theme).filter(([key]) => ['text', 'strong', 'muted', 'panel', 'panelActive', 'line', 'lineDim', 'glow'].includes(key)).map(([key, value]) => [`--toe-${key.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}`, value])),
       '--toe-battle-bg-image': `linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${buildPublicUrl(getBattleBackgroundImage(expansionKey))}')`,
@@ -423,6 +432,20 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   return <>
     <BattleScreen {...baseProps} />
     <GlobalAnimLayer decisionProps={baseProps} expansionKey={expansionKey} />
+    {id === 'battle-coastal-sailing' && <>
+        {wetComparison !== 'live' && <style>{`[data-sailing-wet-region] { opacity: ${{ wet: '.8', half: '.4', front: '.8', dry: '0' }[wetComparison]} !important; clip-path: none !important; mask-position: 0% 0%, 0% 0%, 0% 0%, ${wetComparison === 'front' ? '42% 42%' : '100% 100%'} !important; }`}</style>}
+      <div style={{ position: 'fixed', top: 8, left: '40%', zIndex: 10000, display: 'flex', gap: 8, background: '#071820', color: '#c5dadd', border: '1px solid #607879', padding: '6px 10px' }}>
+        <button type="button" disabled={sailingActive} style={{ background: 'transparent', color: 'inherit', border: '1px solid #607879', padding: '3px 6px', fontSize: 12 }}
+          onClick={() => { setWetComparison('live'); setSailingActive(true); setSailingPreview(value => value + 1); }}>重播行船运镜</button>
+        <select aria-label="水膜材质对照" value={wetComparison} onChange={event => {
+          setWetComparison(event.target.value);
+          if (event.target.value !== 'live') setSailingActive(false);
+        }}
+          style={{ background: '#071820', color: 'inherit', border: '1px solid #607879', fontSize: 12 }}>
+          <option value="live">播放动画</option><option value="dry">干燥对照</option><option value="half">半湿对照</option><option value="front">推进中途</option><option value="wet">水膜峰值</option>
+        </select>
+      </div>
+    </>}
     {guillotineTargets.length > 0 && <GuillotineAnim targets={guillotineTargets} />}
     {petrifyTargets.length > 0 && <PetrifyAnim targets={petrifyTargets} />}
     {id.startsWith('battle-opponents-') && new URLSearchParams(window.location?.search || '').get('clean') !== '1' && <aside

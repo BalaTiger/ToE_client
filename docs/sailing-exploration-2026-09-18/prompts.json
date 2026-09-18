@@ -1,0 +1,14 @@
+{
+  "tool": "built-in image_gen",
+  "splash": "Use case: photorealistic-natural. Asset type: reusable transparent realtime game VFX sprite, not a concept sheet.\nCreate ONE isolated realistic bow-wave splash plume of cold seawater viewed from a low first-person boat on a dark gothic ocean at night. Direction: thin point of origin near the left middle, spreading outward toward the right and a little downward, wide tapering fan of turbulent curled translucent water ribbons, broken silver foam and many distinct crisp droplets. Composition fills a wide 3:2 canvas with generous transparent margins and no clipped droplets, one coherent asymmetric splash. Mostly open transparent space between ribbons; delicate muted cyan-grey water with small moonlit silver highlights, natural photographed water, strong chiaroscuro. Moderate spray, not an explosion, not smoke or a cloud. Genuinely transparent RGBA background. No ocean surface, no horizon, no boat, no hands, no objects, no text, no black backdrop, no white backdrop, no checkerboard painted into the image. Intended to animate mirrored on two sides of screen by translation/scale/fade; do not draw two separate splashes.",
+  "wet": "Use case: photorealistic-natural. Asset type: transparent water-on-surface decal texture for a dark gothic game UI. Create a portrait 2:3 RGBA texture containing only sparse physically realistic transparent rain/sea water beads, a few short downward runnels and thin irregular damp sheen patches. The invisible receiving surface is vertical. Water droplets have subtle cold moonlit edge reflections and very faint amber glints from a torch on their right side; most of the texture is completely empty transparent space. Small droplets about 3 to 12 pixels and several medium drops, not giant glass balls. Real water adhesion and gravity, no cartoon outlines. Flat-on front view, no perspective, no lens distortion, no depth-of-field blur. No underlying material, no stone, no leather, no paper, no background, no frame, no black rectangle, no text, no ocean wave. Genuinely transparent alpha, including the gaps and dry areas. This will overlay existing wood, worn metal, cloth and a hand, with their originals fully visible underneath.",
+  "sourceFiles": [
+    "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-90549685-a263-4970-ba1c-6fa540626318.png",
+    "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-96adbea5-525a-4011-bd34-4ccd3b32662c.png"
+  ],
+  "assets": [
+    "public/img/effects/sailing/bow-splash.webp",
+    "public/img/effects/sailing/wet-droplets.webp"
+  ],
+  "processing": "Native aspect ratio resize to 768×512 / 384×576; WebP quality90 alphaQuality100, real alpha retained; no background removal."
+}

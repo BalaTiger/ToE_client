@@ -16,8 +16,6 @@ import { EncounterSkulls } from '../playerStatus/EncounterSkulls';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { _getZoomCompensatedRect } from '../../utils/dom';
 import { PILE_CARD_TILT } from '../../utils/cardPlane';
-import { PanelFrame } from '../battle/PanelFrame';
-import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import '../battle/coastal-panels.css';
 import './compact-player-panel.css';
@@ -431,11 +429,9 @@ function PetrifyingFormulaDie({ state, fontSize, inline = false }) {
   );
 }
 
-function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,baseHeight=null,cardWidth=null,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null,petrifyingFormula=null}){
-  const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
+function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionCount,compact,baseHeight=null,cardWidth=null,deckRef,discardRef,scaleRatio,expansionKey='地神的潜影',zhuLitCards=[],zhuHiddenCardId=null}){
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
-  const _ = (px) => px * fontZoom;
   const pileWrapRef=React.useRef(null);
   const [pileWrapWidth,setPileWrapWidth]=React.useState(0);
   const [discardHover,setDiscardHover]=React.useState(false);
@@ -452,28 +448,24 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
   },[]);
   const effectiveCompact=compact&&pileWrapWidth<320;
   const widthBonus=Math.max(0,pileWrapWidth-(effectiveCompact?240:320));
-  const widthFitPileScale=((coastal?3.0:effectiveCompact?1.5:2.0)+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
-  // Captions and paper offsets keep their own size instead of growing with the
-  // card. The shortest 113px row can still show a 51px-wide middle-distance card.
-  const pileExtraHeight=coastal?28:12+7+2+15*fontZoom;
+  const widthFitPileScale=(3.0+Math.min(effectiveCompact?0.3:0.6,widthBonus/(effectiveCompact?320:480))) * fontZoom;
+  // Reserve the paper stack thickness independently of the card face.
+  const pileExtraHeight=28;
   const heightFitPileScale=baseHeight ? Math.max(1,Math.floor((baseHeight*fontZoom-pileExtraHeight)/CARD_FACE_RATIO)/CARD_W) : widthFitPileScale;
-  const pileScale=coastal&&cardWidth ? cardWidth/CARD_W : Math.min(widthFitPileScale,heightFitPileScale);
+  const pileScale=cardWidth ? cardWidth/CARD_W : Math.min(widthFitPileScale,heightFitPileScale);
   const pileMinHeight=baseHeight ? Math.round(baseHeight * fontZoom) : (effectiveCompact ? 140 : 220);
-  const visualCardWidth=Math.round(CARD_W*pileScale);
-  const captionHeight=15*fontZoom;
-  const captionStyle={fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:_(11),lineHeight:1.25,whiteSpace:'nowrap',flexShrink:0,fontWeight:700,letterSpacing:1,textAlign:'center',textShadow:`0 0 10px ${theme.glow}55,0 0 8px #000000`};
   return(
     <div ref={pileWrapRef} className="toe-pile-display" style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',position:'relative',minWidth:0,minHeight:pileMinHeight}}>
       <ThemeCornerOrnament expansionKey={expansionKey} corner="tl" size={56} opacity={0.28}/>
       <ThemeCornerOrnament expansionKey={expansionKey} corner="tr" size={56} opacity={0.28}/>
-      <div data-pile-camera style={{position:'absolute',left:0,top:0,width:'100%',height:coastal?'100%':`calc(100% - ${captionHeight+2}px)`,perspective:Math.max(600,pileWrapWidth*1.6),perspectiveOrigin:'50% 50%'}}>
-      <div data-pile-table style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:coastal?'space-around':'center',gap:coastal?14:0,transform:`rotateX(${PILE_CARD_TILT}deg)`,transformOrigin:'center center',transformStyle:'preserve-3d','--toe-table-tilt':`${PILE_CARD_TILT}deg`}}>
+      <div data-pile-camera style={{position:'absolute',left:0,top:0,width:'100%',height:'100%',perspective:Math.max(600,pileWrapWidth*1.6),perspectiveOrigin:'50% 50%'}}>
+      <div data-pile-table style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'space-around',gap:14,transform:`rotateX(${PILE_CARD_TILT}deg)`,transformOrigin:'center center',transformStyle:'preserve-3d','--toe-table-tilt':`${PILE_CARD_TILT}deg`}}>
       {/* Inspection deck — top-left corner */}
-      <div data-inspection-pile aria-label={`检定牌堆，${inspectionCount}张`} style={{position:coastal?'relative':'absolute',top:coastal?undefined:4,left:coastal?undefined:8,flexShrink:0,order:0,transformStyle:'preserve-3d'}}>
+      <div data-inspection-pile aria-label={`检定牌堆，${inspectionCount}张`} style={{position:'relative',flexShrink:0,order:0,transformStyle:'preserve-3d'}}>
         <InspectionPile count={inspectionCount} scale={pileScale} compactStack/>
       </div>
       {/* Deck — top-right corner */}
-      <div ref={deckRef} data-deck-pile aria-label={`牌堆，${deckCount}张`} style={{position:coastal?'relative':'absolute',top:coastal?undefined:4,right:coastal?undefined:8,flexShrink:0,order:2,transformStyle:'preserve-3d'}}>
+      <div ref={deckRef} data-deck-pile aria-label={`牌堆，${deckCount}张`} style={{position:'relative',flexShrink:0,order:2,transformStyle:'preserve-3d'}}>
         <DeckPile count={deckCount} scale={pileScale} expansionKey={expansionKey} zhuLitCards={zhuLitCards} zhuHiddenCardId={zhuHiddenCardId} compactStack/>
       </div>
       {/* Discard — center */}
@@ -494,21 +486,10 @@ function PileDisplay({deckCount,discardCount,discardTop,discardCards,inspectionC
           position:'relative',
         }}
       >
-        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey} compactStack stackPadding={coastal?20:12}/>
+        <DiscardPile count={discardCount} topCard={discardTop} scale={pileScale} expansionKey={expansionKey} compactStack stackPadding={20}/>
       </div>
       </div>
       </div>
-      {!coastal && <PetrifyingFormulaDie state={petrifyingFormula} fontSize={_}/>}
-      {!coastal && <div data-pile-captions style={{position:'absolute',left:0,right:0,bottom:0,height:captionHeight}}>
-        <div style={{...captionStyle,position:'absolute',left:8,width:visualCardWidth+10,color:'#90a8d8'}}>检定:{inspectionCount}</div>
-        <div style={{...captionStyle,position:'absolute',right:8,width:visualCardWidth+12,color:theme.text}}>牌堆:{deckCount}</div>
-        <div data-discard-caption onClick={()=>{if(discardCards?.length)setShowDiscardOverlay(true);}}
-          onMouseEnter={()=>{if(discardCards?.length)setDiscardHover(true);}} onMouseLeave={()=>setDiscardHover(false)}
-          style={{...captionStyle,position:'absolute',left:'50%',transform:'translateX(-50%)',fontSize:_(12),color:theme.text,cursor:discardCards?.length?'pointer':'default'}}>
-          弃牌堆:{discardCount}
-          {discardHover&&discardCards?.length>0&&<span style={{position:'absolute',top:'100%',left:'50%',transform:'translateX(-50%)',fontSize:10,pointerEvents:'none'}}>点击查看</span>}
-        </div>
-      </div>}
       {showDiscardOverlay&&(
         <DiscardOverlay cards={discardCards} onClose={()=>setShowDiscardOverlay(false)}/>
       )}
@@ -560,7 +541,6 @@ function GodPowerBadge({player,playerIndex,pendant=false}){
 
 // ── PlayerPanel ─────────────────────────────────────────────────
 function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null,simplified=false}){
-  const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
   const ri=RINFO[player.role];
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
@@ -630,10 +610,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const statusTags = <PlayerStatusTags
     player={player}
     playerIndex={playerIndex}
-    variant={coastal ? 'pendant' : 'compact'}
+    variant="pendant"
     renderGodPower={presentationPlayer => (
       <span data-god-power-anchor={playerIndex} style={{display:'inline-flex',alignItems:'center'}}>
-        <GodPowerBadge player={presentationPlayer} playerIndex={playerIndex} pendant={coastal}/>
+        <GodPowerBadge player={presentationPlayer} playerIndex={playerIndex} pendant/>
       </span>
     )}
   />;
@@ -657,7 +637,6 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       position:'relative',
       overflow:'visible',
     }}>
-      {!simplified && <PanelFrame />}
       {!simplified && <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"
@@ -697,7 +676,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         </div>
       </div>}
       {!simplified && <div className="toe-opponent-core">
-      {coastal && <CoastalPortrait playerIndex={playerIndex} framed />}
+      <CoastalPortrait playerIndex={playerIndex} framed />
       {/* Name plate */}
       <div className="toe-opponent-heading" style={{
         display:'flex',alignItems:'center',gap:6,marginBottom:6,
@@ -706,12 +685,10 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         <span className="toe-opponent-name" title={player.name} style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:_(12),color:isCurrentTurn?theme.strong:theme.text,letterSpacing:1}}>{player.name}</span>
         {(player.roleRevealed||player.isDead)&&<span className="toe-opponent-role" title={player.role} aria-label={player.role} style={{fontSize:_(10),color:ri.col,'--toe-role-color': player.role === '邪祀者' ? '#BA9BCB' : ri.col,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",letterSpacing:1,marginLeft:2}}>{ri.icon} {player.role}</span>}
         {player.isDead&&<span style={{fontSize:_(11),color:'#882020',marginLeft:'auto'}}>☠</span>}
-        {!coastal&&player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{fontSize:_(9),color:'#4ade80',marginLeft:'auto',letterSpacing:1,filter:'drop-shadow(0 0 4px #4ade80)'}}>♥ 翻面中</span>}
         {isCurrentTurn&&!player.isDead&&!player.isResting&&<span className="toe-turn-marker" style={{fontSize:_(9),color:theme.text,marginLeft:'auto',letterSpacing:1}}>▸ 行动</span>}
       </div>
       <StatBar label="HP"  val={displayStats?.[playerIndex]?.hp ?? player.hp}  color="#a54138" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
       <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#76609b" trackColor="#120820" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
-      {!coastal && <>{statusTags}{zones}</>}
       <div style={{
         display:shouldFillFlatHand?'grid':'flex',
         gridTemplateColumns:shouldFillFlatHand?'repeat(4, minmax(0, 1fr))':undefined,
@@ -760,7 +737,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       </div>
       </div>}
       {!simplified && <EncounterSkulls count={player.godEncounters} playerIndex={playerIndex}/>}
-      {!simplified && coastal && <div className="toe-opponent-pendants">
+      {!simplified && <div className="toe-opponent-pendants">
         {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{color:'#a7b79b'}}>♥ 翻面中</span>}
         {statusTags}{zones}
       </div>}

@@ -400,7 +400,7 @@ export function useAnimationQueue({
     const decision = getRevealDecision(pendingGsRef.current || gs);
     // God choices open only after the reveal and all encounter effects commit.
     return decision?.kind === 'draw-reveal' && !paused && !animCallbackRef.current
-      && anim?.inspectionSeq == null && !anim?.onSettled
+      && anim?.inspectionSeq == null
       && !Number.isFinite(anim?.impactAtMs) && !anim?.visualTimeline?.length
       && matchesRevealDecision(anim, decision);
   }

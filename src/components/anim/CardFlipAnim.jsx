@@ -131,26 +131,16 @@ export function CardDrawFlight({card,targetPid,from,to,expansionKey='地神的�
   </div>;
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled,settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,earlyActions=false,children}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,earlyActions=false,children}){
   const [traveled,setTraveled]=React.useState(skipTravel||settled);
   const [earlyActionsReady,setEarlyActionsReady]=React.useState(false);
   const viewport=useWindowSize();
-  const settledRef=React.useRef(false);
-  const settleDelay=card?.isGod?2650:1250;
   React.useEffect(()=>{
     if(settled)return undefined;
     if(skipTravel){setTraveled(true);return undefined;}
     const t=setTimeout(()=>setTraveled(true),650);
     return()=>clearTimeout(t);
   },[skipTravel,settled]);
-  React.useEffect(()=>{
-    if(settled||!traveled||!onSettled||settledRef.current)return undefined;
-    const t=setTimeout(()=>{
-      settledRef.current=true;
-      onSettled();
-    },settleDelay);
-    return()=>clearTimeout(t);
-  },[traveled,onSettled,settleDelay,settled]);
   React.useEffect(()=>{
     if(!earlyActions||settled||!traveled||travelOnly)return undefined;
     const t=setTimeout(()=>setEarlyActionsReady(true),850);

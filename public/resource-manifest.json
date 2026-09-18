@@ -1,6 +1,6 @@
 {
-  "version": "8b4ed0818e74969d",
-  "generatedAt": "2026-09-17T12:04:47.843Z",
+  "version": "202038486de60b1e",
+  "generatedAt": "2026-09-18T12:30:58.802Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -2499,6 +2499,150 @@
       "revision": "06543c9f3f4b17e8"
     },
     {
+      "path": "/img/effects/sailing/KENNEY-LICENSE.txt",
+      "type": "asset",
+      "size": 651,
+      "revision": "f9e70b81d8cc07c4"
+    },
+    {
+      "path": "/img/effects/sailing/LICENSE-sources.md",
+      "type": "asset",
+      "size": 2357,
+      "revision": "5df96e33131200de"
+    },
+    {
+      "path": "/img/effects/sailing/bow-splash.webp",
+      "type": "image",
+      "size": 152038,
+      "revision": "17897a4c937d3c0d"
+    },
+    {
+      "path": "/img/effects/sailing/kenney-droplet-soft.png",
+      "type": "image",
+      "size": 65336,
+      "revision": "925b8ac284436f74"
+    },
+    {
+      "path": "/img/effects/sailing/kenney-foam-particles.png",
+      "type": "image",
+      "size": 47313,
+      "revision": "6827a0a32a293ec9"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-bottom.webp",
+      "type": "image",
+      "size": 11250,
+      "revision": "f9d73a334c3300b0"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage-1.webp",
+      "type": "image",
+      "size": 4710,
+      "revision": "391f613848ef6c73"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage-2.webp",
+      "type": "image",
+      "size": 3662,
+      "revision": "5c3319f691538f8c"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage-3.webp",
+      "type": "image",
+      "size": 4338,
+      "revision": "15f6c72a16441926"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage-4.webp",
+      "type": "image",
+      "size": 5158,
+      "revision": "82e6caf6f532a3f7"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage-5.webp",
+      "type": "image",
+      "size": 4506,
+      "revision": "d7c2911358614ef8"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-coverage.webp",
+      "type": "image",
+      "size": 9204,
+      "revision": "19f5a3f26b744028"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-rail.webp",
+      "type": "image",
+      "size": 161306,
+      "revision": "12e5e2a9f633cdd4"
+    },
+    {
+      "path": "/img/effects/sailing/panel-wet-top.webp",
+      "type": "image",
+      "size": 12992,
+      "revision": "50db26a2dea41ae2"
+    },
+    {
+      "path": "/img/effects/sailing/torch-hand-wet.webp",
+      "type": "image",
+      "size": 131604,
+      "revision": "c8c5ed5cc52d0c47"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage-1.webp",
+      "type": "image",
+      "size": 3128,
+      "revision": "b9aae784ceb2cf6f"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage-2.webp",
+      "type": "image",
+      "size": 2798,
+      "revision": "e541f0e12fa5f2da"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage-3.webp",
+      "type": "image",
+      "size": 3086,
+      "revision": "419aad11b4246bee"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage-4.webp",
+      "type": "image",
+      "size": 3294,
+      "revision": "35d578a50a5934f3"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage-5.webp",
+      "type": "image",
+      "size": 2764,
+      "revision": "8758c796fd04d93a"
+    },
+    {
+      "path": "/img/effects/sailing/torch-wet-coverage.webp",
+      "type": "image",
+      "size": 6410,
+      "revision": "e47898d70e49c8ab"
+    },
+    {
+      "path": "/img/effects/sailing/wet-droplets.webp",
+      "type": "image",
+      "size": 52914,
+      "revision": "6f89d68a5540dd7a"
+    },
+    {
+      "path": "/img/effects/sailing/wet-film-dark.webp",
+      "type": "image",
+      "size": 16326,
+      "revision": "cc8cc2345aebfa59"
+    },
+    {
+      "path": "/img/effects/sailing/wet-film-reflection.webp",
+      "type": "image",
+      "size": 26342,
+      "revision": "0f184ea2a9ea308d"
+    },
+    {
       "path": "/img/effects/torch/flame-atlas.json",
       "type": "asset",
       "size": 4007,
@@ -2809,54 +2953,6 @@
       "type": "image",
       "size": 93074,
       "revision": "9ae2e7413d9a26f3"
-    },
-    {
-      "path": "/img/ui/hand-table/end.webp",
-      "type": "image",
-      "size": 15150,
-      "revision": "96d1ab5991203a9f"
-    },
-    {
-      "path": "/img/ui/hand-table/multiply.webp",
-      "type": "image",
-      "size": 15498,
-      "revision": "9322602b5ed59847"
-    },
-    {
-      "path": "/img/ui/hand-table/relief-left.webp",
-      "type": "image",
-      "size": 107960,
-      "revision": "34abc645ccb4ed8f"
-    },
-    {
-      "path": "/img/ui/hand-table/relief-right.webp",
-      "type": "image",
-      "size": 106184,
-      "revision": "af0cb117fa0007de"
-    },
-    {
-      "path": "/img/ui/hand-table/rest.webp",
-      "type": "image",
-      "size": 15314,
-      "revision": "d00286448411ddc5"
-    },
-    {
-      "path": "/img/ui/hand-table/skill.webp",
-      "type": "image",
-      "size": 15418,
-      "revision": "1fbefe8adbee50f4"
-    },
-    {
-      "path": "/img/ui/hand-table/table-weathered.webp",
-      "type": "image",
-      "size": 487656,
-      "revision": "42a6462be03ce36a"
-    },
-    {
-      "path": "/img/ui/hand-table/table.webp",
-      "type": "image",
-      "size": 20724,
-      "revision": "1e7e2629edf5d16e"
     },
     {
       "path": "/img/ui/interface/panel-frame.webp",

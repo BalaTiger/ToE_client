@@ -14,7 +14,7 @@ describe('UI appearance preference', () => {
   it('selects and persists coastal while expansion themes change independently', () => {
     const values = new Map([['expansionKey', 'SHU']]);
     const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) };
-    expect(UI_APPEARANCES.find(item => item.id === 'coastal')?.label).toContain('3号');
+    expect(UI_APPEARANCES.map(item => [item.id, item.label])).toEqual([['coastal', '遗迹航路']]);
     expect(selectUiAppearance('coastal', storage).battleLayout).toBe('coastal');
     expect(values.get(UI_APPEARANCE_KEY)).toBe('coastal');
     expect(values.get('expansionKey')).toBe('SHU');
@@ -24,24 +24,26 @@ describe('UI appearance preference', () => {
     expect([...values.keys()]).toEqual(['expansionKey', UI_APPEARANCE_KEY]);
   });
 
-  it('switches and restores the local composition without writing an expansion setting', () => {
+  it.each(['classic', 'arcane-table', 'removed-layout'])('migrates the retired %s preference without writing an expansion setting', retired => {
     const values = new Map([['expansionKey', 'SHU']]);
     const storage = {
       getItem: key => values.get(key),
       setItem: (key, value) => values.set(key, value),
     };
-    expect(readUiAppearance(storage).id).toBe('arcane-table');
-    expect(selectUiAppearance('classic', storage).battleLayout).toBe('grid');
-    expect(readUiAppearance(storage).id).toBe('classic');
+    values.set(UI_APPEARANCE_KEY, retired);
+    expect(readUiAppearance(storage).id).toBe('coastal');
+    expect(selectUiAppearance(retired, storage).battleLayout).toBe('coastal');
+    expect(readUiAppearance(storage).id).toBe('coastal');
     expect(values.get('expansionKey')).toBe('SHU');
     expect([...values.keys()]).toEqual(['expansionKey', UI_APPEARANCE_KEY]);
-    expect(selectUiAppearance('arcane-table', storage).assets.handTable).toContain('table-weathered.webp');
+    expect(values.get(UI_APPEARANCE_KEY)).toBe('coastal');
   });
 
   it('uses valid preview URLs ahead of saved preferences without persisting the preview', () => {
     const storage = { getItem: () => 'classic', setItem: vi.fn() };
-    expect(readUiAppearance(storage, '?ui-appearance=arcane-table').id).toBe('arcane-table');
-    expect(readUiAppearance(storage, '?ui-appearance=missing').id).toBe('arcane-table');
+    expect(readUiAppearance(storage, '?ui-appearance=coastal').id).toBe('coastal');
+    expect(readUiAppearance(storage, '?ui-appearance=arcane-table').id).toBe('coastal');
+    expect(readUiAppearance(storage, '?ui-appearance=missing').id).toBe('coastal');
     expect(storage.setItem).not.toHaveBeenCalled();
   });
 
@@ -50,11 +52,11 @@ describe('UI appearance preference', () => {
       getItem: () => { throw new Error('blocked'); },
       setItem: () => { throw new Error('blocked'); },
     };
-    expect(readUiAppearance(null).id).toBe('arcane-table');
-    expect(readUiAppearance({ getItem: () => 'removed-layout' }).id).toBe('arcane-table');
-    expect(readUiAppearance(storage).id).toBe('arcane-table');
-    expect(selectUiAppearance('classic', storage).id).toBe('classic');
-    expect(selectUiAppearance('missing', storage).id).toBe('arcane-table');
+    expect(readUiAppearance(null).id).toBe('coastal');
+    expect(readUiAppearance({ getItem: () => 'removed-layout' }).id).toBe('coastal');
+    expect(readUiAppearance(storage).id).toBe('coastal');
+    expect(selectUiAppearance('classic', storage).id).toBe('coastal');
+    expect(selectUiAppearance('missing', storage).id).toBe('coastal');
   });
 
   it('applies appearance to the document root and removes old variables when switching', () => {
@@ -72,12 +74,12 @@ describe('UI appearance preference', () => {
       },
     };
     const cleanup = applyUiAppearance({
-      ...resolveUiAppearance('arcane-table'),
+      ...resolveUiAppearance('coastal'),
       cssVariables: { '--toe-ui-accent': '#abcdef', '--experiment-only': '17px' },
     }, root);
-    expect(attributes.get('data-ui-appearance')).toBe('arcane-table');
-    expect(attributes.get('data-ui-layout')).toBe('arch');
-    expect(styles.get('--toe-action-skill-image')).toBe("url('./img/ui/hand-table/skill.webp')");
+    expect(attributes.get('data-ui-appearance')).toBe('coastal');
+    expect(attributes.get('data-ui-layout')).toBe('coastal');
+    expect(styles.get('--toe-action-skill-image')).toBe("url('./img/ui/coastal/action-skill-b.webp')");
     expect(styles.get('--toe-ui-accent')).toBe('#abcdef');
     cleanup();
     expect(styles.has('--experiment-only')).toBe(false);
@@ -85,16 +87,16 @@ describe('UI appearance preference', () => {
     expect(attributes.has('data-ui-appearance')).toBe(false);
     expect(attributes.has('data-ui-layout')).toBe(false);
 
-    applyUiAppearance(resolveUiAppearance('classic'), root);
-    expect(attributes.get('data-ui-appearance')).toBe('classic');
-    expect(attributes.get('data-ui-layout')).toBe('grid');
+    applyUiAppearance(resolveUiAppearance('coastal'), root);
+    expect(attributes.get('data-ui-appearance')).toBe('coastal');
+    expect(attributes.get('data-ui-layout')).toBe('coastal');
     expect(styles.get('--unrelated')).toBe('preserved');
 
-    const cleanupAlternate = applyUiAppearance({ ...resolveUiAppearance('arcane-table'), id: 'alternate' }, root);
+    const cleanupAlternate = applyUiAppearance({ ...resolveUiAppearance('coastal'), id: 'alternate', battleLayout: 'experiment' }, root);
     expect(attributes.get('data-ui-appearance')).toBe('alternate');
-    expect(attributes.get('data-ui-layout')).toBe('arch');
+    expect(attributes.get('data-ui-layout')).toBe('experiment');
     cleanupAlternate();
-    expect(attributes.get('data-ui-appearance')).toBe('classic');
-    expect(attributes.get('data-ui-layout')).toBe('grid');
+    expect(attributes.get('data-ui-appearance')).toBe('coastal');
+    expect(attributes.get('data-ui-layout')).toBe('coastal');
   });
 });

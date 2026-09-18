@@ -190,9 +190,9 @@ describe('pile card flight anchors', () => {
 });
 
 describe('middle-distance pile sizing', () => {
-  it.each(['classic', 'arcane-table'].flatMap(appearance => [113, 140].map(height => [appearance, height])))(
-    'keeps larger piles and readable captions within the existing %s %ipx row', (appearance, height) => {
-      vi.stubGlobal('window', { __PUBLIC_BASE__: '/', location: { search: `?ui-appearance=${appearance}` } });
+  it.each([113, 140, 170])(
+    'keeps proportional piles within the available %ipx row', height => {
+      vi.stubGlobal('window', { __PUBLIC_BASE__: '/', location: { search: '?ui-appearance=coastal' } });
       const markup = renderToStaticMarkup(<UiAppearanceProvider>
         <PileDisplay deckCount={30} discardCount={7} inspectionCount={24} baseHeight={height} scaleRatio={1} />
       </UiAppearanceProvider>);
@@ -201,17 +201,16 @@ describe('middle-distance pile sizing', () => {
       for (const style of topCardStyles) {
         const width = Number(style.match(/(?:^|;)width:([\d.]+)px/)[1]);
         expect(width).toBeGreaterThanOrEqual(50);
-        expect(width * CARD_FACE_RATIO + 36).toBeLessThanOrEqual(height);
+        expect(width * CARD_FACE_RATIO + 28).toBeLessThanOrEqual(height);
       }
       expect(markup).toContain(`min-height:${height}px`);
-      expect(markup.match(/line-height:1.25;white-space:nowrap;flex-shrink:0/g)).toHaveLength(3);
       expect(markup.match(/data-pile-camera=/g)).toHaveLength(1);
       expect(markup.match(/data-pile-table=/g)).toHaveLength(1);
       expect(markup.match(/perspective:/g)).toHaveLength(1);
       expect(markup).toContain('perspective-origin:50% 50%');
       expect(markup).toContain('transform:rotateX(45deg)');
       expect(markup).not.toContain('perspective(');
-      expect(markup.indexOf('data-pile-captions')).toBeGreaterThan(markup.lastIndexOf('data-pile-card='));
+      expect(markup).not.toContain('data-pile-captions');
     },
   );
 });

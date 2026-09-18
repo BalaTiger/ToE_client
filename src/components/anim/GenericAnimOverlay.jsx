@@ -279,9 +279,6 @@ export function DiceRollAnim({ anim, exiting }) {
     }, 100);
     return () => clearInterval(iv);
   }, [rollSignature]);
-  React.useEffect(() => {
-    if (settled && anim.onSettled) anim.onSettled();
-  }, [settled, anim]);
   const signatureSeed = Array.from(rollSignature).reduce((sum, char) => (sum + char.charCodeAt(0)) % 6, 0);
   const face1 = settled ? d1 : (signatureSeed + frame * 5) % 6 + 1;
   const face2 = settled ? d2 : (signatureSeed + frame * 3 + 2) % 6 + 1;

@@ -3,40 +3,15 @@ import { buildPublicUrl } from '../utils/url';
 
 export const UI_APPEARANCE_KEY = 'toe_ui_appearance';
 
-const sharedAssets = {
-  panelSurface: '/img/ui/interface/panel-surface.webp',
-  panelFrame: '/img/ui/interface/panel-frame.webp',
-  reliefLeft: '/img/ui/hand-table/relief-left.webp',
-  reliefRight: '/img/ui/hand-table/relief-right.webp',
-  skill: '/img/ui/hand-table/skill.webp',
-  rest: '/img/ui/hand-table/rest.webp',
-  multiply: '/img/ui/hand-table/multiply.webp',
-  end: '/img/ui/hand-table/end.webp',
-};
-
 // UI composition is a local preference, independent of expansion rules/themes.
 export const UI_APPEARANCES = [
   {
-    id: 'arcane-table',
-    label: '弧形桌台',
-    battleLayout: 'arch',
-    assets: { ...sharedAssets, handTable: '/img/ui/hand-table/table-weathered.webp' },
-    cssVariables: { '--toe-ui-accent': '#c3a374', '--toe-ui-line': '#65563d' },
-  },
-  {
-    id: 'classic',
-    label: '经典布局',
-    battleLayout: 'grid',
-    assets: { ...sharedAssets, handTable: '/img/ui/hand-table/table.webp' },
-    cssVariables: { '--toe-ui-accent': '#c3a374', '--toe-ui-line': '#65563d' },
-  },
-  {
     id: 'coastal',
-    label: '3号 · 遗迹海岸',
+    label: '遗迹航路',
     battleLayout: 'coastal',
     assets: {
-      ...sharedAssets,
-      handTable: '/img/ui/hand-table/table-weathered.webp',
+      panelSurface: '/img/ui/interface/panel-surface.webp',
+      panelFrame: '/img/ui/interface/panel-frame.webp',
       skill: '/img/ui/coastal/action-skill-b.webp',
       rest: '/img/ui/coastal/action-rest-b.webp',
       multiply: '/img/ui/coastal/action-multiply-b.webp',

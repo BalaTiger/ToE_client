@@ -1,0 +1,33 @@
+{
+  "revision": "22b0bada46ca032b",
+  "records": [
+    {
+      "name": "panel-wet-top",
+      "width": 622,
+      "height": 137,
+      "bytes": 12992,
+      "sha256": "50db26a2dea41ae21d8c7255dc84541e821cdd5f82c9b3bc5dd0e2c6b6b7598a"
+    },
+    {
+      "name": "panel-wet-rail",
+      "width": 622,
+      "height": 1262,
+      "bytes": 161306,
+      "sha256": "12e5e2a9f633cdd470eab4a116c0b4173c2708a7b37accf26678eb5720cf7eb2"
+    },
+    {
+      "name": "panel-wet-bottom",
+      "width": 622,
+      "height": 137,
+      "bytes": 11250,
+      "sha256": "f9d73a334c3300b00fa822e17f418f267d83d35614b3fb0014ff79bd488e2a5a"
+    },
+    {
+      "name": "torch-hand-wet",
+      "width": 768,
+      "height": 1152,
+      "bytes": 131604,
+      "sha256": "c8c5ed5cc52d0c47a7240a0944d574d0526395d02dcaf4de58ceb43c37ddae9c"
+    }
+  ]
+}

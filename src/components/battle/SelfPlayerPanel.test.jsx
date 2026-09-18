@@ -26,7 +26,6 @@ describe('SelfPlayerPanel presentation player', () => {
         phase="ACTION"
         isBlocked={false}
         canLocalTargetSelect={false}
-        suppressAnim={false}
         tutorialStep={0}
         isMobile={false}
         isMobileLandscape={false}

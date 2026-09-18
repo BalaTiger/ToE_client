@@ -6,7 +6,6 @@ export function treasureDodgeModeConfig(aoe = false) {
         rollerName: '你',
         includeStandardTransfer: false,
         useAbilityDrawer: true,
-        supportsTutorialHold: false,
         deriveSkipDecision: false,
         broadcastEndTurnReplayDelta: false,
       }
@@ -16,7 +15,6 @@ export function treasureDodgeModeConfig(aoe = false) {
         rollerName: null,
         includeStandardTransfer: true,
         useAbilityDrawer: false,
-        supportsTutorialHold: true,
         deriveSkipDecision: true,
         broadcastEndTurnReplayDelta: true,
       };

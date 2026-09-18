@@ -1,0 +1,218 @@
+[
+  [
+    {
+      "mask": "0% 0%, 15.1865% 84.8135%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 14.5115% 85.4885%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 17.7142% 82.2858%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 16.9269% 83.0731%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 26.9946% 73.0054%",
+      "opacity": "0.408016",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 20.9946% 79.0054%",
+      "opacity": "0.0580163",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 38.3898% 61.6102%",
+      "opacity": "0.724576",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 31.8983% 68.1017%",
+      "opacity": "0.694065",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 56.0521% 43.9479%",
+      "opacity": "0.792508",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 49.5521% 50.4479%",
+      "opacity": "0.767508",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 77.952% 22.048%",
+      "opacity": "0.766747",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 71.952% 28.048%",
+      "opacity": "0.776747",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 84.154% 15.846%",
+      "opacity": "0.722903",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 82.2898% 17.7102%",
+      "opacity": "0.755009",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 89.31% 10.69%",
+      "opacity": "0.634106",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 88.0523% 11.9477%",
+      "opacity": "0.655765",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 96.1784% 3.8216%",
+      "opacity": "0.515816",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 95.7288% 4.2712%",
+      "opacity": "0.52356",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 99.6108% 0.389245%",
+      "opacity": "0.456704",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 99.565% 0.435038%",
+      "opacity": "0.457492",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.380172",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.380172",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.304638",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.304638",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.229155",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 100% 0%",
+      "opacity": "0.229155",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 2.40243% 97.5976%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 2.29565% 97.7043%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 4.08756% 95.9124%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 3.90589% 96.0941%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 7.46148% 92.5385%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 7.12986% 92.8701%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 11.6779% 88.3221%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 11.1588% 88.8412%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ],
+  [
+    {
+      "mask": "0% 0%, 13.363% 86.637%",
+      "opacity": "0",
+      "surface": "torch"
+    },
+    {
+      "mask": "0% 0%, 12.7691% 87.2309%",
+      "opacity": "0",
+      "surface": "panel"
+    }
+  ]
+]

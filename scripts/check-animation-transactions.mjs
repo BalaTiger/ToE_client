@@ -142,15 +142,12 @@ const inspectionHelperSource = fs.readFileSync(path.join(sourceRoot, 'game/animQ
 if (/buildInspectionEventFlow[\s\S]*?buildAnimQueue\s*\(/.test(inspectionHelperSource)) {
   issues.push('game/animQueueHelpers.js: inspection flow must compile only explicit event payloads');
 }
-if (/resolveActionQueueMeta/.test(appSource)) {
-  issues.push('App.jsx: generic resolveActionQueueMeta is forbidden; use strictActionQueueMeta or the tutorial-only router');
+if (/resolveActionQueueMeta|actionQueueMetaForMode/.test(appSource)) {
+  issues.push('App.jsx: alternate animation authority routers are forbidden; tutorials use the same strictActionQueueMeta as ordinary games');
 }
-appSource.split(/\r?\n/).forEach((line, index) => {
-  if (!line.includes('actionQueueMetaForMode(') || line.includes('function actionQueueMetaForMode(')) return;
-  if (!line.includes('tutorial:')) {
-    issues.push(`App.jsx:${index + 1}: tutorial router call must declare tutorial:true or tutorial:showTutorial explicitly`);
-  }
-});
+if (/2147483647|onSettled|tutorialHold|onTutorialSettled/.test(appSource)) {
+  issues.push('App.jsx: tutorial animation holds and renderer completion callbacks are forbidden; explain results after queue completion');
+}
 
 if (issues.length) {
   console.error('[animation-transaction-gate] failed');

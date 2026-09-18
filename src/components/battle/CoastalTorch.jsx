@@ -1,12 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TorchFlame from '../effects/TorchFlame';
+import { SailingWetSurface } from '../effects/SailingWetSurface';
 import { GameLayerPortal } from '../../ui/GameLayerPortal';
 import { subscribeOverlayPresence } from '../../ui/gameLayers';
 import { buildPublicUrl } from '../../utils/url';
+import { SailingTorchMist } from './SailingSpray';
 
 // The hand stays in scene Gamma; the matched flame is a viewport sibling above
 // ordinary gameplay, below the overlay host. Both are in the landscape iframe.
-export function CoastalTorch({ paused = false, sceneShake }) {
+export function CoastalTorch({ paused = false, sceneShake, sailingEnabled = false, sailingActive = false, sailingPaused = false }) {
   const anchorRef = useRef(null);
   const viewportRef = useRef(null);
   const flamePositionRef = useRef(null);
@@ -60,6 +62,8 @@ export function CoastalTorch({ paused = false, sceneShake }) {
   return <>
     <div className="toe-coastal-torch" aria-hidden="true">
       <img src={buildPublicUrl('/img/ui/coastal/torch-hand.webp')} alt="" width="768" height="1152" />
+      {sailingEnabled && <SailingWetSurface surface="torch" active={sailingActive} paused={paused || sailingPaused} />}
+      {sailingEnabled && <SailingTorchMist active={sailingActive} paused={paused || sailingPaused} />}
       <span ref={anchorRef} className="toe-coastal-torch-flame-anchor" />
     </div>
     <GameLayerPortal layer="flame">

@@ -18,8 +18,7 @@ const props = {
 };
 
 describe('compact opponent panel', () => {
-  it.each(['coastal', 'arch', 'classic'])('keeps one visible flight anchor and animation-owned bars in %s', layout => {
-    appearance.battleLayout = layout;
+  it('keeps one visible flight anchor and animation-owned bars', () => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const markup = renderToStaticMarkup(<PlayerPanel {...props} simplified />);
     expect(markup).toContain('data-opponent-simplified="true"');

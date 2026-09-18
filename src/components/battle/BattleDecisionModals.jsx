@@ -17,7 +17,6 @@ export function BattleDecisionModals({
   me,
   phase,
   decisionContext,
-  suppressAnim,
   canShowTurnDecisionModal,
   decisionError,
   runDecision,
@@ -83,7 +82,7 @@ export function BattleDecisionModals({
       })()}
 
       {/* Zhu hide card modal */}
-      {!suppressAnim && canShowTurnDecisionModal && pendingZhuCard && (
+      {canShowTurnDecisionModal && pendingZhuCard && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 520, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 520, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: GOD_DEFS.ZHU.col, fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 衔烛照幽 ──</div>
@@ -105,14 +104,14 @@ export function BattleDecisionModals({
       )}
 
       {/* Zhu hide: waiting for other players */}
-      {!suppressAnim && gs._isMP && pendingZhuAnyCard && visualMe?.godName !== 'ZHU' && (
+      {gs._isMP && pendingZhuAnyCard && visualMe?.godName !== 'ZHU' && (
         <div className="toe-dialog" style={{ position: 'fixed', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',    padding: '18px 22px',  fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 14, letterSpacing: 1, zIndex: 519, pointerEvents: 'none' }}>
           请等待其他玩家选择…
         </div>
       )}
 
       {/* Treasure hunter dodge modal */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureDodgePhase(gs) && (
+      {canShowTurnDecisionModal && phase === 'TREASURE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
           onRoll={() => runDecision('treasure-dodge:roll', handleTreasureDodgeRoll)}
@@ -124,7 +123,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Treasure hunter AOE dodge modal */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureAoEDodgePhase(gs) && (
+      {canShowTurnDecisionModal && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && isLocalTreasureAoEDodgePhase(gs) && (
         <TreasureDodgeModal
           drawReveal={gs.drawReveal}
           onRoll={() => runDecision('treasure-dodge:aoe-roll', handleTreasureAOEDodgeRoll)}
@@ -137,7 +136,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Other players see thinking text during AOE dodge */}
-      {!suppressAnim && phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && !isLocalTreasureAoEDodgePhase(gs) && gs._isMP && (
+      {phase === 'TREASURE_AOE_DODGE_DECISION' && gs.drawReveal && !isLocalTreasureAoEDodgePhase(gs) && gs._isMP && (
         <div className="toe-dialog" style={{
           position: 'fixed',
           top: '50%',
@@ -154,7 +153,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Tsathoggua slime balance decision */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'TSG_SLIME_BALANCE' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || gs._isMP) && (
+      {canShowTurnDecisionModal && phase === 'TSG_SLIME_BALANCE' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || gs._isMP) && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 430, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#9ed27f', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 赐福黏液 ──</div>
@@ -178,7 +177,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Etherealize decision —— AI 的决策弹窗不对玩家展示 */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'ETHEREALIZE_DECISION' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || (gs._isMP && !isAiSeat(gs, gs.abilityData?.targetIdx))) && (
+      {canShowTurnDecisionModal && phase === 'ETHEREALIZE_DECISION' && gs.abilityData && (isLocalSeatIndex(gs.abilityData?.targetIdx) || (gs._isMP && !isAiSeat(gs, gs.abilityData?.targetIdx))) && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 430, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '22px 26px', maxWidth: 540, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#b9d8f0', fontSize: 16, letterSpacing: 2, marginBottom: 12 }}>── 半物质化 ──</div>
@@ -204,7 +203,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Tortoise oracle select */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'TORTOISE_ORACLE_SELECT' && gs.abilityData && (
+      {canShowTurnDecisionModal && phase === 'TORTOISE_ORACLE_SELECT' && gs.abilityData && (
         <TortoiseOracleModal
           abilityData={gs.abilityData}
           onSelect={key => runDecision(`tortoise-oracle:${key}`, () => tortoiseOracleSelect(key))}
@@ -223,7 +222,7 @@ export function BattleDecisionModals({
       )}
 
       {/* First come pick select */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'FIRST_COME_PICK_SELECT' && gs.abilityData && (
+      {canShowTurnDecisionModal && phase === 'FIRST_COME_PICK_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 先到先得 ──</div>
@@ -257,7 +256,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Grave dig select */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'GRAVE_DIG_SELECT' && gs.abilityData && (
+      {canShowTurnDecisionModal && phase === 'GRAVE_DIG_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 720, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 掘墓 ──</div>
@@ -290,7 +289,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Same abyss select */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'SAME_ABYSS_SELECT' && gs.abilityData && (
+      {canShowTurnDecisionModal && phase === 'SAME_ABYSS_SELECT' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 同归深渊 ──</div>
@@ -318,7 +317,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Sphinx guess */}
-      {!pendingZhuSphinxAnyCard && !suppressAnim && canShowTurnDecisionModal && phase === 'SPHINX_GUESS' && gs.abilityData && (
+      {!pendingZhuSphinxAnyCard && canShowTurnDecisionModal && phase === 'SPHINX_GUESS' && gs.abilityData && (
         <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: isMobile ? '7vh' : '5vh', zIndex: 400, pointerEvents: 'none' }}>
           <div className="toe-dialog" style={{ padding: '20px 24px', maxWidth: 560, width: '92%', textAlign: 'center', pointerEvents: 'auto' }}>
             <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e6c577', fontSize: 16, letterSpacing: 2, marginBottom: 10 }}>── 斯芬克斯 ──</div>
@@ -346,7 +345,7 @@ export function BattleDecisionModals({
       )}
 
       {/* Decipher stone carving */}
-      {!suppressAnim && canShowTurnDecisionModal && phase === 'DECIPHER_STONE_CARVING' && gs.abilityData && (
+      {canShowTurnDecisionModal && phase === 'DECIPHER_STONE_CARVING' && gs.abilityData && (
         <DecipherStoneCarvingOverlay
           key={(gs.abilityData?.revealedCards || []).map(card => card?.id).join('|')}
           revealedCards={gs.abilityData?.revealedCards || []}

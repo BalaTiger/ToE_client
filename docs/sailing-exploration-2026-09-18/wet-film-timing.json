@@ -1,0 +1,983 @@
+{
+  "design": {
+    "frontMs": 184,
+    "panelLagMs": 18.4,
+    "cycleMs": 920
+  },
+  "measurements": [
+    {
+      "surface": "torch",
+      "measuredFrontMs": 213,
+      "start": 1789713886845.8088,
+      "end": 1789713887059.0522
+    },
+    {
+      "surface": "panel",
+      "measuredFrontMs": 205,
+      "start": 1789713886865.5928,
+      "end": 1789713887070.4155
+    }
+  ],
+  "samples": [
+    {
+      "time": 1789713886737,
+      "values": [
+        {
+          "front": "0% 0%, 14.3349% 85.6651%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 13.6978% 86.3022%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886794,
+      "values": [
+        {
+          "front": "0% 0%, 16.8729% 83.1272%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 16.1229% 83.8771%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886805,
+      "values": [
+        {
+          "front": "0% 0%, 17.7121% 82.2879%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 16.9249% 83.0751%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886811,
+      "values": [
+        {
+          "front": "0% 0%, 17.7121% 82.2879%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 16.9249% 83.0751%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886818,
+      "values": [
+        {
+          "front": "0% 0%, 18.5564% 81.4436%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 17.7316% 82.2684%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886825,
+      "values": [
+        {
+          "front": "0% 0%, 18.5564% 81.4436%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 17.7316% 82.2684%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886830,
+      "values": [
+        {
+          "front": "0% 0%, 18.5564% 81.4436%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 17.7316% 82.2684%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886837,
+      "values": [
+        {
+          "front": "0% 0%, 19.3956% 80.6044%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 18.5336% 81.4664%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886843,
+      "values": [
+        {
+          "front": "0% 0%, 19.3956% 80.6044%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 18.5336% 81.4664%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886853,
+      "values": [
+        {
+          "front": "0% 0%, 21.5473% 78.4527%",
+          "opacity": 0.0902582,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 19.3403% 80.6597%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886862,
+      "values": [
+        {
+          "front": "0% 0%, 21.5473% 78.4527%",
+          "opacity": 0.0902582,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 19.3403% 80.6597%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886871,
+      "values": [
+        {
+          "front": "0% 0%, 26.9929% 73.0071%",
+          "opacity": 0.407921,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 20.9929% 79.0071%",
+          "opacity": 0.0579212,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886877,
+      "values": [
+        {
+          "front": "0% 0%, 26.9929% 73.0071%",
+          "opacity": 0.407921,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 20.9929% 79.0071%",
+          "opacity": 0.0579212,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886928,
+      "values": [
+        {
+          "front": "0% 0%, 44.2387% 55.7613%",
+          "opacity": 0.747072,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 37.7387% 62.2613%",
+          "opacity": 0.722072,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886936,
+      "values": [
+        {
+          "front": "0% 0%, 50.1382% 49.8618%",
+          "opacity": 0.769762,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 43.6382% 56.3618%",
+          "opacity": 0.744762,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886942,
+      "values": [
+        {
+          "front": "0% 0%, 50.1382% 49.8618%",
+          "opacity": 0.769762,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 43.6382% 56.3618%",
+          "opacity": 0.744762,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886951,
+      "values": [
+        {
+          "front": "0% 0%, 56.0376% 43.9624%",
+          "opacity": 0.792452,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 49.5376% 50.4624%",
+          "opacity": 0.767452,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886958,
+      "values": [
+        {
+          "front": "0% 0%, 56.0376% 43.9624%",
+          "opacity": 0.792452,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 49.5376% 50.4624%",
+          "opacity": 0.767452,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886963,
+      "values": [
+        {
+          "front": "0% 0%, 56.0376% 43.9624%",
+          "opacity": 0.792452,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 49.5376% 50.4624%",
+          "opacity": 0.767452,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886972,
+      "values": [
+        {
+          "front": "0% 0%, 61.6016% 38.3984%",
+          "opacity": 0.793997,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 55.4018% 44.5982%",
+          "opacity": 0.790007,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886978,
+      "values": [
+        {
+          "front": "0% 0%, 61.6016% 38.3984%",
+          "opacity": 0.793997,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 55.4018% 44.5982%",
+          "opacity": 0.790007,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886988,
+      "values": [
+        {
+          "front": "0% 0%, 67.0473% 32.9527%",
+          "opacity": 0.784921,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 61.0473% 38.9527%",
+          "opacity": 0.794921,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713886994,
+      "values": [
+        {
+          "front": "0% 0%, 67.0473% 32.9527%",
+          "opacity": 0.784921,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 61.0473% 38.9527%",
+          "opacity": 0.794921,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887004,
+      "values": [
+        {
+          "front": "0% 0%, 72.4929% 27.5071%",
+          "opacity": 0.775845,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 66.4929% 33.5071%",
+          "opacity": 0.785845,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887010,
+      "values": [
+        {
+          "front": "0% 0%, 72.4929% 27.5071%",
+          "opacity": 0.775845,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 66.4929% 33.5071%",
+          "opacity": 0.785845,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887079,
+      "values": [
+        {
+          "front": "0% 0%, 85.8662% 14.1338%",
+          "opacity": 0.693416,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 84.2034% 15.7966%",
+          "opacity": 0.722053,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887087,
+      "values": [
+        {
+          "front": "0% 0%, 87.5859% 12.4141%",
+          "opacity": 0.663799,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 86.1254% 13.8746%",
+          "opacity": 0.688952,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887094,
+      "values": [
+        {
+          "front": "0% 0%, 87.5859% 12.4141%",
+          "opacity": 0.663799,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 86.1254% 13.8746%",
+          "opacity": 0.688952,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887102,
+      "values": [
+        {
+          "front": "0% 0%, 89.3055% 10.6945%",
+          "opacity": 0.634182,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 88.0474% 11.9526%",
+          "opacity": 0.655851,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887109,
+      "values": [
+        {
+          "front": "0% 0%, 89.3055% 10.6945%",
+          "opacity": 0.634182,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 88.0474% 11.9526%",
+          "opacity": 0.655851,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887115,
+      "values": [
+        {
+          "front": "0% 0%, 91.0217% 8.97827%",
+          "opacity": 0.604626,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 89.9655% 10.0345%",
+          "opacity": 0.622817,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887124,
+      "values": [
+        {
+          "front": "0% 0%, 91.0252% 8.97477%",
+          "opacity": 0.604566,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 89.9694% 10.0306%",
+          "opacity": 0.62275,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887130,
+      "values": [
+        {
+          "front": "0% 0%, 91.0252% 8.97477%",
+          "opacity": 0.604566,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 89.9694% 10.0306%",
+          "opacity": 0.62275,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887139,
+      "values": [
+        {
+          "front": "0% 0%, 92.7346% 7.26539%",
+          "opacity": 0.575126,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 91.8799% 8.12014%",
+          "opacity": 0.589847,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887147,
+      "values": [
+        {
+          "front": "0% 0%, 92.7346% 7.26539%",
+          "opacity": 0.575126,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 91.8799% 8.12014%",
+          "opacity": 0.589847,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887155,
+      "values": [
+        {
+          "front": "0% 0%, 94.4543% 5.54571%",
+          "opacity": 0.545509,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 93.8019% 6.19815%",
+          "opacity": 0.556746,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887160,
+      "values": [
+        {
+          "front": "0% 0%, 94.4543% 5.54571%",
+          "opacity": 0.545509,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 93.8019% 6.19815%",
+          "opacity": 0.556746,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887209,
+      "values": [
+        {
+          "front": "0% 0%, 99.6133% 0.38667%",
+          "opacity": 0.456659,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 99.5678% 0.432161%",
+          "opacity": 0.457443,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887214,
+      "values": [
+        {
+          "front": "0% 0%, 99.6133% 0.38667%",
+          "opacity": 0.456659,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 99.5678% 0.432161%",
+          "opacity": 0.457443,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887223,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.430608,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.430608,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887228,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.430608,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.430608,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887237,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.405397,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.405397,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887243,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.405397,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.405397,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887251,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887258,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887263,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.380186,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887272,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.354974,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.354974,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887277,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.354974,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.354974,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887284,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.329763,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.329763,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887335,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.25428,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.25428,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887343,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.25428,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.25428,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887351,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887357,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887363,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.229069,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887372,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.203857,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.203857,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887379,
+      "values": [
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.203857,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 100% 0%",
+          "opacity": 0.203857,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887388,
+      "values": [
+        {
+          "front": "0% 0%, 0.710061% 99.2899%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 0.678502% 99.3215%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887394,
+      "values": [
+        {
+          "front": "0% 0%, 0.710061% 99.2899%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 0.678502% 99.3215%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887401,
+      "values": [
+        {
+          "front": "0% 0%, 1.55435% 98.4457%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 1.48527% 98.5147%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887408,
+      "values": [
+        {
+          "front": "0% 0%, 1.55435% 98.4457%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 1.48527% 98.5147%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887415,
+      "values": [
+        {
+          "front": "0% 0%, 1.55435% 98.4457%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 1.48527% 98.5147%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887475,
+      "values": [
+        {
+          "front": "0% 0%, 4.92644% 95.0736%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 4.70749% 95.2925%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887481,
+      "values": [
+        {
+          "front": "0% 0%, 4.92644% 95.0736%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 4.70749% 95.2925%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    },
+    {
+      "time": 1789713887489,
+      "values": [
+        {
+          "front": "0% 0%, 5.77073% 94.2293%",
+          "opacity": 0,
+          "surface": "torch"
+        },
+        {
+          "front": "0% 0%, 5.51425% 94.4857%",
+          "opacity": 0,
+          "surface": "panel"
+        }
+      ]
+    }
+  ]
+}

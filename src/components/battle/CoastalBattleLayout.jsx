@@ -2,6 +2,7 @@ import { Children, cloneElement, useLayoutEffect, useRef, useState } from 'react
 import { buildPublicUrl } from '../../utils/url';
 import { COASTAL_CORNER, getCoastalGeometry } from './coastalGeometry';
 import { CoastalTorch } from './CoastalTorch';
+import { SailingSpray } from './SailingSpray';
 import './coastal-layout.css';
 
 export function CoastalOpponents({ children, currentTurn, compact, ref }) {
@@ -18,7 +19,7 @@ export function CoastalOpponents({ children, currentTurn, compact, ref }) {
 }
 
 // The existing regions keep their refs and game callbacks when their positions change.
-export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, turn, turnLabel, counts, compact, paused = false, sceneShake, width = 1200, height = 620 }) {
+export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, turn, turnLabel, counts, compact, paused = false, sceneShake, sailingEnabled = false, sailingActive = false, width = 1200, height = 620 }) {
   const [self, piles, log] = Children.toArray(middle.props.children);
   const boardRef = useRef(null);
   const rolesRef = useRef(null);
@@ -82,9 +83,10 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
     <div className="toe-coastal-drapery" aria-hidden="true">
       <img className="toe-coastal-log-book" src={buildPublicUrl('/img/ui/coastal/corner-b-journal.webp')} alt="" />
     </div>
+    {sailingEnabled && <SailingSpray active={sailingActive} paused={paused} width={geometry?.width ?? width} height={geometry?.height ?? height} />}
     <img className="toe-coastal-foreground" src={buildPublicUrl('/img/ui/coastal/foreground-torch.webp')} alt="" aria-hidden="true" />
-    <CoastalTorch paused={paused} sceneShake={sceneShake} />
-    <div className="toe-coastal-self">{self}</div>
+    <CoastalTorch paused={paused} sceneShake={sceneShake} sailingEnabled={sailingEnabled} sailingActive={sailingActive} sailingPaused={paused} />
+    <div className="toe-coastal-self">{sailingEnabled ? cloneElement(self, { sailingEnabled, sailingActive, sailingPaused: paused }) : self}</div>
     <div ref={rolesRef} className="toe-coastal-roles">{opponents}</div>
     <div className="toe-coastal-turn">
       <img src={buildPublicUrl('/img/ui/coastal/corner-b-header.webp')} alt="" aria-hidden="true" />

@@ -194,7 +194,6 @@ describe('early reveal completion', () => {
     ['hidden draw', { step: { card: { ...card, hiddenDraw: true } } }],
     ['travel only', { step: { travelOnly: true } }],
     ['inspection', { step: { inspectionSeq: 1 } }],
-    ['settled callback', { step: { onSettled: () => {} } }],
     ['impact cue', { step: { impactAtMs: 500 } }],
     ['visual cue', { step: { visualTimeline: [{ atMs: 500, patch: { hiddenZhuCardId: card.id } }] } }],
     ['continuation callback', { callback: () => {} }],

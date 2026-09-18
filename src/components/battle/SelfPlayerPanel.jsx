@@ -6,10 +6,9 @@ import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { LocalGodPowerTag } from './LocalGodPowerTag';
 import { FaithScrollRegion } from './FaithScrollRegion';
+import { SailingWetSurface } from '../effects/SailingWetSurface';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 import { EncounterSkulls } from '../playerStatus/EncounterSkulls';
-import { PanelFrame } from './PanelFrame';
-import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import './coastal-panels.css';
 import './coastal-self-sidebar.css';
@@ -24,8 +23,6 @@ export function SelfPlayerPanel({
   phase,
   isBlocked,
   canLocalTargetSelect,
-  suppressAnim,
-  tutorialStep,
   isMobile,
   isMobileLandscape,
   boardCssPx,
@@ -46,8 +43,10 @@ export function SelfPlayerPanel({
   setShowEmojiPicker,
   setEmojiButtonPos,
   handleAIClick,
+  sailingEnabled = false,
+  sailingActive = false,
+  sailingPaused = false,
 }) {
-  const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
   const isShortDesktop = !isMobile && !isMobileLandscape && middleRowHeight < 150;
   const presentationStyle = {
     opacity: isSelfDeadPanelDimmed ? 0.32 : 1,
@@ -60,8 +59,6 @@ export function SelfPlayerPanel({
     ? '#8840cc'
     : phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
     ? '#4ade80'
-    : suppressAnim && tutorialStep >= 2 && tutorialStep <= 4
-    ? 'var(--toe-strong,#c8a96e)'
     : 'var(--toe-line,#3a2510)';
 
   const godPower = player.godName && (
@@ -101,7 +98,7 @@ export function SelfPlayerPanel({
           filter: 'drop-shadow(0 0 4px #4ade80)',
         }}
       >
-        {coastal ? '翻面中' : '♥ 翻面中 — 下回合跳过'}
+        翻面中
       </div>
     )}
     <PlayerStatusTags
@@ -109,7 +106,6 @@ export function SelfPlayerPanel({
       playerIndex={0}
       variant="stack"
       fontSizes={fontSizes}
-      renderGodPower={coastal ? undefined : () => godPower}
     />
     {!!player.zoneCards?.length && (
       <div className="toe-self-zone-tags" style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
@@ -156,22 +152,21 @@ export function SelfPlayerPanel({
         boxShadow:
           phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
             ? '0 0 14px #4ade8088,inset 0 0 12px #4ade8022'
-            : suppressAnim && tutorialStep >= 2 && tutorialStep <= 4
-            ? '0 0 0 2px var(--toe-glow,#c8a96e),0 0 20px var(--toe-glow,#c8a96e)'
             : undefined,
         opacity: guillotinedPids.has(0) ? 0 : 1,
         cursor: phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? 'pointer' : 'default',
       }}
     >
-      {coastal && <div className="toe-self-sidebar-skin" aria-hidden="true" style={presentationStyle}>
+      <div className="toe-self-sidebar-skin" aria-hidden="true" style={presentationStyle}>
         <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-top.webp')} alt="" />
         <div style={{ backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-rail.webp')}')` }} />
         <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-bottom.webp')} alt="" />
-      </div>}
-      {coastal && <div className="toe-self-sidebar-skin toe-self-sidebar-firelight" aria-hidden="true" style={{ ...presentationStyle, opacity: presentationStyle.opacity * .78 }}>
+      </div>
+      <div className="toe-self-sidebar-skin toe-self-sidebar-firelight" aria-hidden="true" style={{ ...presentationStyle, opacity: presentationStyle.opacity * .78 }}>
         <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-warm-light.webp')} alt="" />
-      </div>}
-      <PanelFrame closed />
+      </div>
+      {sailingEnabled && <SailingWetSurface surface="panel" active={sailingActive} paused={sailingPaused}
+        style={{ filter: presentationStyle.filter, '--toe-wet-intensity': presentationStyle.opacity }} />}
       <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"
@@ -208,12 +203,12 @@ export function SelfPlayerPanel({
         className="toe-self-content"
         style={presentationStyle}
       >
-        {coastal && <CoastalPortrait framed />}
-        {coastal && <div className="toe-self-skull-anchor">
+        <CoastalPortrait framed />
+        <div className="toe-self-skull-anchor">
           <EncounterSkulls count={player.godEncounters} playerIndex={0} />
-        </div>}
+        </div>
         <div className="toe-self-details">
-          <div className="toe-self-title" title={coastal ? ri.goal : undefined} style={isShortDesktop ? { display: 'flex', alignItems: 'center', gap: 8 } : undefined}>
+          <div className="toe-self-title" title={ri.goal} style={isShortDesktop ? { display: 'flex', alignItems: 'center', gap: 8 } : undefined}>
             <div
               ref={roleTextRef}
               className="toe-self-name"
@@ -226,7 +221,7 @@ export function SelfPlayerPanel({
                 textTransform: 'uppercase',
               }}
             >
-              {coastal ? player.name || '你' : '你的身份'}
+              {player.name || '你'}
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
               <div
@@ -261,9 +256,9 @@ export function SelfPlayerPanel({
             {ri.goal}
           </div>
           <div className="toe-self-faith">
-            <FaithScrollRegion enabled={coastal} resetKey={`${player.godName}:${player.godLevel}`}>
-              {coastal && !player.godName && <div className="toe-faith-empty">尚未信仰邪神</div>}
-              {coastal ? godPower : statusTags}
+            <FaithScrollRegion enabled resetKey={`${player.godName}:${player.godLevel}`}>
+              {!player.godName && <div className="toe-faith-empty">尚未信仰邪神</div>}
+              {godPower}
             </FaithScrollRegion>
           </div>
         </div>
@@ -291,10 +286,9 @@ export function SelfPlayerPanel({
             lineColor="var(--toe-line-dim,#2a1a08)"
           />
         </div>
-        {coastal && hasSideTags && <div className="toe-self-side-tags" aria-label="角色状态">{statusTags}</div>}
+        {hasSideTags && <div className="toe-self-side-tags" aria-label="角色状态">{statusTags}</div>}
       </div>
 
-      {!coastal && <EncounterSkulls count={player.godEncounters} playerIndex={0} dimmed={isSelfDeadPanelDimmed} />}
       {isMultiplayer && (
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 50 }}>
           <button className="toe-button" aria-label="发送表情"

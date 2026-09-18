@@ -2,7 +2,6 @@ import { Children, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { BattleScreen } from './BattleScreen';
-import { BattleHeader } from './BattleHeader';
 import { BattleSceneContent } from './BattleSceneContent';
 import { getCoastalViewport } from './coastalViewport';
 import { COASTAL_CORNER } from './coastalGeometry';
@@ -46,6 +45,22 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 describe('coastal B system controls', () => {
+  it('keeps the registry layout override and expansion camera independent', () => {
+    const AlternateLayout = () => null;
+    appearance.BattleLayout = AlternateLayout;
+    try {
+      const nodes = collect(renderBattle());
+      expect(nodes.some(node => node.type === AlternateLayout)).toBe(true);
+      expect(nodes.find(node => node.type === AlternateLayout).props.sailingEnabled).toBe(true);
+      const earth = collect(renderBattle({ gs: { players: [], deck: [], inspectionDeck: [], expansionKey: '地神的潜影' } }));
+      expect(earth.find(node => node.type === AlternateLayout).props.sailingEnabled).toBe(false);
+      expect(nodes.find(node => node.props['data-exploration-motion']).props['data-exploration-motion'])
+        .not.toBe(earth.find(node => node.props['data-exploration-motion']).props['data-exploration-motion']);
+    } finally {
+      delete appearance.BattleLayout;
+    }
+  });
+
   it.each([[1600, 1000], [1900, 1000], [2560, 720], [390, 844]])('shares the corner scale and viewport anchor at %ix%i', (vw, vh) => {
     const nodes = collect(renderBattle({ vw, vh }));
     const root = nodes.find(node => node.props.className?.startsWith('toe-battle-root'));
@@ -64,10 +79,6 @@ describe('coastal B system controls', () => {
     { roleRevealAnim: { role: '寻宝者' } },
   ])('does not mount controls before the identity reveal ends: %j', flags => {
     expect(collect(renderBattle(flags)).some(node => node.type === GammaSlider)).toBe(false);
-    Object.assign(appearance, { id: 'arcane-table', battleLayout: 'arch' });
-    const nodes = collect(renderBattle(flags));
-    expect(nodes.some(node => node.type === GammaSlider)).toBe(false);
-    expect(nodes.find(node => node.type === BattleHeader).props.hidePauseButton).toBe(true);
   });
 
   it.each([false, true])('uses identical discs and graphical icons, multiplayer=%s', isMultiplayer => {

@@ -1,75 +1,81 @@
 import { useEffect } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
 
-const toRect = rect => rect && ({
-  top: rect.top,
-  left: rect.left,
-  right: rect.right,
-  bottom: rect.bottom,
-  width: rect.width,
-  height: rect.height,
-});
-
-export function getTutorialHighlightMeasureDelays(highlight, hasSwapBlindHand = false) {
-  if (['drawRevealKeepButton', 'godKeepHandButton', 'dodgeRollButton'].includes(highlight)) return [220, 320];
-  if (highlight === 'skillButton') return [50];
-  if (highlight === 'swapBlindHand' && hasSwapBlindHand) return [1200];
-  return [];
+export function unionTutorialRects(rects) {
+  const visible = rects.filter(rect => rect?.width > 0 && rect?.height > 0);
+  if (!visible.length) return null;
+  const top = Math.min(...visible.map(rect => rect.top));
+  const left = Math.min(...visible.map(rect => rect.left));
+  const right = Math.max(...visible.map(rect => rect.right));
+  const bottom = Math.max(...visible.map(rect => rect.bottom));
+  return { top, left, right, bottom, width: right - left, height: bottom - top };
 }
 
 export function useTutorialHighlightMeasurements({ enabled, step, stepDef, gameState, targets, setRects }) {
   useEffect(() => {
+    if (!enabled || typeof step !== 'string' || stepDef?.auto) return undefined;
+    const highlight = stepDef?.highlight;
+    if (!highlight || ['center', 'noSpotlight'].includes(highlight)) return undefined;
+    const observed = new Set();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(() => update());
+    const measure = (key, ...elements) => {
+      elements.filter(Boolean).forEach(element => {
+        if (observed.has(element)) return;
+        observed.add(element);
+        observer?.observe(element);
+      });
+      const rect = unionTutorialRects(elements.filter(Boolean).map(_getZoomCompensatedRect));
+      setRects[key](previous => (
+        (!previous && !rect) || (previous && rect && Object.keys(rect).every(prop => Math.abs(rect[prop] - previous[prop]) < .25))
+          ? previous : rect
+      ));
+    };
     const update = () => {
-      const highlight = typeof step === 'string' ? stepDef?.highlight : null;
-      const measure = (key, element) => {
-        const rect = element ? _getZoomCompensatedRect(element) : null;
-        if (rect) setRects[key](toRect(rect));
-      };
-
-      if (enabled && ((step >= 2 && step <= 4) || highlight === 'selfPanel')) measure('panel', targets.selfPanel.current);
-      if (enabled && (step === 5 || highlight === 'roleText')) measure('roleText', targets.roleText.current);
-      if (enabled && (step === 7 || step === 15 || ['handArea', 'handCard', 'skillButton'].includes(highlight))) measure('handArea', targets.handArea.current);
-      if (enabled && highlight === 'handCards' && targets.handArea.current) {
-        const cardEls = targets.handArea.current.querySelectorAll('[data-self-hand-card]');
-        let top = Infinity, left = Infinity, right = -Infinity, bottom = -Infinity;
-        cardEls.forEach(element => {
-          const rect = _getZoomCompensatedRect(element);
-          if (!rect) return;
-          top = Math.min(top, rect.top); left = Math.min(left, rect.left);
-          right = Math.max(right, rect.right); bottom = Math.max(bottom, rect.bottom);
-        });
-        if (top !== Infinity) setRects.handCards({ top, left, right, bottom, width: right - left, height: bottom - top });
+      const self = targets.selfPanel.current;
+      const hand = targets.handArea.current;
+      const opponents = targets.aiPanelArea.current;
+      const opponent = opponents?.querySelector('[data-pid="1"]');
+      if (highlight === 'selfPanel') {
+        const stats = self?.querySelector('.toe-self-stats');
+        // The left sidebar now continues through the faith description. The
+        // introduction needs only the portrait, identity and stats.
+        measure('panel', ...(stats ? [self.querySelector('.toe-coastal-portrait'), self.querySelector('.toe-self-title'), stats] : [self]));
       }
-      if (enabled && highlight === 'handCard' && targets.handArea.current) {
-        const cardId = stepDef?.allowedAction?.cardId;
-        const element = [...targets.handArea.current.querySelectorAll('[data-self-hand-card-id]')]
-          .find(candidate => candidate.dataset.selfHandCardId === cardId);
-        setRects.tutorialHandCard(toRect(element ? _getZoomCompensatedRect(element) : null));
+      if (highlight === 'roleText') measure('roleText', targets.roleText.current?.closest('.toe-self-title') || targets.roleText.current);
+      if (['handArea', 'handCard', 'handCards'].includes(highlight)) {
+        const cards = [...(hand?.querySelectorAll('[data-self-hand-card]') || [])];
+        measure('handArea', ...(cards.length ? cards : [hand]));
+        if (highlight === 'handCards') measure('handCards', ...cards);
+        if (highlight === 'handCard') measure('tutorialHandCard', cards.find(element => element.dataset.selfHandCardId === stepDef?.allowedAction?.cardId));
       }
-      if (enabled && (step === 9 || step === 11 || ['opponentPanel', 'swapBlind'].includes(highlight))) measure('aiPanelArea', targets.aiPanelArea.current);
-      if (enabled && ['opponentSanBar', 'opponentSanAndGodStatus'].includes(highlight)) measure('opponentSanBar', targets.aiPanelArea.current?.querySelector('[data-stat-label="SAN"]'));
-      if (enabled && highlight === 'opponentHpBar') measure('opponentHpBar', targets.aiPanelArea.current?.querySelector('[data-stat-label="HP"]'));
-      if (enabled && highlight === 'singleOpponent') measure('singleOpponent', targets.aiPanelArea.current?.querySelector('[data-pid="1"]'));
-      if (enabled && ['opponentGodStatus', 'opponentSanAndGodStatus'].includes(highlight)) measure('opponentGodStatus', targets.aiPanelArea.current?.querySelector('[data-player-god-status="1"]'));
-      if (enabled && highlight === 'drawRevealKeepButton') measure('drawRevealKeepButton', targets.drawRevealKeepButton.current);
-      if (enabled && highlight === 'godKeepHandButton') measure('godKeepHandButton', targets.godKeepHandButton.current);
-      if (enabled && highlight === 'dodgeRollButton') measure('dodgeRollButton', targets.dodgeRollButton.current);
-      if (enabled && highlight === 'skillButton') measure('skillButton', targets.skillButton.current);
-      if (enabled && highlight === 'swapBlindHand') measure('swapBlindHand', targets.swapBlindHand.current);
-      if (enabled && (step === 12 || step === 13 || highlight === 'deckArea')) measure('deckArea', targets.deckArea.current);
+      if (highlight === 'opponentPanel') measure('aiPanelArea', opponents);
+      if (['opponentSanBar', 'opponentSanAndGodStatus'].includes(highlight)) measure('opponentSanBar', opponent?.querySelector('[data-stat-label="SAN"]'));
+      if (highlight === 'opponentHpBar') measure('opponentHpBar', opponent?.querySelector('[data-stat-label="HP"]'));
+      if (highlight === 'singleOpponent') measure('singleOpponent', opponent);
+      if (['opponentGodStatus', 'opponentSanAndGodStatus'].includes(highlight)) {
+        measure('opponentGodStatus', opponent?.querySelector('[data-player-god-status="1"]'), opponent?.querySelector('[data-encounter-skulls="1"]'));
+      }
+      if (['drawRevealKeepButton', 'godKeepHandButton', 'dodgeRollButton', 'skillButton', 'swapBlindHand', 'deckArea'].includes(highlight)) {
+        measure(highlight, targets[highlight].current);
+      }
     };
 
     update();
-    const highlight = typeof step === 'string' ? stepDef?.highlight : null;
-    const timeoutIds = getTutorialHighlightMeasureDelays(highlight, !!targets.swapBlindHand.current)
-      .map(delay => setTimeout(update, delay));
-    if (!enabled) return undefined;
+    // Real flip decisions mount independently of game-state commits. Observe
+    // their mount and final geometry rather than guessing old modal delays.
+    const mutations = typeof MutationObserver === 'undefined' ? null : new MutationObserver(update);
+    mutations?.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('scroll', update, true);
     window.addEventListener('resize', update);
+    document.addEventListener('animationend', update, true);
+    document.addEventListener('transitionend', update, true);
     return () => {
-      timeoutIds.forEach(clearTimeout);
+      observer?.disconnect();
+      mutations?.disconnect();
       window.removeEventListener('scroll', update, true);
       window.removeEventListener('resize', update);
+      document.removeEventListener('animationend', update, true);
+      document.removeEventListener('transitionend', update, true);
     };
   }, [enabled, step, stepDef, gameState, targets, setRects]);
 }

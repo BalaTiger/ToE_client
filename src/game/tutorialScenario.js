@@ -267,10 +267,10 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.TREASURE_DODGE_RESULT,
     title: '求生成功',
 	body: [
-      `看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。`,
+      `刚才掷出了6点，区域牌已经收入手牌。当你掷出4~6点时，可以免于承担该区域牌的负面效果。`,
       `不过这样一来，其他人也都知道你是${TREASURE}了。当你使用某个身份特有的能力时，会自动揭晓身份。`,
     ],
-    highlight: 'noSpotlight',
+    highlight: 'handArea',
     lock: true,
     next: TUTORIAL_FLOW.TREASURE_USE_SKILL,
   },
@@ -494,7 +494,7 @@ const SKILL_STEPS = [
       TWO_ENCOUNTER_SKULL_PATCH_ACTIVE
         ? `注意${GOLD('骷髅标记')}的数量：每遭遇两次邪神才会产生1个骷髅头。`
         : `注意${GOLD('骷髅标记')}的数量，它代表了对手在这次探险中${GOD('信仰')}邪神的次数。`,
-	  `而旁边的标签，则表示对手此刻正在${GOD('信仰')}一位邪神，并接受祂的赐福。`,
+	  `骷髅压在角色面板边框上；框下的标签，则表示对手此刻正在${GOD('信仰')}一位邪神，并接受祂的赐福。`,
 	  `这两个信息的用处，你待会自会明白。`,
     ],
     highlight: 'opponentGodStatus',
@@ -526,21 +526,21 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO,
     title: '检定牌',
-    body: `就是这样！每次${SAN}降至6或以下时，都需要进行检定，触发随机效果。`,
-    highlight: 'inspectionFlipCard',
+    body: `${SAN}受到损失后降至6或以下时，需要翻开检定牌，触发随机效果。接下来观察遭遇邪神、改信与检定的完整结算。`,
+    highlight: 'deckArea',
     lock: true,
-    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
+    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
     title: '改信代价',
 	body: [
       `注意到邪神之力标签的变化了吗？对手放弃了原有的信仰，${GOLD('改信')}刚刚遭遇的“弗栗多”。`,
-	  `${GOLD('改信')}者需要额外失去1${SAN}。让我们看看这次${SAN}检定的结果……`,
+	  `${GOLD('改信')}者额外失去1${SAN}，相应的检定也已结算完成。可以在${SAN}条和冒险日志中查看结果。`,
     ],
     highlight: 'opponentSanAndGodStatus',
     lock: true,
-    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
+    next: TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,

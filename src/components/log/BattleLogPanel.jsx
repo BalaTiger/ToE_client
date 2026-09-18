@@ -3,7 +3,6 @@ import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
 import { getFontZoomCompensate } from '../../utils/scale';
 import { normalizeLogForViewer } from '../../game/logPerspective';
-import { PanelFrame } from '../battle/PanelFrame';
 import '../battle/coastal-panels.css';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
@@ -83,7 +82,6 @@ export function BattleLogPanel({
       height: isMobile ? mobileLogHeight : middleRowHeight,
       '--toe-coastal-body-font': `${12 * fontZoom}px`,
     }}>
-    <PanelFrame closed />
     {coastalBook && heading}
     <div ref={logRef} className="toe-battle-panel" data-log-panel style={{
       width: isMobile ? '100%' : 218,

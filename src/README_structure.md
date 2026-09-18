@@ -176,8 +176,8 @@ Important extracted layers:
 - hand-limit discard helpers (`splitKeptDestroyedDiscarded`, `discardCardsFromHand*`, `applyHandDiscardSideEffectsWithAnim`) -> `src/game/handLimitDiscard.js`
 - rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
 - target-action continuation state/routing -> `src/game/targetContinuation.js`
-- battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `BattleHeader.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
-- UI appearance preference and asset/layout registry -> `ui/UiAppearance.jsx`, `ui/appearances.js` (independent of expansion themes; usage in `ui/README.md`). `BattleLayouts.jsx` composes live board regions; `OpponentArc.jsx` positions rigid player frames and `PanelFrame.jsx` supplies reusable finished edges. These components never own HP/SAN or turn state; `logRef` stays on the scrolling log content.
+- battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
+- UI appearance preference and asset/layout registry -> `ui/UiAppearance.jsx`, `ui/appearances.js` (usage in `ui/README.md`). 遗迹航路 (`coastal`) is the only shipped layout; removed or unknown IDs fall back to it. The provider, selector, preference storage, asset variables and optional `appearance.BattleLayout` component override remain available for new compositions. `CoastalBattleLayout.jsx` composes the live regions; `CoastalOpponents` and `OpponentRoster` arrange full/compact opponent panels. These components never own HP/SAN or turn state; `logRef` stays on the scrolling log content. Expansion backgrounds, card backs, colors and exploration cameras remain selected by `expansionKey` in `constants/theme.js`, independently of layout.
 
 ## Remaining High-Value Refactor Targets
 
@@ -195,9 +195,9 @@ Suggested next slices:
 
 ### 2. Tutorial Controller
 
-Tutorial state and step transitions are still strongly coupled to game actions and animations.
+The scripted tutorial uses the same canonical visual events, strict queue validation and `useAnimationQueue` playback/commit boundary as normal matches. There is no tutorial-only unbounded animation duration, component `onSettled` callback or split-and-resume inspection tail. Teaching pauses occur only between committed actions: queued movement, inspection, stat changes and income finish normally before the next explanation appears. Tutorial scenario/action permissions remain in `game/tutorialScenario.js`; `InGameTutorialOverlay` and `useTutorialHighlightMeasurements` target the live sidebar, cards, pile counters and status/skull anchors of 遗迹航路. Numeric legacy tutorial steps and their separate overlay are retired.
 
-Risk: medium. Prefer extracting pure scenario/step decisions first; leave UI measurement and animation bridge in App until stable.
+Tutorial step transitions still share action-handler glue in `App.jsx`. Risk: medium. Further extraction must preserve committed-action boundaries and animation-owned presentation state.
 
 ### 3. Additional Audio Sequences
 
@@ -348,8 +348,10 @@ renders separate area-exploration or god-choice panels.
   A click can finish only that active reveal step through `useAnimationQueue`;
   encounter inspection/stat tails still run and commit normally. Never leave an
   active animation step waiting for a click: this would block decision transactions
-  and multiplayer replay. Paused playback, inspection draws, custom cues/callbacks,
-  hidden/travel-only draws and scripted tutorials keep their existing timing.
+  and multiplayer replay. Paused playback, inspection draws, custom cues/callbacks
+  and hidden/travel-only draws keep their existing timing. Scripted tutorials use
+  the same reveal timing and early-finish eligibility; teaching permissions may
+  restrict the available actions without suspending an animation step.
 - God-card decisions do not accept early choices or shorten the reveal. Their
   buttons appear only after the reveal, encounter SAN loss and any resulting
   inspections/reactions finish and the pending decision state commits.

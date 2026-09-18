@@ -179,16 +179,14 @@ describe('retained reveal decisions', () => {
     expect(ordinary).toContain('animFadeOut');
   });
 
-  it('does not arm travel or onSettled timers when mounted directly at a decision', () => {
+  it('does not arm travel or early-action timers when mounted directly at a decision', () => {
     const effects = [];
-    const onSettled = vi.fn();
     vi.spyOn(React, 'useEffect').mockImplementation(effect => { effects.push(effect); });
     vi.spyOn(globalThis, 'setTimeout');
-    renderToString(<CardFlipAnim card={card} settled onSettled={onSettled} />);
-    // The first two component effects own travel and reveal completion.
+    renderToString(<CardFlipAnim card={card} settled earlyActions />);
+    // The first two component effects own travel and early decision controls.
     expect(effects.length).toBeGreaterThanOrEqual(2);
     effects.slice(0, 2).forEach(effect => effect());
     expect(setTimeout).not.toHaveBeenCalled();
-    expect(onSettled).not.toHaveBeenCalled();
   });
 });

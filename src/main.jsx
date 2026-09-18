@@ -25,6 +25,7 @@ if (!mobileLandscapeHost) createRoot(document.getElementById('root')).render(
 )
 
 if (
+  import.meta.env.PROD &&
   typeof window !== 'undefined' &&
   typeof navigator !== 'undefined' &&
   !mobileLandscapeHost &&
@@ -38,4 +39,14 @@ if (
       console.warn('Service worker registration failed.', error);
     });
   });
+}
+
+// Development assets are edited in place. Retire only this app's old worker;
+// let the next navigation release its controller without interrupting a game.
+if (import.meta.env.DEV && !mobileLandscapeHost && 'serviceWorker' in navigator) {
+  const workerUrl = new URL(buildPublicUrl('/sw.js'), window.location.href).href;
+  navigator.serviceWorker.getRegistration(workerUrl).then(registration => {
+    const workers = [registration?.active, registration?.waiting, registration?.installing];
+    if (workers.some(worker => worker?.scriptURL === workerUrl)) return registration.unregister();
+  }).catch(error => console.warn('Development service worker cleanup failed.', error));
 }

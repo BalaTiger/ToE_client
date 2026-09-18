@@ -133,12 +133,3 @@ export function authoritativeResolvedTransitionQueueMeta(
 export function authoritativeEndTurnReplayQueueMeta(state, queue, consumedEventIds = null) {
   return strictActionQueueMeta(state, queue, consumedEventIds, 'end-turn replay queue');
 }
-
-export function actionQueueMetaForMode(
-  state,
-  queue,
-  consumedEventIds,
-  { context = 'action queue' } = {},
-) {
-  return strictActionQueueMeta(state, queue, consumedEventIds, context);
-}

@@ -2,7 +2,6 @@ import { Children } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DDCard } from '../cards';
 import { HandArea } from './HandArea';
-import { HandTableDecor, HandTableSurface } from './HandTableDecor';
 import { getCoastalGeometry } from './coastalGeometry';
 import { ActionIcon } from './ActionIcon';
 
@@ -13,7 +12,7 @@ vi.mock('../../ui/UiAppearance', () => ({
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
   useRef: initial => ({ current: initial }),
-  useState: initial => [runtime.space ?? initial, update => { runtime.space = update(runtime.space ?? initial); }],
+  useState: initial => [runtime.space ?? initial, update => { runtime.space = typeof update === 'function' ? update(runtime.space ?? initial) : update; }],
   useLayoutEffect: setup => { runtime.measure = setup; },
 }));
 
@@ -69,7 +68,7 @@ describe('coastal hand composition', () => {
     const props = makeProps();
     const tree = HandArea(props);
     const nodes = descendants(tree);
-    expect(nodes.some(node => node?.type === HandTableDecor || node?.type === HandTableSurface)).toBe(false);
+    expect(tree.props['data-hand-composition']).toBe('coastal');
     expect(nodes.filter(node => node?.props?.['data-test-prompt'])).toHaveLength(1);
     const badge = nodes.find(node => node?.props?.className === 'toe-hand-count');
     expect(badge.props['aria-label']).toBe('手牌 5 张，上限 4 张');
@@ -174,19 +173,4 @@ describe('coastal hand composition', () => {
     expect(props[confirm]).toHaveBeenCalledOnce();
   });
 
-  it.each(['arch', 'grid'])('retains the existing %s decorations and count placement', layout => {
-    runtime.layout = layout;
-    const tree = HandArea(makeProps());
-    const nodes = descendants(tree);
-    expect(tree.props['data-hand-composition']).toBeUndefined();
-    expect(nodes.some(node => node?.type === HandTableDecor)).toBe(true);
-    expect(nodes.some(node => node?.type === HandTableSurface)).toBe(true);
-    if (layout === 'arch') {
-      const strip = nodes.find(node => node?.props?.['data-self-hand-strip'] !== undefined);
-      expect(descendants(strip).some(node => node?.props?.className === 'toe-hand-count')).toBe(true);
-    } else {
-      expect(nodes).toContain('手牌 (5/4)');
-      expect(nodes.some(node => node?.props?.className === 'toe-hand-count')).toBe(false);
-    }
-  });
 });

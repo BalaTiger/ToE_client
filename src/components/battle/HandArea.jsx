@@ -4,11 +4,8 @@ import { isBlackGoatYoung, isTsathogguaSlime } from '../../game';
 import { getRestActionBlockReason } from '../../game/interactionAvailability';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 import { DDCard, GodTooltip } from '../cards';
-import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
-import { HandTableDecor, HandTableSurface } from './HandTableDecor';
 import { ActionIcon } from './ActionIcon';
-import './hand-composition.css';
 import './coastal-hand.css';
 
 export function HandArea({
@@ -31,10 +28,7 @@ export function HandArea({
   showCancelBtn,
   canShowEndTurnButton,
   isDiscardPhaseResolving,
-  isDiscardPhasePromptActive,
-  isLocalHuntRevealPrompt,
   isLocalCurrentTurn,
-  currentTurnPlayer,
   isBlocked,
   isScriptedTutorial,
   isTutorialActionAllowed,
@@ -52,12 +46,9 @@ export function HandArea({
   mobileArmedGodTooltipRect,
   mobileGodCardRefs,
   blackGoatPulsePid,
-  promptWarningTextColor,
-  promptActiveTextColor,
   isMobile,
   isMobileLandscape,
   mobileCssPx,
-  interactionFontSizes,
   mobileHandUsesCompact,
   selfHandCardScale,
   scaleRatio = 1,
@@ -73,47 +64,31 @@ export function HandArea({
   setGs,
   anim,
 }) {
-  const { appearance } = useUiAppearance();
   const skillIcon = skillRi?.icon || ri?.icon;
-  const coastalHand = appearance.battleLayout === 'coastal';
-  const integratedHand = appearance.battleLayout === 'arch' || coastalHand;
   const stripRef = useRef(null);
-  const leftReliefRef = useRef(null);
-  const rightReliefRef = useRef(null);
-  const [handSpace, setHandSpace] = useState({ betweenReliefs: 620, stripWidth: 1150 });
+  const [handSpace, setHandSpace] = useState(620);
   const desktopHand = !isMobile && !isMobileLandscape;
   useLayoutEffect(() => {
     if (!desktopHand || coastalGeometry) return;
     const strip = stripRef.current;
-    const left = leftReliefRef.current;
-    const right = rightReliefRef.current;
-    if (!strip || (!coastalHand && (!left || !right))) return;
-    const measure = () => {
-      const zoom = strip.getBoundingClientRect().width / strip.offsetWidth;
-      if (!zoom) return;
-      const betweenReliefs = coastalHand ? strip.clientWidth
-        : (right.getBoundingClientRect().left - left.getBoundingClientRect().right) / zoom;
-      const stripWidth = strip.offsetWidth;
-      setHandSpace(previous => Math.abs(previous.betweenReliefs - betweenReliefs) < .5 && previous.stripWidth === stripWidth
-        ? previous : { betweenReliefs, stripWidth });
-    };
+    if (!strip) return;
+    const measure = () => setHandSpace(strip.clientWidth);
     measure();
     const observer = new ResizeObserver(measure);
-    (coastalHand ? [strip] : [strip, left, right]).forEach(element => observer.observe(element));
+    observer.observe(strip);
     return () => observer.disconnect();
-  }, [desktopHand, coastalHand, coastalGeometry]);
+  }, [desktopHand, coastalGeometry]);
   const fanEnabled = desktopHand && visualMe.hand.length > 1;
-  const mobileCardScale = integratedHand && isMobileLandscape ? Math.max(selfHandCardScale, 1 / scaleRatio) : selfHandCardScale;
+  const mobileCardScale = isMobileLandscape ? Math.max(selfHandCardScale, 1 / scaleRatio) : selfHandCardScale;
   // Single/very small hands stop at a readable portrait size rather than filling the screen vertically.
   const cardWidth = desktopHand
-    ? coastalGeometry?.hand.cardWidth ?? Math.min(coastalHand ? 200 : 240, handSpace.betweenReliefs / (1 + Math.max(0, visualMe.hand.length - 1) * .8))
+    ? coastalGeometry?.hand.cardWidth ?? Math.min(200, handSpace / (1 + Math.max(0, visualMe.hand.length - 1) * .8))
     : (mobileHandUsesCompact ? 62 : 82) * mobileCardScale;
   const fanStep = cardWidth * .8;
   const fanHalfSpan = Math.max(0, visualMe.hand.length - 1) * fanStep / 2;
   // The table and card top edges share y = x² / (2R), in board pixels.
   const fanRadius = coastalGeometry?.hand.radius ?? Math.max(900, fanHalfSpan * fanHalfSpan / 64);
   const fanLift = coastalGeometry?.hand.lift ?? fanHalfSpan * fanHalfSpan / (2 * fanRadius);
-  const badgeX = handSpace.betweenReliefs / 2 + 20;
   const handCardHintStyle = {
     position: 'absolute',
     top: 0,
@@ -133,7 +108,7 @@ export function HandArea({
     whiteSpace: 'normal',
     zIndex: 10,
   };
-  const handCount = integratedHand && (
+  const handCount = (
     <div
       className="toe-hand-count"
       data-over-limit={visualMe.hand.length > effectiveHandLimit}
@@ -158,15 +133,11 @@ export function HandArea({
       data-current-turn={myTurn}
       data-main-actions={!isSpectating && phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden}
       data-hand-layout={desktopHand ? 'desktop' : isMobileLandscape ? 'landscape' : 'portrait'}
-      data-hand-composition={coastalHand ? 'coastal' : undefined}
+      data-hand-composition="coastal"
       style={{
-        '--toe-action-scale': coastalHand && desktopHand ? 1 : 1 / scaleRatio,
-        '--toe-hand-space': `${handSpace.betweenReliefs}px`,
-        '--toe-hand-badge-y': `${56 - fanLift + 10 + badgeX * badgeX / (2 * fanRadius) + 25}px`,
-        ...(coastalHand ? {
-          '--toe-coastal-prompt-image': `url('${buildPublicUrl('/img/ui/coastal/prompt.webp')}')`,
-          '--toe-coastal-count-image': `url('${buildPublicUrl('/img/ui/coastal/hand-count.webp')}')`,
-        } : {}),
+        '--toe-action-scale': desktopHand ? 1 : 1 / scaleRatio,
+        '--toe-coastal-prompt-image': `url('${buildPublicUrl('/img/ui/coastal/prompt.webp')}')`,
+        '--toe-coastal-count-image': `url('${buildPublicUrl('/img/ui/coastal/hand-count.webp')}')`,
         padding: isMobile
           ? `${mobileCssPx(10)}px ${mobileCssPx(10)}px`
           : isMobileLandscape
@@ -176,7 +147,6 @@ export function HandArea({
         overflow: 'visible',
       }}
     >
-      {!coastalHand && <HandTableDecor hideSurface={desktopHand} leftRef={leftReliefRef} rightRef={rightReliefRef} />}
       <div
         className="toe-hand-heading"
         style={{
@@ -186,30 +156,7 @@ export function HandArea({
           gap: isMobile || isMobileLandscape ? mobileCssPx(8) : 8,
         }}
       >
-        {integratedHand && phasePrompt && <div className="toe-hand-prompt" data-prompt-panel>{phasePrompt}</div>}
-        {!integratedHand && <span
-          style={{
-            fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-            color:
-              !isSpectating && (isDiscardPhasePromptActive || phase === 'PLAYER_REVEAL_FOR_HUNT' || isLocalHuntRevealPrompt)
-                ? promptWarningTextColor
-                : promptActiveTextColor,
-            fontSize: interactionFontSizes.body,
-            letterSpacing: isMobile ? 0.5 : 1,
-          }}
-        >
-          {isSpectating
-            ? `手牌 (${visualMe.hand.length}/${effectiveHandLimit})`
-            : isDiscardPhasePromptActive
-            ? isLocalCurrentTurn(gs)
-              ? `⚠ 手牌超限 (${visualMe.hand.length}/${effectiveHandLimit})`
-              : `等待 ${currentTurnPlayer?.name || '当前玩家'} 弃牌…`
-            : phase === 'PLAYER_REVEAL_FOR_HUNT'
-            ? '⚠ 选择亮出一张手牌'
-            : isLocalHuntRevealPrompt
-            ? '⚠ 选择亮出一张手牌'
-            : `手牌 (${visualMe.hand.length}/${effectiveHandLimit})`}
-        </span>}
+        {phasePrompt && <div className="toe-hand-prompt" data-prompt-panel>{phasePrompt}</div>}
         <div className="toe-hand-controls">
         {!isSpectating && ((phase === 'ACTION' && isVisualPlayerTurn && !isActionControlsHidden) || cancelable) && (
           <div className="toe-turn-actions">
@@ -333,11 +280,9 @@ export function HandArea({
           display: 'flex',
           gap: 0,
           flexWrap: 'nowrap',
-          justifyContent: desktopHand ? coastalHand ? 'flex-end' : 'center' : undefined,
+          justifyContent: desktopHand ? 'flex-end' : undefined,
         }}
       >
-        {desktopHand && !coastalHand && <HandTableSurface fan={{ radius: fanRadius, lift: fanLift, width: handSpace.stripWidth, top: 56, height: 56 + cardWidth * 590 / 392 + 8 }} />}
-        {!coastalHand && handCount}
         {visualMe.hand.map((c, i) => {
           const clickable = isMyCardClickable(c, i);
           const isMobileArmedGod = isMobile && mobileArmedGodCardIdx === i;
@@ -436,7 +381,7 @@ export function HandArea({
           </div>
         )}
       </div>
-      {coastalHand && handCount}
+      {handCount}
       {isMobile && mobileArmedGodCard?.isGod && mobileArmedGodTooltipRect && (
         <GodTooltip def={GOD_DEFS[mobileArmedGodCard.godKey]} godLevel={1} position={mobileArmedGodTooltipRect} />
       )}

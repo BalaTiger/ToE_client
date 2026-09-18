@@ -27,7 +27,7 @@ describe('fixed functional UI gallery', () => {
   ])('binds the %s exploration camera and background to the battle root', (expansionKey, animation, origin) => {
     const scene = VisualGallery.scenes.find(item => item[0] === 'battle-camera');
     const html = renderToString(<GalleryScenePreview scene={scene} expansionKey={expansionKey} onAction={() => {}} onScene={() => {}} />);
-    const root = html.match(/<div class="toe-battle-root toe-draw-camera-active"[^>]*>/)?.[0];
+    const root = html.match(/<div[^>]*class="toe-battle-root toe-draw-camera-active"[^>]*>/)?.[0];
     expect(root).toContain(`--toe-draw-camera-animation:${animation}`);
     expect(root).toContain(`--toe-draw-camera-origin:${origin}`);
     expect(root).toContain('--toe-battle-bg-image:linear-gradient(180deg,');

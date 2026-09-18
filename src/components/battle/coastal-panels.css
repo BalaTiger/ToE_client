@@ -30,8 +30,7 @@
   isolation: isolate;
 }
 [data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel)::before,
-[data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel) > :is(.toe-panel-frame, [data-theme-ornament]),
-[data-ui-layout='coastal'] .toe-log-frame-shell > .toe-panel-frame { display: none; }
+[data-ui-layout='coastal'] :is(.toe-self-player-panel, .toe-opponent-panel) > [data-theme-ornament] { display: none; }
 [data-ui-layout='coastal'] .toe-coastal-portrait { display: block; min-width: 0; align-self: stretch; overflow: hidden; background: #090d0e; }
 [data-ui-layout='coastal'] .toe-coastal-portrait img { display: block; width: 100%; height: 100%; object-fit: cover; object-position: center 38%; }
 [data-ui-layout='coastal'] [data-stat-label] { width: 100% !important; }

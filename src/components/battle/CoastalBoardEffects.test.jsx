@@ -52,7 +52,7 @@ describe('coastal persistent board effects', () => {
     expect(markup).not.toContain('石化配方进度');
   });
 
-  it('removes the old formula position only from coastal piles', () => {
+  it('keeps formula effects outside the piles', () => {
     const props = {
       deckCount: 20, inspectionCount: 10, discardCount: 0, discardCards: [], scaleRatio: 1,
       petrifyingFormula: { active: true, progress: 3 },
@@ -64,9 +64,5 @@ describe('coastal persistent board effects', () => {
       expect(coastal).toContain(selector);
     }
 
-    appearance.battleLayout = 'arch';
-    const arch = renderToStaticMarkup(<PileDisplay {...props} />);
-    expect(arch).toContain('title="石化配方进度：3"');
-    expect(arch.match(/data-dice-value="3"/g)).toHaveLength(1);
   });
 });

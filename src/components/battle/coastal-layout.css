@@ -105,7 +105,7 @@ body:has(.toe-coastal-matte) { min-width: 0; overflow: hidden; }
 
 /* Compact screens keep the same visual materials with scrolling, reachable regions. */
 .toe-board-composition-coastal[data-compact='true'] { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; box-sizing: border-box; min-height: 0; }
-.toe-board-composition-coastal[data-compact='true'] > :not(.toe-coastal-foreground, .toe-coastal-drapery, .toe-coastal-torch, .toe-coastal-torch-light-viewport) { position: relative; inset: auto; width: auto; height: auto; min-width: 0; }
+.toe-board-composition-coastal[data-compact='true'] > :not(.toe-coastal-foreground, .toe-coastal-drapery, .toe-coastal-torch, .toe-coastal-torch-light-viewport, .toe-sailing-spray) { position: relative; inset: auto; width: auto; height: auto; min-width: 0; }
 .toe-board-composition-coastal[data-compact='true'] .toe-coastal-drapery { display: none; }
 .toe-board-composition-coastal[data-compact='true'] .toe-coastal-self { grid-column: 1; grid-row: 1 / span 2; }
 .toe-board-composition-coastal[data-compact='true'] .toe-self-player-panel { container-type: inline-size; }

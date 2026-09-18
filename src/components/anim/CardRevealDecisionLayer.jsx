@@ -57,15 +57,15 @@ export function CardRevealDecisionLayer({ anim, exiting, expansionKey, decisionP
   const decision = getRevealDecision(p.gs);
   const pendingDecision = getRevealDecision(pendingState);
   const zhuBlocked = decision?.kind === 'god-choice' ? p.pendingZhuGodAnyCard : p.pendingZhuDrawAnyCard;
-  const visible = decision && !zhuBlocked && (decision.kind === 'god-choice'
-    ? p.isLocalGodChoice || p.gs._isMP : !p.suppressAnim);
+  const visible = decision && !zhuBlocked && (decision.kind !== 'god-choice'
+    || p.isLocalGodChoice || p.gs._isMP);
   const ready = !!visible && !!p.canShowTurnDecisionModal && !pendingState && !p.decisionSubmitting;
   const earlyState = pendingState || p.gs;
   const earlyDecision = pendingState ? pendingDecision : decision;
   const earlyZhuBlocked = earlyDecision && earlyState.zhuLight?.cardIds?.includes(earlyDecision.card.id)
     && !(earlyDecision.kind === 'god-choice' ? earlyState.abilityData?.zhuResolved : earlyState.drawReveal?.zhuResolved);
   const early = !!activeDraw && canFinishRevealEarly && !p.decisionSubmitting && !p.isSpectating
-    && !p.suppressAnim && !zhuBlocked && !earlyZhuBlocked && !queuedChoice
+    && !zhuBlocked && !earlyZhuBlocked && !queuedChoice
     && earlyDecision?.kind === 'draw-reveal' && earlyDecision.actorIdx === 0
     && matchesRevealDecision(activeDraw, earlyDecision);
   const earlyProps = early ? {
@@ -128,7 +128,6 @@ export function CardRevealDecisionLayer({ anim, exiting, expansionKey, decisionP
     sourcePile={activeDraw?.sourcePile}
     guessCorrect={activeDraw?.guessCorrect}
     expansionKey={expansionKey}
-    onSettled={activeDraw?.onSettled}
     preserveOnExit={retain}
     settled={!activeDraw}
     showBackdrop={!anim || !!activeDraw}

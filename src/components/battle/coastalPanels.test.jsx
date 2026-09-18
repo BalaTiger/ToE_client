@@ -73,7 +73,7 @@ describe('coastal panel presentation', () => {
     expect(onCardSelect).toHaveBeenCalledWith(1);
   });
 
-  it('keeps status and zone-card anchors beneath only the coastal frame', () => {
+  it('keeps status and zone-card anchors beneath the character frame', () => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const props = {
       player: {
@@ -108,15 +108,6 @@ describe('coastal panel presentation', () => {
     expect(pendants).toContain('空白区域牌');
     expect(coastal.match(/data-resting-marker="1"/g)).toHaveLength(1);
 
-    appearance.battleLayout = 'arch';
-    const arch = renderToStaticMarkup(<PlayerPanel {...props} />);
-    expect(arch).not.toContain('toe-opponent-pendants');
-    expect(arch).not.toContain('toe-coastal-portrait-framed');
-    expect(arch).toContain('梦访拉莱耶 Lv.2');
-    expect(arch.match(/src="[^"]*encounter-skull.webp"/g)).toHaveLength(8);
-    expect(arch).not.toContain('💀');
-    expect(arch).toContain('data-player-god-status="1"');
-    expect(arch).toContain('data-rendered-card-id="visible-zone"');
   });
 
   it.each([false, true])('keeps local faith, animation-owned values and sidebar skin consistent (dimmed: %s)', dimmed => {
@@ -166,7 +157,7 @@ describe('coastal panel presentation', () => {
     expect(markup.slice(markup.indexOf('data-stat-label="SAN"'))).toContain('>5</span>');
   });
 
-  it('removes only coastal pile captions while preserving piles and accessible counts', () => {
+  it('omits pile captions while preserving piles and accessible counts', () => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const props = { deckCount: 41, inspectionCount: 30, discardCount: 0, discardCards: [], scaleRatio: 1 };
     const coastal = renderToStaticMarkup(<PileDisplay {...props} />);
@@ -177,9 +168,5 @@ describe('coastal panel presentation', () => {
     expect(coastal).not.toContain('>牌堆:41<');
     expect(coastal).not.toContain('>检定:30<');
     expect(coastal).not.toContain('>弃牌堆:0<');
-    appearance.battleLayout = 'arch';
-    const arch = renderToStaticMarkup(<PileDisplay {...props} />);
-    expect(arch).toContain('>牌堆:41<');
-    expect(arch).toContain('>检定:30<');
   });
 });

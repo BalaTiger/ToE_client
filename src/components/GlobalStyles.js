@@ -39,13 +39,13 @@ export const GLOBAL_STYLES = `
   .toe-battle-background::after {
     content:"";
     position:absolute;
-    inset:-5vmax;
+    inset:var(--toe-draw-camera-inset,-5vmax);
     pointer-events:none;
     background-image:var(--toe-battle-bg-image);
     background-size:var(--toe-battle-bg-size);
     background-position:var(--toe-battle-bg-position);
     background-repeat:var(--toe-battle-bg-repeat);
-    background-attachment:var(--toe-battle-bg-attachment);
+    background-attachment:var(--toe-draw-camera-attachment,var(--toe-battle-bg-attachment));
     transform:translate3d(0,0,0) scale(1);
     transform-origin:var(--toe-draw-camera-origin,50% 48%);
     will-change:transform, opacity;
@@ -94,15 +94,21 @@ export const GLOBAL_STYLES = `
       transform:translate3d(0,5px,0) scale(1.16);
     }
   }
-  /* Horizon-centered zoom; keep the existing bob until a boat-specific motion is designed. */
+  /* Advance between the near pillars. No translation: the cover-corrected
+     horizon is the fixed vanishing point throughout each forward surge. */
   @keyframes toeDrawBackgroundSea {
-    0%   { opacity:0;    transform:translate3d(0,0,0) scale(1); }
-    12%  { opacity:1;    transform:translate3d(0,2px,0) scale(1.006); }
-    42%  { opacity:1;    transform:translate3d(0,8px,0) scale(1.025); }
-    58%  { opacity:0.88; transform:translate3d(0,-4px,0) scale(1.038); }
-    68%  { opacity:0.62; transform:translate3d(0,-6px,0) scale(1.045); }
-    86%  { opacity:0.26; transform:translate3d(0,5px,0) scale(1.056); }
-    100% { opacity:0;    transform:translate3d(0,5px,0) scale(1.06); }
+    0%   { opacity:0;    transform:scale(1); }
+    12%  { opacity:1;    transform:scale(1.025); }
+    42%  { opacity:1;    transform:scale(1.11); }
+    58%  { opacity:0.88; transform:scale(1.16); }
+    68%  { opacity:0.62; transform:scale(1.19); }
+    86%  { opacity:0.26; transform:scale(1.225); }
+    100% { opacity:0;    transform:scale(1.24); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .toe-battle-root.toe-draw-camera-active[data-exploration-motion='toeDrawBackgroundSea'] > .toe-battle-background::after {
+      animation:none;
+    }
   }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }

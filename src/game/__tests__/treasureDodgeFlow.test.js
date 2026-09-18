@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   classifyTreasureDodgeRoll,
   classifyTreasureDodgeSkip,
@@ -45,11 +45,11 @@ describe('treasure dodge flow variants', () => {
 
   it('preserves normal and AOE mode differences', () => {
     expect(treasureDodgeModeConfig(false)).toMatchObject({
-      rollContext: 'treasureDodge', includeStandardTransfer: true, supportsTutorialHold: true,
+      rollContext: 'treasureDodge', includeStandardTransfer: true,
       deriveSkipDecision: true, broadcastEndTurnReplayDelta: true,
     });
     expect(treasureDodgeModeConfig(true)).toMatchObject({
-      rollContext: 'treasureAoeDodge', includeStandardTransfer: false, supportsTutorialHold: false,
+      rollContext: 'treasureAoeDodge', includeStandardTransfer: false,
       deriveSkipDecision: false, broadcastEndTurnReplayDelta: false,
     });
     expect(getTreasureDodgeDrawerIdx({ abilityData: { drawerIdx: 2 } }, { drawerIdx: 1 }, false)).toBe(1);
@@ -80,13 +80,13 @@ describe('treasure dodge flow variants', () => {
     expect(classifyTreasureDodgeRoll(drawReveal, result, aoe)).toBe(expected);
   });
 
-  it('keeps tutorial hold only on the normal roll', () => {
-    const onSettled = vi.fn();
-    const transaction = { isAOE: false, roll: { d1: 6, rollerName: '艾伦', dodgeSuccess: true } };
-    expect(createTreasureDodgeDiceAnim({ transaction, tutorialHold: true, onTutorialSettled: onSettled }))
-      .toMatchObject({ rollerName: '艾伦', durationMs: 2147483647, onSettled });
-    expect(createTreasureDodgeDiceAnim({ transaction: { ...transaction, isAOE: true }, tutorialHold: true, onTutorialSettled: onSettled }))
-      .toEqual(expect.not.objectContaining({ durationMs: expect.anything() }));
+  it.each([false, true])('uses the queue-owned dice duration for AOE=%s', isAOE => {
+    const transaction = { isAOE, roll: { d1: 6, rollerName: '艾伦', dodgeSuccess: true } };
+    expect(createTreasureDodgeDiceAnim({ transaction })).toEqual({
+      type: 'DICE_ROLL', d1: 6, d2: 0, heal: 0,
+      rollerName: isAOE ? '你' : '艾伦', dodgeSuccess: true,
+      impactAtMs: 1200, msgs: [],
+    });
   });
 
   it('keeps a CTH rest dodge in one explicit transaction despite historical visual events', () => {

@@ -24,6 +24,8 @@ function createTreasureDodgeTransaction({
   d1,
   dodgeSuccess,
   actorLabel,
+  rollLog,
+  incomeLog,
 }) {
   return {
     type: 'treasureDodge',
@@ -35,6 +37,8 @@ function createTreasureDodgeTransaction({
     drawerIdx,
     resolutionCard,
     roll: { d1, d2: 0, heal: 0, dodgeSuccess, rollerName: actorLabel },
+    rollLog,
+    incomeLog,
     logDelta: (afterState?.log || []).slice((gs?.log || []).length),
   };
 }
@@ -85,13 +89,10 @@ export function resolveTreasureDodge(gs, drawReveal, {
   const L = [...gs.log];
   if (effectPrecedesDodge) L.push(...res.msgs, dodgeLog);
   else L.push(dodgeLog);
-  if (res.statePatch?.abilityData?.pendingZoneIncome) {
-    L.push(`${who} 选择保留 ${cardLogText(resolutionCard, { alwaysShowName: true })}，效果结算后收入手牌`, ...(effectPrecedesDodge ? [] : res.msgs));
-  } else if (dodgeSuccess && !isAOE) {
-    L.push(`${who} 收入了 ${cardLogText(resolutionCard, { alwaysShowName: true })}（负面效果已规避）`, ...(effectPrecedesDodge ? [] : res.msgs));
-  } else {
-    L.push(`${who} 收入了 ${cardLogText(resolutionCard, { alwaysShowName: true })}`, ...(effectPrecedesDodge ? [] : res.msgs));
-  }
+  const incomeLog = res.statePatch?.abilityData?.pendingZoneIncome
+    ? `${who} 选择保留 ${cardLogText(resolutionCard, { alwaysShowName: true })}，效果结算后收入手牌`
+    : `${who} 收入了 ${cardLogText(resolutionCard, { alwaysShowName: true })}${dodgeSuccess && !isAOE ? '（负面效果已规避）' : ''}`;
+  L.push(incomeLog, ...(effectPrecedesDodge ? [] : res.msgs));
 
   const baseResult = { P, D, Disc, L, d1, dodgeSuccess, who, resolutionCard };
   const pendingIncome = !!res.statePatch?.abilityData?.pendingZoneIncome;
@@ -104,7 +105,7 @@ export function resolveTreasureDodge(gs, drawReveal, {
       winGs,
       transaction: createTreasureDodgeTransaction({
         gs, drawReveal, afterState: winGs, outcome: 'win', isAOE, drawerIdx,
-        resolutionCard, d1, dodgeSuccess, actorLabel: who,
+        resolutionCard, d1, dodgeSuccess, actorLabel: who, rollLog: dodgeLog, incomeLog,
       }),
     };
   }
@@ -128,7 +129,7 @@ export function resolveTreasureDodge(gs, drawReveal, {
       pendingWinGs,
       transaction: createTreasureDodgeTransaction({
         gs, drawReveal, afterState: pendingWinGs, outcome: 'pendingWin', isAOE, drawerIdx,
-        resolutionCard, d1, dodgeSuccess, actorLabel: who,
+        resolutionCard, d1, dodgeSuccess, actorLabel: who, rollLog: dodgeLog, incomeLog,
       }),
     };
   }
@@ -175,7 +176,7 @@ export function resolveTreasureDodge(gs, drawReveal, {
     hasDecision: decisionState.hasDecision,
     transaction: createTreasureDodgeTransaction({
       gs, drawReveal, afterState: newGs, outcome: 'resolved', isAOE, drawerIdx,
-      resolutionCard, d1, dodgeSuccess, actorLabel: who,
+      resolutionCard, d1, dodgeSuccess, actorLabel: who, rollLog: dodgeLog, incomeLog,
     }),
   };
 }

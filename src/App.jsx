@@ -265,7 +265,6 @@ import {
   authoritativeResolvedTransitionQueueMeta,
   authoritativeEndTurnReplayQueueMeta,
   strictActionQueueMeta,
-  actionQueueMetaForMode,
   getMpDecisionKey,
   isLocalMpDrawChoicePhase,
   isLocalMpGodChoicePhase,
@@ -584,10 +583,6 @@ export default function Game(){
   const [tutorialStep,setTutorialStep]=useState(1);
   const [tutorialOverlayHidden,setTutorialOverlayHidden]=useState(false);
   const [tutorialDiceResultPending,setTutorialDiceResultPending]=useState(false);
-  const [tutorialDiceResultResuming,setTutorialDiceResultResuming]=useState(false);
-  const [tutorialInspectionPending,setTutorialInspectionPending]=useState(false);
-  const [tutorialInspectionResuming,setTutorialInspectionResuming]=useState(false);
-  const tutorialGodConvertContinuationRef=useRef(null);
   const [tutorialGodPlayerDrawArmed,setTutorialGodPlayerDrawArmed]=useState(false);
   const tutorialStepDef=showTutorial&&typeof tutorialStep==='string'?getTutorialStep(tutorialStep):null;
   const isScriptedTutorial=!!tutorialStepDef;
@@ -1588,68 +1583,18 @@ export default function Game(){
 
   const applyTutorialStateSnapshot=useCallback((nextGs)=>{
     if(!nextGs)return;
-    restoreVisibleLog(nextGs.log||[],nextGs);
-    setVisualDiscard(getVisualDiscardForState(nextGs));
-    setDisplayStats((nextGs.players||[]).map(p=>({hp:p.hp,san:p.san})));
-    setGs(nextGs);
-  },[getVisualDiscardForState,restoreVisibleLog]);
-
-  const playPendingAiGodEncounterInspection=useCallback(()=>{
-    const pending=gs?.abilityData;
-    const actorIdx=pending?.playerIndex;
-    if(!gs||gs.phase!=='AI_GOD_CHOICE'||actorIdx==null||!pending?.pendingEncounterInspection)return false;
-    let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-    let inspectionMeta=makeInspectionMeta(gs);
-    const processed=applyInspectionForSanLoss(actorIdx,P[actorIdx]?.san,gs.currentTurn??actorIdx,P,D,Disc,L,inspectionMeta);
-    P=processed.P;D=processed.D;Disc=processed.Disc;L=processed.log;inspectionMeta=processed.inspectionMeta;
-    const nextAbilityData={...(gs.abilityData||{}),pendingEncounterInspection:false};
-    const newGs={
-      ...gs,
-      players:P,
-      deck:D,
-      discard:Disc,
-      log:L,
-      ...inspectionMeta,
-      abilityData:nextAbilityData,
-      _pendingAiGodChoice:{...(gs._pendingAiGodChoice||{}),pendingEncounterInspection:false},
-    };
-    const replay=compileFreshVisualEventReplay(gs,newGs);
-    let marked=false;
-    const queue=(replay.queue||[]).map(step=>{
-      if(!marked&&step?.type==='DRAW_CARD'&&step?.inspectionSeq!=null){
-        marked=true;
-        return {
-          ...step,
-          durationMs:2147483647,
-          onSettled:()=>{
-            setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO);
-            setTutorialInspectionPending(false);
-          },
-        };
-      }
-      return step;
-    });
-    setTutorialInspectionPending(true);
-    triggerAnimQueue(queue,newGs,()=>{
-      applyTutorialStateSnapshot(newGs);
-      setTutorialInspectionResuming(false);
-      setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE);
-    },actionQueueMetaForMode(newGs,queue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial inspection resume'}));
-    return true;
-  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
+    // Live action logs are already revealed by the ordinary event queue.
+    // Match ordinary commits: completed turn snapshots must not mask new faith/tags.
+    const committedGs=normalizeLocalPendingGs(nextGs);
+    setVisualDiscard(getVisualDiscardForState(committedGs));
+    setDisplayStats((committedGs.players||[]).map(p=>({hp:p.hp,san:p.san})));
+    setGs(committedGs);
+  },[getVisualDiscardForState,normalizeLocalPendingGs]);
 
   const advanceTutorialStep=useCallback((nextStep)=>{
     if(!nextStep)return;
-    if(
-      tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_OPPONENT_DRAW
-      &&nextStep===TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO
-      &&playPendingAiGodEncounterInspection()
-    ){
-      return;
-    }
-    // 如果还有未应用的动画终态，先应用再切换教学步骤，避免丢失状态
-    const pendingBase=pendingGsRef.current;
-    if(pendingBase)pendingGsRef.current=null;
+    // Teaching checkpoints only run after the ordinary transaction commits.
+    if(anim||animExiting||animQueueRef.current.length||pendingGsRef.current)return;
     clearBattleAnimationState();
     setSwapBlindDraw(null);
     setMobileArmedGodCardIdx(null);
@@ -1659,25 +1604,13 @@ export default function Game(){
     setTutorialStep(nextStep);
     setGs(prev=>{
       if(!prev)return prev;
-      const base=pendingBase||prev;
-      const nextGs=applyTutorialStepState(clearTutorialWinState(base,nextStep),nextStep);
-      restoreVisibleLog(nextGs?.log||[],nextGs);
+      const nextGs=applyTutorialStepState(clearTutorialWinState(normalizeLocalPendingGs(prev),nextStep),nextStep);
+      if(getTutorialStep(nextStep).setup)restoreVisibleLog(nextGs?.log||[],nextGs);
       setVisualDiscard(getVisualDiscardForState(nextGs));
       setDisplayStats((nextGs?.players||[]).map(p=>({hp:p.hp,san:p.san})));
       return nextGs;
     });
-  },[clearBattleAnimationState,getVisualDiscardForState,playPendingAiGodEncounterInspection,restoreVisibleLog,pendingGsRef,tutorialStep]);
-
-  const handleTutorialResultNext=useCallback(()=>{
-    if(tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO){
-      setTutorialInspectionResuming(true);
-      setAnim(prev=>prev?{...prev,durationMs:0,onSettled:undefined}:prev);
-      return;
-    }
-    setTutorialDiceResultResuming(true);
-    // 结束骰子定格，让它正常淡出，随后播放队列中的收入牌飞入手牌动画
-    setAnim(prev=>prev?{...prev,durationMs:0,onSettled:undefined}:prev);
-  },[setAnim,tutorialStep]);
+  },[anim,animExiting,animQueueRef,clearBattleAnimationState,getVisualDiscardForState,normalizeLocalPendingGs,restoreVisibleLog,pendingGsRef,tutorialStep]);
 
   const isTutorialActionAllowed=useCallback((action)=>{
     if(!showTutorial||!tutorialStepDef)return true;
@@ -2042,112 +1975,23 @@ export default function Game(){
     if(replay.inspectionEvents.length){
       lastInspectionSeqRef.current=Math.max(lastInspectionSeqRef.current,...replay.inspectionEvents.map(ev=>ev.seq||0));
     }
-    const splitBeforeInspection=showTutorial&&nextTutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK&&replay.inspectionEvents.length;
     const finish=()=>{
       if(nextTutorialStep){
         applyTutorialStateSnapshot(newGs);
         setTutorialStep(nextTutorialStep);
       }
     };
-    if(splitBeforeInspection){
-      const firstInspectionEvent=replay.inspectionEvents[0];
-      if(firstInspectionEvent){
-        const mergePostConvertIdentity=(players=[])=>copyPlayers(players).map((player,idx)=>{
-          const finalPlayer=newGs.players?.[idx];
-          if(!finalPlayer)return player;
-          return {
-            ...player,
-            godName:finalPlayer.godName,
-            godLevel:finalPlayer.godLevel,
-            godZone:[...(finalPlayer.godZone||[])],
-            godEncounters:finalPlayer.godEncounters,
-            godEncounterCount:finalPlayer.godEncounterCount,
-            lastGodEncounterSanLoss:finalPlayer.lastGodEncounterSanLoss,
-            lastGodEncounterCreatedSkull:finalPlayer.lastGodEncounterCreatedSkull,
-            lastGodEncounterPatchEnabled:finalPlayer.lastGodEncounterPatchEnabled,
-          };
-        });
-        const pausePlayers=mergePostConvertIdentity(firstInspectionEvent.beforePlayers||newGs.players);
-        const beforeInspectionLog=[...(Array.isArray(replay.inspectionEvents[0]?.beforeLog)?replay.inspectionEvents[0].beforeLog:newGs.log||[])];
-        const firstInspectionStatSeq=firstInspectionEvent.statEventSeq;
-        const pauseStatEvents=(newGs._statEvents||[]).filter(ev=>(
-          firstInspectionStatSeq==null ? true : (ev?.seq!=null&&ev.seq<firstInspectionStatSeq)
-        ));
-        const pauseStatSeq=pauseStatEvents.reduce((max,ev)=>Math.max(max,ev?.seq||0),gs._statEventSeq||0);
-        const pauseGs={
-          ...newGs,
-          players:pausePlayers,
-          log:beforeInspectionLog,
-          _inspectionSeq:gs._inspectionSeq||0,
-          _statEvents:pauseStatEvents,
-          _statEventSeq:pauseStatSeq,
-          _playersBeforeThisDraw:null,
-          _preTurnPlayers:null,
-        };
-        const preInspectionQueue=compileFreshVisualEventQueue(gs,pauseGs);
-        const adjustedInspectionEvents=replay.inspectionEvents.map(ev=>({
-          ...ev,
-          beforePlayers:mergePostConvertIdentity(ev.beforePlayers||pausePlayers),
-          afterPlayers:mergePostConvertIdentity(ev.afterPlayers||ev.beforePlayers||pausePlayers),
-        }));
-        const inspectionFlow=buildInspectionEventFlow(
-          {players:pausePlayers,log:beforeInspectionLog,_statEventSeq:pauseStatSeq},
-          adjustedInspectionEvents,
-          {compileFreshVisualEventQueue,copyPlayers}
-        );
-        const maxInspectionSeq=Math.max(gs._inspectionSeq||0,...adjustedInspectionEvents.map(ev=>ev?.seq||0));
-        const tailStatEventSeq=Math.max(inspectionFlow.statEventSeq,newGs._statEventSeq||0);
-        const tailQueue=compileFreshVisualEventQueue(
-          {
-            players:inspectionFlow.players,
-            log:inspectionFlow.log,
-            _statEventSeq:tailStatEventSeq,
-            _inspectionSeq:maxInspectionSeq,
-          },
-          newGs
-        );
-        tutorialGodConvertContinuationRef.current={queue:[...inspectionFlow.queue,...tailQueue],finalGs:{...newGs,_playersBeforeThisDraw:null,_preTurnPlayers:null}};
-        const showConvertCheck=()=>{
-          applyTutorialStateSnapshot(pauseGs);
-          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK);
-        };
-        if(preInspectionQueue.length){
-          triggerAnimQueue(preInspectionQueue,pauseGs,showConvertCheck,actionQueueMetaForMode(pauseGs,preInspectionQueue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial god conversion pre-inspection'}));
-        }else{
-          setGs(pauseGs);
-          showConvertCheck();
-        }
-        return;
-      }
-    }
     if(replay.queue.length||abandonGiftDiscardStep){
       // 弃牌动画放在 diff/检定队列之后：放弃馈赠是结算的最后一步。
       const queue=[...replay.queue,...(abandonGiftDiscardStep?[abandonGiftDiscardStep]:[])];
-      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined,actionQueueMetaForMode(newGs,queue,consumedVisualEventIdsRef.current,{tutorial:showTutorial,context:'AI god choice'}));
+      triggerAnimQueue(queue,newGs,nextTutorialStep?finish:undefined,strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'AI god choice'));
     }else{
       setGs(newGs);
       finish();
     }
-  },[applyTutorialStateSnapshot,gs,showTutorial,triggerAnimQueue]);
+  },[applyTutorialStateSnapshot,gs,triggerAnimQueue]);
 
   useEffect(()=>{
-    if(showTutorial&&tutorialStep===TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE){
-      if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
-      const continuation=tutorialGodConvertContinuationRef.current;
-      if(continuation){
-        tutorialGodConvertContinuationRef.current=null;
-        const finish=()=>{
-          applyTutorialStateSnapshot(continuation.finalGs);
-          setTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW);
-        };
-        if(continuation.queue?.length){
-          triggerAnimQueue(continuation.queue,continuation.finalGs,finish,actionQueueMetaForMode(continuation.finalGs,continuation.queue,consumedVisualEventIdsRef.current,{tutorial:true,context:'tutorial god conversion continuation'}));
-        }else{
-          finish();
-        }
-        return;
-      }
-    }
     if(!gs||gs.gameOver||gs.phase!=='AI_GOD_CHOICE')return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(showTutorial){
@@ -2156,7 +2000,7 @@ export default function Game(){
       return;
     }
     resolvePendingAiGodChoice();
-  },[showTutorial,tutorialStep,gs,anim,animExiting,animQueueRef,pendingGsRef,applyTutorialStateSnapshot,triggerAnimQueue,resolvePendingAiGodChoice]);
+  },[showTutorial,tutorialStep,gs,anim,animExiting,animQueueRef,pendingGsRef,resolvePendingAiGodChoice]);
 
   // 骰子动画结束后再显示“求生成功”教学弹窗，动画期间隐藏教学遮罩
   useEffect(()=>{
@@ -2165,14 +2009,6 @@ export default function Game(){
     setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);
     setTutorialDiceResultPending(false);
   },[showTutorial,tutorialDiceResultPending,anim,animExiting,animQueueRef,pendingGsRef]);
-
-  // 玩家点“下一步”恢复骰子动画后，等收入牌飞入动画也播完再进入掉包教学
-  useEffect(()=>{
-    if(!showTutorial||!tutorialDiceResultResuming)return;
-    if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
-    setTutorialStep(TUTORIAL_FLOW.TREASURE_USE_SKILL);
-    setTutorialDiceResultResuming(false);
-  },[showTutorial,tutorialDiceResultResuming,anim,animExiting,animQueueRef,pendingGsRef]);
 
   useEffect(()=>{
     if(!anim)setEarthquakeVisualPlayers(null);
@@ -4117,7 +3953,6 @@ export default function Game(){
   const ri=RINFO[me.role];
   const skillRi=gs.globalOnlySwapOwner!=null?RINFO['寻宝者']:(RINFO[effectiveRole]||ri);
   const effectiveSkillName=skillRi.skillName||ri.skillName;
-  const suppressAnim=showTutorial&&typeof tutorialStep==='number'&&tutorialStep>=2; // hide all anims during legacy tutorial steps 2+
   const huntAbandoned=gs.huntAbandoned||[];
   const isResolvingHuntReveal=gs.phase==='HUNT_CONFIRM'
     &&pendingGsRef.current
@@ -4935,16 +4770,20 @@ export default function Game(){
     // 首先检查是否是其他角色触发的AOE负面效果
     if(isAOENegativeEffect&&isTreasureHunter&&drawerIdx!==0){
       // 触发AOE负面效果时，寻宝者可以选择掷骰子规避
+      const decisionLogs=[...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${localDisplayName(drawerIdx,P[drawerIdx].name)} 触发了 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！作为寻宝者，你可以选择掷骰子尝试规避。`];
+      appendVisibleLog(decisionLogs);
       setGs({...gs,phase:'TREASURE_AOE_DODGE_DECISION',drawReveal:dr,abilityData:{...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{}),drawerIdx},
-        log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${localDisplayName(drawerIdx,P[drawerIdx].name)} 触发了 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！作为寻宝者，你可以选择掷骰子尝试规避。`]});
+        log:[...gs.log,...decisionLogs]});
       return;
     }
     
     // 然后检查是否是寻宝者自己触发的负面区域牌
     if(isTreasureHunter&&isLocalSeatIndex(drawerIdx)&&isDodgeableEffect&&conditionalNegativeApplies){
       // Preserve cthDrawsRemaining so CTH rest-draws aren't lost after dodge decision
+      const decisionLogs=[...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你即将承受 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！是否掷骰子尝试规避？`];
+      appendVisibleLog(decisionLogs);
       setGs({...effectGs,phase:'TREASURE_DODGE_DECISION',drawReveal:dr,abilityData:{...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})},
-        log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你即将承受 ${cardLogText(resolutionCard,{alwaysShowName:true})} 的负面效果！是否掷骰子尝试规避？`]});
+        log:[...gs.log,...decisionLogs]});
       return;
     }
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,effectGs,false,[],false);
@@ -5355,8 +5194,6 @@ export default function Game(){
     const flowKind=result.newGs?.abilityData?.pendingZoneIncome?'standard':classifyTreasureDodgeRoll(dr,result,aoe);
     const presentation=buildTreasureDodgeRollPresentation(result.transaction,{
       flowKind,
-      tutorialHold:isTutorialDodgeStep,
-      onTutorialSettled:()=>{setTutorialStep(TUTORIAL_FLOW.TREASURE_DODGE_RESULT);setTutorialDiceResultPending(false);},
     });
     const queue=presentation.queue;
     const afterState=presentation.afterState;
@@ -7875,7 +7712,7 @@ export default function Game(){
     }
     const revealMsg=`你（追猎者）追捕 ${P[ti].name}，${P[ti].name} 亮出 ${cardLogText(rc,{alwaysShowName:true})}`;
     const targetEvent=createHuntTargetEvent({
-      sourceIdx:0,targetIdx:ti,msgs:[revealMsg],attemptId:huntAttemptId,
+      sourceIdx:0,targetIdx:ti,attemptId:huntAttemptId,
       targetResolutionEventId:night.targetResolutionEventId,
       beforePlayers:gs.players,afterPlayers:P,
     });
@@ -9611,11 +9448,11 @@ export default function Game(){
     if(shouldShowTutorialPrompt){setTutorialStep(1);setShowTutorial(true);return;}
     _doStartNewGame();
   }
-  function _doStartNewGame(silent=false){
+  function _doStartNewGame(){
     setPendingSoftGuideId(null);
     softGuidePrevPlayersRef.current=null;
     queuedSoftGuideIdRef.current=null;
-    const shouldForceFirstExpansion=!silent&&!firstBattleStarted;
+    const shouldForceFirstExpansion=!firstBattleStarted;
     if(shouldForceFirstExpansion){
       setFirstBattleStarted(true);
       safeLS.set(FIRST_BATTLE_DONE_KEY,'1');
@@ -9641,13 +9478,6 @@ export default function Game(){
     setAnimExiting(false);
     clearDamageAnimations();
     setShowGodResurrection(false); // reset for next game
-    if(silent){
-      // Tutorial preview: set game state immediately, no animation, no pending draw
-      setAnim(null);
-      restoreVisibleLog(newGs.log||[]);
-      setGs({...newGs,phase:'ACTION',drawReveal:null});
-      return;
-    }
     // Opening restoration stops before the first turn's event timeline.
     restoreVisibleLog(newGs.gameOver?newGs.log:(newGs._initialLog||[]));
     setGs(maskOpeningTurnStartDrawForDisplay(newGs));
@@ -9778,6 +9608,8 @@ export default function Game(){
 
   function completeTutorial(){
     setShowTutorial(false);
+    setTutorialDiceResultPending(false);
+    setTutorialGodPlayerDrawArmed(false);
     setTutorialDone(true);
     if(canPersistTutorial)safeLS.set(TUTORIAL_KEY,'1');
     setTutorialStep(1);
@@ -9785,6 +9617,9 @@ export default function Game(){
   }
   function _startForTutorial(){
     const tutorialGs=createTutorialScenario('treasure');
+    setTutorialDiceResultPending(false);
+    setTutorialGodPlayerDrawArmed(false);
+    setTutorialOverlayHidden(false);
     setPendingSoftGuideId(null);
     softGuidePrevPlayersRef.current=null;
     queuedSoftGuideIdRef.current=null;
@@ -10282,7 +10117,7 @@ export default function Game(){
     mpCthSec,mpTurnSec,mpDiscardSec,mpHuntSec,mpDecisionSec,isMpCthDecisionPhase,isLocalMpDecisionActive:isMpDecisionTimerActive,
     houndsTimerVisible,houndsSecLeft,
     // animation highlights
-    anim,suppressAnim,hitIndices,sanHitIndices,hpHealIndices,sanHealIndices,
+    anim,animExiting,hitIndices,sanHitIndices,hpHealIndices,sanHealIndices,
     guillotinedPids,blackGoatPulsePid,godHighlightPanelBursts,damageLinkGhosts,damageLinkEstablishAnims,
     sceneShake,
     // interaction helpers
@@ -10297,8 +10132,7 @@ export default function Game(){
     // tutorial / soft guide
     showTutorial,tutorialStep,isTutorialActionAllowed,isTutorialDrawKeepStep,isScriptedTutorial,
     pendingSoftGuideId,softGuideSpotlights,
-    tutorialOverlayHidden,tutorialDiceResultPending,tutorialDiceResultResuming,
-    tutorialInspectionPending,tutorialInspectionResuming,
+    tutorialOverlayHidden,tutorialDiceResultPending,
     // theme
     battleBackgroundStyle,drawBackgroundCameraActive,globalStyles:GLOBAL_STYLES,
     // refs
@@ -10325,7 +10159,7 @@ export default function Game(){
     resetDisconnectedToStart:requestExitMatch,setPrivatePeek,setEmojiButtonPos,setShowEmojiPicker,handleEmojiClick,
     godResolvePlayer,nyaBorrow,nyaSkip,runDecision,
     setGs,setAnim,setPreparingSoftGuideId,setPendingSoftGuideId,setSoftGuideSpotlights,
-    setTutorialStep,advanceTutorialStep,handleTutorialResultNext,completeTutorial,_onRoleRevealDone,
+    advanceTutorialStep,completeTutorial,_onRoleRevealDone,
     handleGamma,handleMusicVolume,handleSfxVolume,handleTutorialTreasureMapConfirm,
     markLocalTreasureMapShown:()=>{localTreasureMapShownRef.current=true;},
     // misc derived flags / data used in the moved JSX
@@ -10351,27 +10185,26 @@ export default function Game(){
       anim={anim}
       animExiting={animExiting}
       expansionKey={gs.expansionKey}
-      disabled={suppressAnim}
       decisionProps={{...battleScreenProps,decisionSubmitting}}
       pendingState={pendingGsRef.current}
       canFinishRevealEarly={canFinishRevealEarly&&!isSpectating&&!softGuidePauseActive&&!showTutorial}
       finishRevealEarly={finishRevealEarly}
       playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
     />
-    {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}
+    {huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}
     <GameLayerPortal>
-      {!suppressAnim&&<SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>}
-      {!suppressAnim&&<HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>}
-      {!suppressAnim&&<BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>}
+      <SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>
+      <HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>
+      <BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>
     </GameLayerPortal>
     {flyingEmojis.map(fe=>(
       <FlyingEmoji key={fe.id} {...fe} onDone={handleFlyingEmojiDone}/>
     ))}
-    {!suppressAnim&&petrifyTargets.length>0&&<PetrifyAnim targets={petrifyTargets}/>}
-    {!suppressAnim&&guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
-    {!suppressAnim&&<KnifeEffect targets={knifeTargets}/>}
-    {!suppressAnim&&<SanMistOverlay targets={sanTargets}/>}
-    {!suppressAnim&&<CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>}
+    {petrifyTargets.length>0&&<PetrifyAnim targets={petrifyTargets}/>}
+    {guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
+    <KnifeEffect targets={knifeTargets}/>
+    <SanMistOverlay targets={sanTargets}/>
+    <CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>
     <GameLayerPortal>
     {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} confirmCountdownSec={gs._isMP?3:null} onConfirm={revealWin}/>}
     {phase==='GOD_RESURRECTION'&&(!showTutorial||isTutorialGodResurrection)&&(

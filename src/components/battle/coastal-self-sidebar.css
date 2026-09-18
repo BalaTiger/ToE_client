@@ -124,17 +124,19 @@
 [data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-power-description {
   /* Smaller desktop copy, but compensate both board zoom and mobile iframe
      scaling so CJK strokes still render at at least 11 screen CSS pixels. */
-  font-size: max(10.5px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  font-size: max(10px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
   font-weight: 400 !important;
   line-height: 1.45 !important;
   margin-top: 4px !important;
 }
 [data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-god-name {
-  font-size: max(12px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  /* Keep distinct screen-size floors so mobile scaling preserves hierarchy. */
+  font-size: max(13px, calc(13px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  font-weight: 500 !important;
   line-height: 1.35;
 }
 [data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-power-name {
-  font-size: max(10.5px, calc(10px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  font-size: max(11.5px, calc(12px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
   line-height: 1.35;
 }
 

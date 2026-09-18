@@ -2,15 +2,15 @@ import { Children, cloneElement, useEffect, useLayoutEffect, useRef, useState } 
 import { getOpponentRosterLayout } from './opponentRosterLayout';
 import './opponent-roster.css';
 
-export function OpponentRoster({ children, currentTurn, layout = 'coastal', ref }) {
+export function OpponentRoster({ children, currentTurn, ref }) {
   const areaRef = useRef(null);
-  const [width, setWidth] = useState(layout === 'coastal' ? 630 : 1180);
+  const [width, setWidth] = useState(630);
   const [opened, setOpened] = useState(null);
   const openPid = opened?.pid;
   const [currentHeight, setCurrentHeight] = useState(0);
   const panels = Children.toArray(children);
-  const fullWidth = layout === 'coastal' ? 154 : 220;
-  const geometry = getOpponentRosterLayout({ count: panels.length, currentTurn, expandedPid: openPid, width, fullWidth, compactWidth: 64, arc: layout === 'arch' });
+  const fullWidth = 154;
+  const geometry = getOpponentRosterLayout({ count: panels.length, currentTurn, expandedPid: openPid, width, fullWidth, compactWidth: 64 });
 
   useLayoutEffect(() => {
     const element = areaRef.current;
@@ -25,12 +25,12 @@ export function OpponentRoster({ children, currentTurn, layout = 'coastal', ref 
   useLayoutEffect(() => {
     const seat = areaRef.current?.querySelector('[data-current-turn="true"].toe-opponent-roster-seat');
     const surface = seat?.firstElementChild;
-    const measure = () => setCurrentHeight(surface ? Math.ceil(surface.offsetHeight + (layout === 'arch' ? 22 : 0)) : 0);
+    const measure = () => setCurrentHeight(surface ? Math.ceil(surface.offsetHeight) : 0);
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     if (surface) observer?.observe(surface);
     return () => observer?.disconnect();
-  }, [currentTurn, layout]);
+  }, [currentTurn]);
 
   useEffect(() => {
     if (openPid == null) return;

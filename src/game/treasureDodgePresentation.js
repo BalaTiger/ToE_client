@@ -1,9 +1,8 @@
-import { bindAnimLogChunks, splitAnimBoundLogs } from './animLogs';
 import { cardTransferStep, statePatchStep } from './animQueueHelpers';
 import { compileFreshVisualEventReplay } from './visualEventTransactionCompiler';
 import { treasureDodgeModeConfig } from './treasureDodgeFlow';
 
-export function createTreasureDodgeDiceAnim({ transaction, tutorialHold = false, onTutorialSettled } = {}) {
+export function createTreasureDodgeDiceAnim({ transaction } = {}) {
   const roll = transaction?.roll || {};
   const config = treasureDodgeModeConfig(!!transaction?.isAOE);
   return {
@@ -13,20 +12,11 @@ export function createTreasureDodgeDiceAnim({ transaction, tutorialHold = false,
     heal: 0,
     rollerName: config.rollerName || roll.rollerName,
     dodgeSuccess: !!roll.dodgeSuccess,
-    ...(tutorialHold && config.supportsTutorialHold ? {
-      durationMs: 2147483647,
-      onSettled: onTutorialSettled,
-    } : {}),
+    // The displayed dice settle after twelve 100ms frames. Disclose the
+    // result there, not when the roll starts or when the next guide opens.
+    impactAtMs: 1200,
+    msgs: transaction?.rollLog ? [transaction.rollLog] : [],
   };
-}
-
-function buildEffectQueue(transaction) {
-  const beforeState = transaction?.beforeState || {};
-  const afterState = transaction?.afterState || {};
-  const inspectionAware = compileFreshVisualEventReplay(beforeState, afterState);
-  return inspectionAware.inspectionEvents.length
-    ? inspectionAware.queue
-    : bindAnimLogChunks(inspectionAware.queue, splitAnimBoundLogs(transaction?.logDelta || []));
 }
 
 /**
@@ -36,15 +26,13 @@ function buildEffectQueue(transaction) {
  */
 export function buildTreasureDodgeRollPresentation(transaction, {
   flowKind = 'standard',
-  tutorialHold = false,
-  onTutorialSettled,
 } = {}) {
   if (!transaction?.beforeState || !transaction?.afterState) {
     throw new TypeError('buildTreasureDodgeRollPresentation requires a resolved transaction');
   }
   const config = treasureDodgeModeConfig(!!transaction.isAOE);
-  const effectQueue = buildEffectQueue(transaction);
-  const dice = createTreasureDodgeDiceAnim({ transaction, tutorialHold, onTutorialSettled });
+  const effectQueue = compileFreshVisualEventReplay(transaction.beforeState, transaction.afterState).queue;
+  const dice = createTreasureDodgeDiceAnim({ transaction });
   const shouldTransfer = config.includeStandardTransfer
     && !transaction.drawReveal?.fromEndTurnReplay
     && !transaction.afterState.abilityData?.pendingZoneIncome;
@@ -56,8 +44,12 @@ export function buildTreasureDodgeRollPresentation(transaction, {
     sourceAnchor: 'playerArea',
     effect: 'draw',
     cards: [transaction.resolutionCard],
+    msgs: transaction.incomeLog ? [transaction.incomeLog] : [],
   }) : null;
   const queue = [dice, ...effectQueue, transfer].filter(Boolean);
+  // AOE and deferred-income decisions have no landing flight. Their explicit
+  // choice/income message still follows the effects, without restoring logs.
+  if (!transfer && transaction.incomeLog) queue.push(statePatchStep({ msgs: [transaction.incomeLog] }));
 
   if (flowKind === 'rest' || flowKind === 'slime') {
     queue.push(statePatchStep({

@@ -1,0 +1,93 @@
+.toe-sailing-spray {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+  pointer-events: none;
+}
+/* Same z-index, earlier DOM order: the foreground alpha and torch occlude
+   the entire main splash, including its root. Never raise this full image. */
+.toe-sailing-wake { z-index: -1; }
+.toe-sailing-crest {
+  z-index: 16;
+  /* Only a narrow strip at the lower hand/foreground seam. Excludes the
+     left torch/panel and right action buttons, irrespective of hand count. */
+  clip-path: polygon(30% 83%, 42% 82%, 55% 83%, 68% 83%, 76% 81%, 76% 93%, 30% 93%);
+}
+.toe-sailing-rider {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  offset-distance: 0%;
+  offset-rotate: 0deg;
+  offset-anchor: 0 0;
+}
+.toe-sailing-wing { transform: scaleX(var(--sailing-side)); }
+.toe-sailing-plume {
+  position: absolute;
+  width: var(--sailing-plume-width);
+  height: auto;
+  left: 0;
+  top: calc(var(--sailing-plume-width) * -.305);
+  opacity: 0;
+  transform-origin: 0 46%;
+  filter: brightness(.84) saturate(.72);
+}
+.toe-sailing-foam {
+  position: absolute;
+  left: 6px;
+  top: -18px;
+  width: 44px;
+  height: 44px;
+  opacity: 0;
+}
+.toe-sailing-spray[data-active='true'] .toe-sailing-rider {
+  animation: toeSailingEdge .92s linear 3 both;
+}
+.toe-sailing-spray[data-active='true'] .toe-sailing-plume {
+  animation: toeSailingPlume .92s linear 3 both;
+}
+.toe-sailing-spray[data-active='true'] .toe-sailing-foam {
+  animation: toeSailingFoam .92s linear 3 both;
+}
+.toe-sailing-torch-mist { position: absolute; inset: 0; pointer-events: none; }
+.toe-sailing-torch-mist img {
+  position: absolute;
+  left: 78%;
+  top: 84%;
+  width: var(--spray-size);
+  height: var(--spray-size);
+  opacity: 0;
+}
+.toe-sailing-torch-mist[data-active='true'] img {
+  animation: toeSailingTorchMist .92s linear var(--spray-delay) 3 both;
+}
+.toe-sailing-spray[data-paused='true'] .toe-sailing-rider,
+.toe-sailing-spray[data-paused='true'] img,
+.toe-sailing-torch-mist[data-paused='true'] img { animation-play-state: paused; }
+@keyframes toeSailingEdge { to { offset-distance: 100%; } }
+@keyframes toeSailingPlume {
+  /* Root follows the gunwale; the fan rises above it. scaleX mirrors this
+     into upward-left / upward-right, independently of depth perspective. */
+  0% { opacity: 0; transform: rotate(-24deg) scale(.18); }
+  14% { opacity: .76; transform: rotate(-32deg) scale(.5); }
+  36% { opacity: .86; transform: rotate(-40deg) scale(.85); }
+  61% { opacity: .58; transform: rotate(-40deg) scale(1); }
+  85%, 100% { opacity: 0; transform: translateY(8px) rotate(-34deg) scale(1.08); }
+}
+@keyframes toeSailingFoam {
+  0%, 25% { opacity: 0; transform: translate(0, 6px) scale(.25); }
+  46% { opacity: .38; transform: translate(10px, -12px) scale(.75); }
+  62% { opacity: .2; transform: translate(20px, -24px) scale(.9); }
+  85%, 100% { opacity: 0; transform: translate(30px, -8px) scale(1); }
+}
+@keyframes toeSailingTorchMist {
+  0%, 20% { opacity: 0; transform: translate(0, 12px) scale(.4); }
+  34% { opacity: .55; transform: translate(calc(var(--spray-x) * .42), calc(var(--spray-y) * .55)) scale(.7); }
+  60% { opacity: .28; transform: translate(var(--spray-x), var(--spray-y)) scale(1); }
+  82%, 100% { opacity: 0; transform: translate(calc(var(--spray-x) * 1.16), calc(var(--spray-y) + 9px)) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toe-sailing-spray, .toe-sailing-torch-mist { display: none; }
+}

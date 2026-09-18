@@ -5,10 +5,10 @@ export const INTERFACE_STYLES = `
 :root {
   --toe-ui-surface-image: url('${buildPublicUrl('/img/ui/interface/panel-surface.webp')}');
   --toe-ui-frame-image: url('${buildPublicUrl('/img/ui/interface/panel-frame.webp')}');
-  --toe-action-skill-image: url('${buildPublicUrl('/img/ui/hand-table/skill.webp')}');
-  --toe-action-rest-image: url('${buildPublicUrl('/img/ui/hand-table/rest.webp')}');
-  --toe-action-multiply-image: url('${buildPublicUrl('/img/ui/hand-table/multiply.webp')}');
-  --toe-action-end-image: url('${buildPublicUrl('/img/ui/hand-table/end.webp')}');
+  --toe-action-skill-image: url('${buildPublicUrl('/img/ui/coastal/action-skill-b.webp')}');
+  --toe-action-rest-image: url('${buildPublicUrl('/img/ui/coastal/action-rest-b.webp')}');
+  --toe-action-multiply-image: url('${buildPublicUrl('/img/ui/coastal/action-multiply-b.webp')}');
+  --toe-action-end-image: url('${buildPublicUrl('/img/ui/coastal/action-end-b.webp')}');
   --toe-ui-text: #d7ccb2;
   --toe-ui-muted: #a99b81;
   --toe-ui-accent: #c3a374;
