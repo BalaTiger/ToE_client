@@ -19,12 +19,13 @@ describe('torch flame runtime budget and playback', () => {
     expect(canUseFlameHdr({ secure: true, highDynamicRange: true })).toBe(false);
     expect(canUseFlameHdr({ secure: false, gpu: {}, highDynamicRange: true })).toBe(false);
   });
-  it('stops invisible or paused loops, but keeps translucent-modal fire moving at reduced intensity', () => {
+  it('stops invisible or paused loops, but leaves overlay dimming to the actual backdrop', () => {
     for (const reason of ['hidden', 'paused', 'reducedMotion', 'fullyCovered']) {
       expect(flamePlaybackState({ [reason]: true }).animate).toBe(false);
     }
     expect(flamePlaybackState({ visible: false }).animate).toBe(false);
-    expect(flamePlaybackState({ occluded: true })).toEqual({ animate: true, opacity: .22 });
+    expect(flamePlaybackState({ occluded: true })).toEqual({ animate: true, opacity: 1 });
     expect(flamePlaybackState({})).toEqual({ animate: true, opacity: 1 });
+    expect(flamePlaybackState({ occluded: true, intensity: .6 })).toEqual(flamePlaybackState({ intensity: .6 }));
   });
 });

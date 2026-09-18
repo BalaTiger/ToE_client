@@ -8,6 +8,7 @@ import {
 } from './coreUtils';
 import { applyFx } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
+import { applyZoneCardIncome } from './zoneCardIncome';
 import { advanceEndTurnReplayPatch } from './endTurnReplayFlow';
 import { buildTargetContinuationAbilityData } from './targetContinuation';
 import { checkWin } from './turnEngine';
@@ -75,20 +76,26 @@ export function resolveTreasureDodge(gs, drawReveal, {
   P = res.P;
   D = res.D;
   Disc = res.Disc;
-  if (!drawReveal.fromEndTurnReplay) P[drawerIdx].hand.push(resolutionCard);
+  res.statePatch = applyZoneCardIncome({
+    players: P, discard: Disc, card: resolutionCard, drawerIdx,
+    statePatch: res.statePatch, fromEndTurnReplay: drawReveal.fromEndTurnReplay,
+  });
 
   const effectPrecedesDodge = resolutionCard.type === 'albinoCreature';
   const L = [...gs.log];
   if (effectPrecedesDodge) L.push(...res.msgs, dodgeLog);
   else L.push(dodgeLog);
-  if (dodgeSuccess && !isAOE) {
+  if (res.statePatch?.abilityData?.pendingZoneIncome) {
+    L.push(`${who} 选择保留 ${cardLogText(resolutionCard, { alwaysShowName: true })}，效果结算后收入手牌`, ...(effectPrecedesDodge ? [] : res.msgs));
+  } else if (dodgeSuccess && !isAOE) {
     L.push(`${who} 收入了 ${cardLogText(resolutionCard, { alwaysShowName: true })}（负面效果已规避）`, ...(effectPrecedesDodge ? [] : res.msgs));
   } else {
     L.push(`${who} 收入了 ${cardLogText(resolutionCard, { alwaysShowName: true })}`, ...(effectPrecedesDodge ? [] : res.msgs));
   }
 
   const baseResult = { P, D, Disc, L, d1, dodgeSuccess, who, resolutionCard };
-  const win = checkWin(P, gs._isMP);
+  const pendingIncome = !!res.statePatch?.abilityData?.pendingZoneIncome;
+  const win = pendingIncome ? null : checkWin(P, gs._isMP);
   if (win) {
     const winGs = { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: win, drawReveal: null, ...(res.statePatch || {}) };
     return {
@@ -102,7 +109,7 @@ export function resolveTreasureDodge(gs, drawReveal, {
     };
   }
 
-  if (drawerIdx === 0 && !P[0].isDead && P[0].role === '寻宝者' && isWinHand(P[0].hand)) {
+  if (!pendingIncome && drawerIdx === 0 && !P[0].isDead && P[0].role === '寻宝者' && isWinHand(P[0].hand)) {
     P[0].roleRevealed = true;
     const pendingWinGs = {
       ...gs,

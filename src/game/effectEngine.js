@@ -1,6 +1,9 @@
 import { chooseAiTortoiseKey, getTortoiseSelectableKeys, matchesTortoiseKey } from './aiPublicChoices';
 import { chooseAiStoneCardIndex } from './aiStoneChoice';
 import { resolveSameAbyssState } from './sameAbyssResolution';
+import { deriveEffectDecisionState } from './effectStatePatch';
+import { appendDecisionContinuation, createDecisionContinuation } from './decisionContinuations';
+import { buildTargetContinuationAbilityData } from './targetContinuation';
 import {
   clamp,
   killPlayerState,
@@ -968,6 +971,22 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       ...(slimeDecision ? { abilityData: slimeDecision } : {}),
       ...(mergedStatEvents.length ? { _statEvents: mergedStatEvents, _statEventSeq: mergedStatEventSeq } : {}),
     };
+    // A target choice authored by the card follows its damage/inspection
+    // reaction. Keeping both active would let target selection erase the loss.
+    if (['etherealizeRedirect', 'etherealizeSelectTarget', 'tsgSlimeBalance'].includes(nextStatePatch.abilityData?.type)) {
+      const targetDecision = deriveEffectDecisionState({ ...nextStatePatch, abilityData: null }, {
+        baseAbilityData: buildTargetContinuationAbilityData(gs.abilityData),
+        extraAbilityData: { _turnOwner: gs.currentTurn ?? ci },
+      });
+      if (targetDecision.hasDecision) {
+        nextStatePatch._decisionContinuations = appendDecisionContinuation(
+          nextStatePatch._decisionContinuations || gs,
+          createDecisionContinuation(targetDecision.phase, targetDecision.abilityData),
+        );
+        for (const key of ['peekHandTargets', 'peekHandSource', 'caveDuelTargets', 'caveDuelSource',
+          'damageLinkTargets', 'damageLinkSource', 'roseThornTargets', 'roseThornSource']) delete nextStatePatch[key];
+      }
+    }
     return {
       ...result,
       statePatch: nextStatePatch,
@@ -1308,7 +1327,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
     endTurnReplayHand: () => {},
     igniteTorch: () => {
-      if (!isAI) {
+      if (!isAI && actor.hand.length > 0) {
         statePatch = {
           ...statePatch,
           abilityData: {
@@ -1368,8 +1387,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const beforeEtherealizePlayers = copyPlayers(P);
       const beforeEtherealizeDiscard = [...Disc];
       const hand = actor.hand || [];
-      const cardAlreadyInHand = card?.id ? hand.some(c => c?.id === card.id) : false;
-      const stackCount = hand.length + (cardAlreadyInHand ? 0 : 1);
+      const stackCount = hand.length;
       if (stackCount > 0) {
         actor.etherealizeStacks = (actor.etherealizeStacks || 0) + stackCount;
         msgs.push(`【半物质化】${actor.name} 进入半物质化状态，获得 ${stackCount} 层虚化`);
@@ -2021,10 +2039,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         hurtHP(ci, card.hpVal || 2);
         settlePendingDamages('eager');
       }
-      const actorHand = actor.hand || [];
-      const cardAlreadyInHand = card?.id != null ? actorHand.some(c => c?.id === card.id) : false;
-      const incomingCardCount = cardAlreadyInHand ? 0 : 1;
-      const getSameAbyssHandCount = i => (P[i]?.hand?.length || 0) + (i === ci && !P[i]?.isDead ? incomingCardCount : 0);
+      const getSameAbyssHandCount = i => P[i]?.hand?.length || 0;
       const livingPlayers = P.map((p, i) => i).filter(i => !P[i].isDead);
       if (livingPlayers.length === 0) return;
       let maxHand = -1;
@@ -2049,7 +2064,6 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (sourceDamageDecision) {
         statePatch = { ...statePatch, abilityData: sourceDamageDecision,
           _sameAbyssContinuation: { awaitingSourceDamage: true, actorIdx: ci, targetIdx,
-            sameAbyssIncomingCount: incomingCardCount, sameAbyssIncomingCardId: card.id,
             _turnOwner: gs?.currentTurn ?? ci },
         };
         return { P, D, Disc, msgs, statePatch };
@@ -2064,8 +2078,6 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               actorIdx: ci,
               targetIdx,
               actorHandCount,
-              sameAbyssIncomingCount: incomingCardCount,
-              sameAbyssIncomingCardId: card.id,
               discardCount,
               targetHandCount,
             }
@@ -2083,7 +2095,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         _statEventSeq: (gs._statEventSeq || 0) + (sourceStatEvents.length ? 1 : 0),
         _visualEvents: [...(gs._visualEvents || []), ...(sourceVisual ? [sourceVisual] : [])],
         abilityData: { ...gs.abilityData, type: 'sameAbyssChoice', actorIdx: ci, targetIdx,
-          actorHandCount, sameAbyssIncomingCount: incomingCardCount, sameAbyssIncomingCardId: card.id },
+          actorHandCount },
       }, { card });
       P = resolved.players; D = resolved.deck; Disc = resolved.discard;
       msgs = resolved.log.slice(gs.log?.length || 0);
@@ -2166,6 +2178,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     caveDuel: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        if (!actor.hand.length) {
+          msgs.push(`${actor.name} 没有手牌，无法进行穴居人战争`);
+          return;
+        }
         const validTargets = others.filter(i => P[i].hand.length > 0);
         if (validTargets.length === 0) {
           msgs.push(`没有其他角色有手牌，无法进行穴居人战争`);
@@ -2388,7 +2404,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               fireCardIds: fireCards.map(c => c.id),
             }
           };
-          msgs.push(`${actor.name} 收入了白化生物，准备亮出带"火"字的手牌`);
+          msgs.push(`${actor.name} 准备结算白化生物，亮出带"火"字的手牌`);
         }
       } else {
         msgs.push(`【白化生物】${actor.name} 没有带"火"字的手牌，失去 2 HP 和 2 SAN`);

@@ -214,16 +214,6 @@ function sameDrawCard(a, b) {
     [b.key, b.godKey, b.name, b.type].filter(Boolean).join(':');
 }
 
-function addCardToHandSnapshot(players = [], playerIdx = 0, card = null) {
-  if (!Array.isArray(players) || !card || !players[playerIdx]) return players;
-  return copyPlayers(players).map((player, idx) => idx === playerIdx ? {
-    ...player,
-    hand: (player.hand || []).some(candidate => sameDrawCard(candidate, card))
-      ? [...(player.hand || [])]
-      : [...(player.hand || []), card],
-  } : player);
-}
-
 function isConsumedVisualEventId(consumedVisualEventIds, id) {
   return !!id && !!consumedVisualEventIds && (
     consumedVisualEventIds?.has?.(id) ||
@@ -995,9 +985,9 @@ export function buildTurnStartDrawReplayQueue({
     (!isGodDrawnCard(drawnCard) || godDrawResolution === 'hand');
   const eventOwnedKeepDraws = turnDrawEvents.filter(event => (
     event?.id &&
-    event?.keptInHand &&
+    (event?.keptInHand || event?.incomeDestination === 'discard') &&
     !isGodDrawnCard(event.card) &&
-    Array.isArray(event.playersAfterKeep)
+    (Array.isArray(event.playersAfterResolution) || Array.isArray(event.playersAfterKeep))
   ));
   const eventOwnedKeepEventById = new Map(eventOwnedKeepDraws.map(event => [event.id, event]));
   const eventOwnedKeepStepsByDrawId = new Map(eventOwnedKeepDraws.map(event => [
@@ -1006,14 +996,14 @@ export function buildTurnStartDrawReplayQueue({
       cardTransferStep({
         visualEventId: event.id,
         fromPid: event.drawerIdx ?? drawerPid,
-        dest: 'player',
-        toPid: event.drawerIdx ?? drawerPid,
+        dest: event.incomeDestination || 'player',
+        ...(event.incomeDestination !== 'discard' ? { toPid: event.drawerIdx ?? drawerPid } : {}),
         count: 1,
         sourceAnchor: 'playerArea',
         effect: 'draw',
         cards: [event.card],
       }),
-      statePatchStep({ visualEventId: event.id, players: event.playersAfterKeep }),
+      statePatchStep({ visualEventId: event.id, players: event.playersAfterResolution || event.playersAfterKeep, discard: event.discardAfter }),
     ],
   ]));
   // A current structured draw event owns the keep decision. If it does not
@@ -1515,35 +1505,27 @@ export function buildTurnStartDrawReplayQueue({
   const hasOwnedSphinxResult = sphinxDrawIdByEventId.size > 0;
   const multipleTurnDraws = turnDrawEvents.length > 1;
   const deferredEventOwnedKeepSteps = [];
-  const isSphinxDrawCard = card => card?.type === 'sphinxGuess' || card?.name === '斯芬克斯';
   const orderedDrawCardStepsWithOwnedFlows = orderedDrawCardSteps.flatMap(step => {
     if (step?.type !== 'DRAW_CARD' || step?._drawEventId == null) return [step];
     const keepSteps = eventOwnedKeepStepsByDrawId.get(step._drawEventId) || [];
     const keepEvent = eventOwnedKeepEventById.get(step._drawEventId);
     const effectSteps = drawOwnedEffectGroups?.get(step._drawEventId) || [];
-    const immediateKeep = multipleTurnDraws || isSphinxDrawCard(step.card);
-    if (!immediateKeep && keepSteps.length) {
+    if (!multipleTurnDraws && keepSteps.length) {
       deferredEventOwnedKeepSteps.push(
         keepSteps[0],
         statePatchStep({
           visualEventId: keepEvent?.id,
           players: keepEvent?.playersAfterResolution || keepEvent?.playersAfterKeep,
+          discard: keepEvent?.discardAfter,
         }),
       );
     }
     return [
       step,
-      ...(immediateKeep ? keepSteps : []),
       ...effectSteps,
+      ...(multipleTurnDraws ? keepSteps : []),
     ];
   });
-  const legacySphinxKeepSteps = drawKeepTransferStep && isSphinxDrawCard(drawnCard)
-    ? [
-        drawKeepTransferStep,
-        statePatchStep({ players: addCardToHandSnapshot(beforeDrawPlayers, drawerPid, drawnCard) }),
-      ]
-    : [];
-  const deferredLegacyKeepStep = legacySphinxKeepSteps.length ? null : drawKeepTransferStep;
   const hasDrawEffectVisualStep = drawEffectQWithDeath.some(step => step?.type !== 'STATE_PATCH');
   const drawEffectStatePatch = hasDrawEffectVisualStep
     ? statePatchStep({ players: newGs?.players, discard: newGs?.discard })
@@ -1562,11 +1544,10 @@ export function buildTurnStartDrawReplayQueue({
     ...orderedDrawCardStepsWithOwnedFlows,
     ...(discardDrawnStep ? [discardDrawnStep] : []),
     ...(discardRestoreStep ? [discardRestoreStep] : []),
-    ...legacySphinxKeepSteps,
     ...(treasureDodgeDiceStep && !hasOwnedSphinxResult ? [treasureDodgeDiceStep] : []),
     ...deferredDrawEffectQ,
     ...deferredEventOwnedKeepSteps,
-    ...(deferredLegacyKeepStep ? [deferredLegacyKeepStep] : []),
+    ...(drawKeepTransferStep ? [drawKeepTransferStep] : []),
     ...(drawEffectStatePatch ? [drawEffectStatePatch] : []),
   ], TURN_START_ANIMATION_STAGE.DRAW);
   const stageQueues = {

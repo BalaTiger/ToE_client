@@ -15,12 +15,14 @@ import { DiceRollAnim } from '../components/anim/GenericAnimOverlay';
 import { CardTransferOverlay } from '../components/anim/MoveOverlays';
 import { CardDrawFlight } from '../components/anim/CardFlipAnim';
 import { GlobalAnimLayer } from '../components/anim/GlobalAnimLayer';
+import { GuillotineAnim, PetrifyAnim } from '../components/anim/DamageEffects';
 import { FIXED_ZONE_CARD_VARIANTS_BY_KEY, GOD_DEFS, INSPECTION_DECK, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { getBattleTheme, getBattleBackgroundImage } from '../constants/theme';
 import { RINFO } from '../game/setup';
 import { buildPhaseUiState } from '../game/phaseUi';
 import { TUTORIAL_FLOW, getTutorialStep } from '../game/tutorialScenario';
 import { useBattleResponsiveLayout } from '../hooks/useBattleResponsiveLayout';
+import { useDamageAnimationEffects } from '../hooks/useDamageAnimationEffects';
 import { buildPublicUrl } from '../utils/url';
 import { getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../utils/dom';
 import './VisualGallery.css';
@@ -41,6 +43,9 @@ const SCENES = [
   ['battle-ai', '等待其他旅者行动', '对局', 'AI_TURN'],
   ['battle-crowded', '七名其他角色 · 回合置顶', '对局', 'AI_TURN'],
   ['battle-full', '十一名其他角色 · 满员拱形', '对局', 'AI_TURN'],
+  ['battle-opponents-4', '四名其他角色 · 全部完整', '对局', 'AI_TURN'],
+  ['battle-opponents-5', '五名其他角色 · 简化阈值', '对局', 'AI_TURN'],
+  ['battle-opponents-11', '十一名其他角色 · 简化、展开与交叠', '对局', 'AI_TURN'],
   ['battle-empty', '空手牌', '对局'],
   ['discard', '超出手牌上限 · 选择弃牌', '对局', 'DISCARD_PHASE'],
   ['hunt-reveal', '追捕 · 亮出手牌', '对局', 'PLAYER_REVEAL_FOR_HUNT'],
@@ -189,12 +194,21 @@ function makeState(scene, expansionKey) {
     godEncounterCount: 2, godName: i === 1 ? 'CTH' : null, godLevel: i === 1 ? 1 : 0,
     hasBelievedGod: i === 1, peekMemories: {}, handLimitDecrease: 0,
   }));
-  if (id === 'battle-crowded' || id === 'battle-full') {
+  const opponentCount = id.startsWith('battle-opponents-') ? Number(id.split('-').at(-1)) : null;
+  if (id === 'battle-crowded' || id === 'battle-full' || opponentCount != null) {
     const extra = ['伊芙', '芬恩', '乔安', '赫伯特', '伊莎', '杰克', '凯伦'];
-    for (const name of extra.slice(0, id === 'battle-full' ? 7 : 3)) {
+    for (const name of extra.slice(0, opponentCount != null ? opponentCount - 4 : id === 'battle-full' ? 7 : 3)) {
       const index = players.length;
       players.push({ ...players[4], id: index, name, hand: ZONES.slice(1, 5).map((card, i) => ({ ...card, id: `gallery-seat-${index}-${i}` })) });
     }
+  }
+  if (opponentCount != null) {
+    Object.assign(players[0], { godName: 'ZHU', godLevel: 2, hasBelievedGod: true, etherealizeStacks: 2 });
+    Object.assign(players[1], { godLevel: 2, poisonStacks: 2, etherealizeStacks: 1 });
+    players[1].hand.push({ ...createBlackGoatYoungCard(), id: 'gallery-roster-young' });
+    Object.assign(players[2], { revealHand: true, godName: 'ZHU', godLevel: 2, hasBelievedGod: true });
+    Object.assign(players[3], { isDead: true, _petrified: true, hp: 0, roleRevealed: true });
+    if (opponentCount === 11) players[11].godEncounters = 10;
   }
   if (id === 'god-keep') players[0].role = '邪祀者';
   if (scene[4]?.startsWith('hunter')) players[0].role = '追猎者';
@@ -212,6 +226,8 @@ function makeState(scene, expansionKey) {
   if (id === 'treasure-wait') players[1].hand = TREASURE_HAND;
   if (id === 'ignite-torch') players[0].hand.push({ ...ZONES[4], id: 'gallery-ignite-fifth' });
   if (id === 'battle-status') {
+    Object.assign(players[0], { godName: 'APO', godLevel: 3, hasBelievedGod: true, isResting: true, etherealizeStacks: 2, poisonStacks: 3,
+      zoneCards: [{ id: 'gallery-self-status-zone', type: 'blankZone', name: '空白区域牌', isZone: true }] });
     players[0].hand = [...players[0].hand, { ...createBlackGoatYoungCard(), id: 'gallery-young' }, { ...createTsathogguaSlimeCard(), id: 'gallery-slime' }];
     players[1].isResting = true;
     Object.assign(players[2], { disableSkill: true, godName: 'ZHU', godLevel: 2 });
@@ -247,7 +263,7 @@ function makeState(scene, expansionKey) {
   if (id === 'swap-public' || id === 'hunt-public') players[1].revealHand = true;
   const targetIdx = waiting ? 1 : 0;
   return {
-    players, phase, expansionKey, currentTurn: id === 'battle-crowded' || id === 'battle-full' ? 2 : waiting || id === 'battle-ai' ? 1 : 0, turn: 3, turnDirection: 1,
+    players, phase, expansionKey, currentTurn: opponentCount != null ? 4 : id === 'battle-crowded' || id === 'battle-full' ? 2 : waiting || id === 'battle-ai' ? 1 : 0, turn: 3, turnDirection: 1,
     deck: ZONES, discard: [...ZONES.slice(9, 13), GODS[1]], inspectionDeck: INSPECTION_DECK,
     petrifyingFormula: id === 'battle-coastal-effects' ? { active: true, progress: 4 } : null,
     apophisNight: id === 'battle-coastal-effects' ? { active: true, count: 7, limit: 12 } : null,
@@ -272,7 +288,23 @@ const CALLBACK_NAMES = `handleUiSfxCapture leaveMultiplayerMatchToStart handleAI
 
 function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   const layout = useBattleResponsiveLayout();
-  const state = useMemo(() => makeState(scene, expansionKey), [scene, expansionKey]);
+  const [rosterTurn, setRosterTurn] = useState(null);
+  const [faithPreview, setFaithPreview] = useState('');
+  const [deathPreview, setDeathPreview] = useState(null);
+  const { guillotineTargets, petrifyTargets } = useDamageAnimationEffects({ anim: deathPreview });
+  useEffect(() => {
+    if (!deathPreview || ![...guillotineTargets, ...petrifyTargets].length) return undefined;
+    const timeout = setTimeout(() => setDeathPreview(null), deathPreview.type === 'GUILLOTINE' ? 1400 : 3200);
+    return () => clearTimeout(timeout);
+  }, [deathPreview, guillotineTargets, petrifyTargets]);
+  const state = useMemo(() => {
+    const fixture = makeState(scene, expansionKey);
+    if (faithPreview) {
+      const [godName, level] = faithPreview.split(':');
+      fixture.players[0] = { ...fixture.players[0], godName, godLevel: Number(level) };
+    }
+    return rosterTurn == null ? fixture : { ...fixture, currentTurn: rosterTurn, phase: rosterTurn === 0 ? 'ACTION' : 'AI_TURN' };
+  }, [scene, expansionKey, rosterTurn, faithPreview]);
   const [rects, setRects] = useState({});
   const [preferences, setPreferences] = useState({ gamma: 1, musicVolume: 0.6, sfxVolume: 0.8 });
   useEffect(() => {
@@ -284,6 +316,7 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     mobileGodCardRefs: { current: new Map() }, animQueueRef: { current: [] }, pendingGsRef: { current: null },
   }));
   const id = scene[0];
+  const deathPreviewPlayer = state.players.find(player => player.id > 0 && player.id !== state.currentTurn && !player.isDead);
   const waiting = id.endsWith('-wait');
   const effectiveHandLimit = id.startsWith('battle-coastal') ? 4 : 5;
   const [sharedExitConfirm, setSharedExitConfirm] = useState(() => id === 'exit'
@@ -328,7 +361,7 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     displayPhaseLabel: scene[1], cardHintText: '选择手牌或行动按钮',
     promptWarningTextColor: '#e7a48b', promptActiveTextColor: '#e3cf9a', promptCautionTextColor: '#cfaa6b',
     promptSafeTextColor: '#a9bc92', promptMutedTextColor: '#a59475',
-    hitIndices: [], sanHitIndices: [], hpHealIndices: [], sanHealIndices: [], guillotinedPids: new Set(),
+    hitIndices: [], sanHitIndices: [], hpHealIndices: [], sanHealIndices: [], guillotinedPids: new Set(guillotineTargets.map(target => target.pi)),
     godHighlightPanelBursts: {}, damageLinkGhosts: [], damageLinkEstablishAnims: [], huntAbandoned: [],
     isLocalSeatIndex: localSeat, isLocalCurrentTurn: () => !waiting, isLocalNyaBorrowPhase: truth,
     isLocalTortoiseSelectPhase: () => !waiting, isLocalGodChoice: !waiting, isLocalDrawDecision: !waiting,
@@ -360,8 +393,12 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
     drawBackgroundCameraActive: id === 'battle-camera',
     battleBackgroundStyle: {
       ...Object.fromEntries(Object.entries(theme).filter(([key]) => ['text', 'strong', 'muted', 'panel', 'panelActive', 'line', 'lineDim', 'glow'].includes(key)).map(([key, value]) => [`--toe-${key.replace(/[A-Z]/g, m => `-${m.toLowerCase()}`)}`, value])),
-      backgroundImage: `linear-gradient(${theme.tintTop},${theme.tintBottom}),url('${buildPublicUrl(getBattleBackgroundImage(expansionKey))}')`,
-      backgroundSize: 'cover', backgroundPosition: 'center', backgroundColor: theme.bg,
+      '--toe-battle-bg-image': `linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${buildPublicUrl(getBattleBackgroundImage(expansionKey))}')`,
+      '--toe-battle-bg-size': 'cover, cover',
+      '--toe-battle-bg-position': 'center center, center center',
+      '--toe-battle-bg-repeat': 'no-repeat, no-repeat',
+      '--toe-battle-bg-attachment': layout.isMobile ? 'scroll, scroll' : 'fixed, fixed',
+      backgroundColor: theme.bg,
     },
     returnToMainMenu: requestExitMatch, requestExitMatch, setIsSoloPaused,
     setExitMatchConfirm: setSharedExitConfirm,
@@ -386,6 +423,28 @@ function BattleFixture({ scene, expansionKey, onAction, onScene }) {
   return <>
     <BattleScreen {...baseProps} />
     <GlobalAnimLayer decisionProps={baseProps} expansionKey={expansionKey} />
+    {guillotineTargets.length > 0 && <GuillotineAnim targets={guillotineTargets} />}
+    {petrifyTargets.length > 0 && <PetrifyAnim targets={petrifyTargets} />}
+    {id.startsWith('battle-opponents-') && new URLSearchParams(window.location?.search || '').get('clean') !== '1' && <aside
+      aria-label="角色区域验收"
+      style={{ position: 'fixed', left: 12, right: 12, bottom: 58, zIndex: 10000, padding: '6px 10px', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, background: '#0b0a08ed', border: '1px solid #a3844a', color: '#dbc595', fontSize: 12 }}>
+      <label>当前回合 <select aria-label="切换当前回合角色" value={state.currentTurn} disabled={!!deathPreview} onChange={event => setRosterTurn(Number(event.target.value))}>
+        {state.players.filter(player => !player.isDead).map(player => <option key={player.id} value={player.id}>{player.name}</option>)}
+      </select></label>
+      <label>玩家信仰 <select aria-label="切换玩家神力验收文本" value={faithPreview} disabled={!!deathPreview} onChange={event => setFaithPreview(event.target.value)}>
+        <option value="">场景默认</option>
+        {Object.entries(GOD_DEFS).flatMap(([key, god]) => god.levels.map((_, index) => <option key={`${key}:${index + 1}`} value={`${key}:${index + 1}`}>{god.name} Lv.{index + 1}</option>))}
+      </select></label>
+      {id === 'battle-opponents-11' && <>
+        <button type="button" disabled={!!deathPreview} onClick={() => setDeathPreview({ type: 'GUILLOTINE', hitIndices: [deathPreviewPlayer.id] })}>简化面板断头台</button>
+        <button type="button" disabled={!!deathPreview} onClick={() => setDeathPreview({ type: 'PETRIFY_DEATH', hitIndices: [deathPreviewPlayer.id] })}>简化面板石化</button>
+        <button type="button" disabled={!!deathPreview} onClick={() => setDeathPreview({ type: 'GUILLOTINE', hitIndices: [0] })}>玩家侧栏断头台</button>
+        <button type="button" disabled={!!deathPreview} onClick={() => setDeathPreview({ type: 'PETRIFY_DEATH', hitIndices: [0] })}>玩家侧栏石化</button>
+        <output data-roster-death-preview={deathPreview?.type || 'idle'} data-snapshot-count={[...guillotineTargets, ...petrifyTargets].filter(target => target.snapshotUrl).length}>
+          {deathPreview ? `${state.players[deathPreview.hitIndices[0]].name} · ${[...guillotineTargets, ...petrifyTargets].length ? '播放中' : '准备快照'}` : `目标：${deathPreviewPlayer.name}`}
+        </output>
+      </>}
+    </aside>}
   </>;
 }
 

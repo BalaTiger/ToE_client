@@ -1,8 +1,9 @@
 import './battle.css';
 import { useUiAppearance } from '../../ui/UiAppearance';
-import { getBattleBackgroundImage } from '../../constants/theme';
+import { getBattleBackgroundImage, getBattleCamera } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
 import { OpponentArc } from './OpponentArc';
+import { OpponentRoster } from './OpponentRoster';
 import { ArchBattleLayout, ClassicBattleLayout } from './BattleLayouts';
 import { CoastalBattleLayout, CoastalOpponents } from './CoastalBattleLayout';
 import { CoastalBoardEffects } from './CoastalBoardEffects';
@@ -316,8 +317,10 @@ export function BattleScreen(props) {
   const boardZoom = coastalLayout ? coastalScale : scaleRatio;
   const compositionFonts = coastalLayout ? { ...fontSizes, body: 12, small: 11, tiny: 10 } : fontSizes;
   const coastalBoardHeight = coastalViewport?.boardHeight;
+  const battleCamera = getBattleCamera(gs.expansionKey);
   const sceneBackgroundStyle = coastalLayout ? {
     ...battleBackgroundStyle,
+    '--toe-coastal-scene-scale': coastalScale,
     backgroundImage: `linear-gradient(rgba(0, 4, 7, .13), rgba(0, 3, 5, .3)), url('${buildPublicUrl(getBattleBackgroundImage(gs.expansionKey))}')`,
     '--toe-coastal-viewport-left': `${coastalViewport.left}px`,
     '--toe-coastal-viewport-top': `${coastalViewport.top}px`,
@@ -331,7 +334,8 @@ export function BattleScreen(props) {
     variables.forEach(([key, value]) => host.style.setProperty(key, value));
     return () => variables.forEach(([key]) => host.style.removeProperty(key));
   }, [battleBackgroundStyle]);
-  const OpponentLayout = coastalLayout ? CoastalOpponents : archLayout ? OpponentArc : 'div';
+  const collapseOpponents = visualPlayers.length - 1 >= 5;
+  const OpponentLayout = collapseOpponents ? OpponentRoster : coastalLayout ? CoastalOpponents : archLayout ? OpponentArc : 'div';
   const BoardLayout = appearance.BattleLayout || (coastalLayout ? CoastalBattleLayout : archLayout ? ArchBattleLayout : ClassicBattleLayout);
   const middleRowRef = useRef(null);
   const [measuredCentralHeight, setMeasuredCentralHeight] = useState(middleRowHeight);
@@ -368,7 +372,7 @@ export function BattleScreen(props) {
   const getButtonStyle = (opts) =>
     getPhaseActionButtonStyle({ isMobile, isMobileLandscape, mobileCssPx, interactionFontSizes, ...opts });
 
-  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} {...(archLayout || coastalLayout ? { currentTurn: visualCurrentTurn, compact: coastalCompact } : { style: {
+  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} {...(collapseOpponents ? { currentTurn: visualCurrentTurn, layout: appearance.battleLayout } : archLayout || coastalLayout ? { currentTurn: visualCurrentTurn, compact: coastalCompact } : { style: {
           display: 'grid', gridTemplateColumns: 'repeat(4,1fr)',
           gap: isMobile ? boardCssPx(6) : isMobileLandscape ? boardCssPx(4) : 8,
           justifyContent: 'center', width: '100%',
@@ -536,6 +540,8 @@ export function BattleScreen(props) {
     <>
     {coastalLayout && <div className="toe-coastal-matte" aria-hidden="true" />}
     <div className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...sceneBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+      '--toe-draw-camera-animation':battleCamera.animation,
+      '--toe-draw-camera-origin':battleCamera.origin,
     }}>
       {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
       <div className="toe-battle-background" aria-hidden="true" />

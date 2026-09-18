@@ -47,7 +47,7 @@ export const GLOBAL_STYLES = `
     background-repeat:var(--toe-battle-bg-repeat);
     background-attachment:var(--toe-battle-bg-attachment);
     transform:translate3d(0,0,0) scale(1);
-    transform-origin:50% 48%;
+    transform-origin:var(--toe-draw-camera-origin,50% 48%);
     will-change:transform, opacity;
   }
   .toe-battle-background::before {
@@ -62,7 +62,7 @@ export const GLOBAL_STYLES = `
     z-index:2;
   }
   .toe-battle-root.toe-draw-camera-active > .toe-battle-background::after {
-    animation:toeDrawBackgroundWalk 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
+    animation:var(--toe-draw-camera-animation,toeDrawBackgroundWalk) 0.92s cubic-bezier(0.34,0,0.24,1) 3 both;
   }
   @keyframes toeDrawBackgroundWalk {
     0% {
@@ -93,6 +93,16 @@ export const GLOBAL_STYLES = `
       opacity:0;
       transform:translate3d(0,5px,0) scale(1.16);
     }
+  }
+  /* Horizon-centered zoom; keep the existing bob until a boat-specific motion is designed. */
+  @keyframes toeDrawBackgroundSea {
+    0%   { opacity:0;    transform:translate3d(0,0,0) scale(1); }
+    12%  { opacity:1;    transform:translate3d(0,2px,0) scale(1.006); }
+    42%  { opacity:1;    transform:translate3d(0,8px,0) scale(1.025); }
+    58%  { opacity:0.88; transform:translate3d(0,-4px,0) scale(1.038); }
+    68%  { opacity:0.62; transform:translate3d(0,-6px,0) scale(1.045); }
+    86%  { opacity:0.26; transform:translate3d(0,5px,0) scale(1.056); }
+    100% { opacity:0;    transform:translate3d(0,5px,0) scale(1.06); }
   }
   @keyframes scrollLeft {
     0% { transform: translateX(100%); }

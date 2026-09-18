@@ -979,22 +979,26 @@ describe('animQueueHelpers', () => {
     expect(dedupeInferredDiscardTransfers(queue).map(step => step.type)).toEqual(['TSG_SLIME_POP']);
   });
 
-  it('蛊惑强制赠牌动画先播放技能，再飞牌入目标手牌，最后播放结算状态', () => {
+  it('蛊惑赠牌先飞往揭示区，完整结算后才进入目标手牌', () => {
     const gift = makeZoneCard('A1', 0);
     const queue = buildBewitchForcedCardQueue(0, 2, gift, '目标角色', [
       { type: 'CARD_TRANSFER', fromPid: 2, dest: 'discard' },
       { type: 'YOUR_TURN', name: '目标角色' },
       { type: 'DRAW_CARD', card: { id: 'stale-draw', name: '残留摸牌' } },
       { type: 'DAMAGE', targetPid: 2 },
-    ], ['邪祀者对目标角色【蛊惑】']);
+    ], ['邪祀者对目标角色【蛊惑】'], {
+      playersAfter: [makePlayer(), makePlayer(), makePlayer({ hand: [gift] })],
+    });
 
     expect(queue.map(step => step.type)).toEqual([
       'SKILL_BEWITCH',
       'CARD_TRANSFER',
       'DRAW_CARD',
       'DAMAGE',
+      'CARD_TRANSFER',
     ]);
-    expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 2, dest: 'player' });
+    expect(queue[1]).toMatchObject({ fromPid: 0, toPid: 2, dest: 'reveal' });
+    expect(queue.at(-1)).toMatchObject({ sourceAnchor: 'reveal', toPid: 2, dest: 'player', cards: [gift] });
     expect(queue[2]).toMatchObject({
       card: gift,
       triggerName: '目标角色',

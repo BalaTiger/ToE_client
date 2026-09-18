@@ -332,6 +332,46 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('连续摸牌逐张完成效果和收入，后续牌不会越过前一张的结算', () => {
+    const before = [player('你'), { ...player('艾伦'), hp: 6 }];
+    const cards = [makeZoneCard('A1', 0, { id: 'heal-one' }), makeZoneCard('B1', 0, { id: 'heal-two' })];
+    const visualEvents = [];
+    const snapshots = [before];
+    cards.forEach((card, index) => {
+      const after = [before[0], { ...before[1], hp: 7 + index, hand: cards.slice(0, index + 1) }];
+      const effect = createStatEventsEvent({
+        statEvents: [{ type: 'HP_GAIN', target: 1, from: { hp: 6 + index, san: 10 }, to: { hp: 7 + index, san: 10 }, seq: index + 1 }],
+        turnStartStage: 'draw',
+      });
+      const [draw] = createTurnDrawVisualEvents({
+        playerIdx: 1, playerName: '艾伦', card, drawOrder: index,
+        keptInHand: true, playersBefore: snapshots[index], playersAfterKeep: after,
+        playersAfterResolution: after, effectVisualEventIds: [effect.id],
+      });
+      visualEvents.push(draw, effect);
+      snapshots.push(after);
+    });
+    const oldGs = makeGs({ players: before, currentTurn: 0 });
+    const newGs = makeGs({
+      players: snapshots.at(-1), currentTurn: 1, phase: 'AI_TURN',
+      _drawnCard: cards[1], _aiDrawnCard: cards[1], _playersBeforeThisDraw: before,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'], _visualEvents: visualEvents,
+      _statEvents: visualEvents.flatMap(event => event.statEvents || []),
+    });
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const firstHeal = queue.findIndex(step => step.type === 'HP_HEAL');
+    const firstIncome = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.cards?.[0]?.id === cards[0].id);
+    const secondDraw = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === cards[1].id);
+    const secondHeal = queue.findLastIndex(step => step.type === 'HP_HEAL');
+    const secondIncome = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.cards?.[0]?.id === cards[1].id);
+    expect(firstHeal).toBeGreaterThan(0);
+    expect(firstIncome).toBeGreaterThan(firstHeal);
+    expect(secondDraw).toBeGreaterThan(firstIncome);
+    expect(secondHeal).toBeGreaterThan(secondDraw);
+    expect(secondIncome).toBeGreaterThan(secondHeal);
+    expect(queue[firstIncome + 1].players[1].hand).toEqual([cards[0]]);
+  });
+
   it('下家斯芬克斯结果只在其摸牌阶段由规则事件编译一次', () => {
     const players = [player('艾伦'), player('贝拉')];
     const sphinx = makeZoneCard('D4', 0, { id: 'bella-sphinx', name: '斯芬克斯', type: 'sphinxGuess' });
@@ -390,12 +430,12 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(sphinxSteps.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH']);
     expect(replay.queue.indexOf(sphinxSteps[0])).toBeGreaterThan(mainDrawIndex);
     expect(sphinxKeepIndex).toBeGreaterThan(mainDrawIndex);
-    expect(sphinxKeepIndex).toBeLessThan(replay.queue.indexOf(sphinxSteps[0]));
+    expect(sphinxKeepIndex).toBeGreaterThan(replay.queue.indexOf(sphinxSteps.at(-1)));
     const keepPatch = replay.queue[sphinxKeepIndex + 1];
     const rewardPatch = sphinxSteps.at(-1);
     expect(keepPatch).toMatchObject({ type: 'STATE_PATCH' });
-    expect(keepPatch.players[1].hand).toEqual([sphinx]);
-    expect(rewardPatch.players[1].hand).toEqual([sphinx, reward]);
+    expect(keepPatch.players[1].hand).toEqual([sphinx, reward]);
+    expect(rewardPatch.players[1].hand).toEqual([reward]);
     expect(sphinxSteps.every(step => step.turnStartStage === 'draw')).toBe(true);
   });
 
@@ -461,7 +501,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
     const diceIdx = queue.findIndex(step => step.type === 'DICE_ROLL' && step.d1 === 2);
     const damageIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
 
-    expect(keepIdx).toBeLessThan(revealIdx);
+    expect(keepIdx).toBeGreaterThan(damageIdx);
     expect(revealIdx).toBeLessThan(wrongResultIdx);
     expect(wrongResultIdx).toBeLessThan(diceIdx);
     expect(diceIdx).toBeLessThan(damageIdx);

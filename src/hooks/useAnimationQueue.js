@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { getRevealDecision, matchesRevealDecision } from '../components/anim/revealDecision';
 import { markConsumedVisualEvents } from '../game/visualEvents';
 import { consumeVisualLogEntries } from '../game/visualEventLogs';
 import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
@@ -395,6 +396,27 @@ export function useAnimationQueue({
     }
   }
 
+  function isCurrentRevealSkippable() {
+    return !paused && !animCallbackRef.current
+      && anim?.inspectionSeq == null && !anim?.onSettled
+      && !Number.isFinite(anim?.impactAtMs) && !anim?.visualTimeline?.length
+      && matchesRevealDecision(anim, getRevealDecision(pendingGsRef.current || gs));
+  }
+  const canFinishRevealEarly = isCurrentRevealSkippable();
+
+  function finishRevealEarly(playbackId) {
+    const active = playbackRef.current;
+    if (!isCurrentRevealSkippable() || playbackId !== (anim?._playbackId || anim)
+      || active.id !== playbackId || active.firedCueIds.has('advance')
+      || !canFireAnimationCue(queueLifecycleRef.current, 'advance')) return false;
+    // Invalidate the old timers synchronously, including a second click before
+    // React renders. Only shorten this reveal; later effects and the ordinary
+    // event-consumption/state-commit boundary still run through advanceQueue.
+    playbackRef.current = { id: null, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
+    advanceQueue();
+    return true;
+  }
+
   useEffect(() => {
     if (!anim) return;
     if (anim.type === 'EARTHQUAKE') {
@@ -634,6 +656,8 @@ export function useAnimationQueue({
     pendingVisualEventIdsRef,
     queueLifecycleRef,
     resetAnimationQueue,
+    canFinishRevealEarly,
+    finishRevealEarly,
     playAnimationTransaction,
     advanceQueue,
   };

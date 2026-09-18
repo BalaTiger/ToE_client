@@ -129,16 +129,6 @@ function sameCard(left, right) {
     (left.key && right.key && left.key === right.key && left.name === right.name);
 }
 
-function addCardToPlayerSnapshot(players = [], playerIdx = 0, card = null, { prepend = false } = {}) {
-  if (!Array.isArray(players) || !card || !players[playerIdx]) return players;
-  return copyPlayers(players).map((player, idx) => idx === playerIdx ? {
-    ...player,
-    hand: (player.hand || []).some(candidate => sameCard(candidate, card))
-      ? [...(player.hand || [])]
-      : (prepend ? [card, ...(player.hand || [])] : [...(player.hand || []), card]),
-  } : player);
-}
-
 function sameStatEvents(left = [], right = []) {
   const a = Array.isArray(left) ? left : [];
   const b = Array.isArray(right) ? right : [];
@@ -537,20 +527,24 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
             ),
           ];
         }
-        if (event.keptInHand && Array.isArray(event.playersAfterKeep)) {
+        if ((event.keptInHand || event.incomeDestination === 'discard') &&
+          (Array.isArray(event.playersAfterResolution) || Array.isArray(event.playersAfterKeep))) {
           return [
             drawStep,
             {
               type: 'CARD_TRANSFER',
               fromPid: playerIdx,
-              dest: 'player',
-              toPid: playerIdx,
+              dest: event.incomeDestination || 'player',
+              ...(event.incomeDestination !== 'discard' ? { toPid: playerIdx } : {}),
               count: 1,
               sourceAnchor: 'playerArea',
               effect: 'draw',
               cards: [event.card],
             },
-            { type: 'STATE_PATCH', players: event.playersAfterKeep },
+            {
+              type: 'STATE_PATCH', players: event.playersAfterResolution || event.playersAfterKeep,
+              ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+            },
           ];
         }
         return [drawStep];
@@ -664,20 +658,8 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
     case VISUAL_EVENT.HUNT_RESULT:
       return buildAiHuntEventAnimQueue(event, state?.players?.[event.hunterIdx]?.name || '???');
     case VISUAL_EVENT.SPHINX_RESULT: {
-      const playersBeforeResult = addCardToPlayerSnapshot(
-        event.playersBefore || previousState?.players || state?.players || [],
-        event.actorIdx,
-        event.sourceCard,
-        { prepend: true },
-      );
-      const playersAfterResult = event.guessCorrect && (Array.isArray(event.playersAfter) || event.sourceCard)
-        ? addCardToPlayerSnapshot(
-            event.playersAfter || state?.players || [],
-            event.actorIdx,
-            event.sourceCard,
-            { prepend: true },
-          )
-        : null;
+      const playersBeforeResult = event.playersBefore || previousState?.players || state?.players || [];
+      const playersAfterResult = event.guessCorrect ? event.playersAfter : null;
       const resultQueue = statEventsToAnimQueue(
         Array.isArray(event.statEvents) ? event.statEvents : [],
         playersBeforeResult,
@@ -728,14 +710,14 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
           .flatMap(item => item.steps),
       ], acceptanceEvents);
       const settlementQueue = [...encounterQueue, ...acceptanceQueue];
-      // 飞牌飞行中段提交“仅换牌”的手牌快照;事件级 playersAfter 含全部结算
-      // 后果(全场扣SAN、死亡等),提前锁入会让结算表现跑在对应动画前面。
+      // The gift leaves its owner's hand for the reveal area. It enters the
+      // recipient's hand only after the complete effect settlement.
       const giftPlayersAfter = Array.isArray(event.playersBefore)
         ? deriveHandTransferSnapshot(event.playersBefore, {
             fromPid: event.sourceIdx,
             toPid: event.targetIdx,
             card: event.card,
-            toHand: !!event.card && !event.card.isGod,
+            toHand: false,
           })
         : null;
       return buildBewitchForcedCardQueue(
@@ -751,6 +733,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
             ? { transferSnapshots: { playersBefore: event.playersBefore, playersAfter: giftPlayersAfter } }
             : {}),
           playersAfter: event.playersAfter || state?.players,
+          discardAfter: event.discardAfter,
           zhuLightBefore: event.zhuLightBefore || previousState?.zhuLight || null,
           zhuLightAfter: event.zhuLightAfter || state?.zhuLight || null,
           ...(event.card?.isGod ? { encounterQueue, acceptanceQueue, encounterMsgs:event.encounterMsgs } : {}),
@@ -819,6 +802,41 @@ function interleavePhaseOrderedVisualEvents(events = []) {
   return result;
 }
 
+// A draw event owns its reveal and landing, while separate events own the
+// intervening effects. Keep the landing behind those events, including each
+// individual draw in a slime bonus-draw sequence.
+function composeDrawSettlementSteps(compiled = []) {
+  const draws = compiled.filter(item => item.event.type === VISUAL_EVENT.DRAW_CARD);
+  const ownerByEventId = new Map();
+  draws.forEach(({ event }) => {
+    [...(event.effectVisualEventIds || []), ...(event.statVisualEventIds || [])]
+      .forEach(id => ownerByEventId.set(id, event.id));
+    compiled.forEach(({ event: candidate }) => {
+      if (candidate.type === VISUAL_EVENT.SPHINX_RESULT &&
+        candidate.actorIdx === event.playerIdx && sameCard(candidate.sourceCard, event.card)) {
+        ownerByEventId.set(candidate.id, event.id);
+      }
+    });
+  });
+  const queue = [];
+  let landing = [];
+  compiled.forEach(item => {
+    if (ownerByEventId.has(item.event.id)) return;
+    if (item.event.type !== VISUAL_EVENT.DRAW_CARD) {
+      queue.push(...item.steps);
+      return;
+    }
+    queue.push(...landing);
+    const landingIndex = item.steps.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+    queue.push(...(landingIndex < 0 ? item.steps : item.steps.slice(0, landingIndex)));
+    compiled.forEach(owned => {
+      if (ownerByEventId.get(owned.event.id) === item.event.id) queue.push(...owned.steps);
+    });
+    landing = landingIndex < 0 ? [] : item.steps.slice(landingIndex);
+  });
+  return [...queue, ...landing];
+}
+
 export function compileRuleVisualEventsToAnimTransaction(state, previousState = null, options = {}) {
   const adapted = adaptLegacyStatEventGraph({ state, previousState });
   state = adapted.state;
@@ -857,7 +875,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     .map(event => event.id)
     .filter(id => compiledEventIds.has(id) || suppressedIdSet.has(id));
   const queue = composeCanonicalFaithSettlementSteps(
-    compiled.flatMap(item => item.steps),
+    composeDrawSettlementSteps(compiled),
     events,
   );
   const transaction = {

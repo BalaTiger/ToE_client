@@ -419,11 +419,11 @@ export function TsathogguaSlimePopOverlay({ anim, exiting }) {
           ? `[data-self-hand-card-id="${escapeValue(cardId)}"],[data-player-hand-card-id="${escapeValue(cardId)}"]`
           : null;
         const el = selector ? document.querySelector(selector) : null;
-        if (el) {
+        const rect = el ? getCardElementAnchor(el) : null;
+        if (rect) {
           activeElements.push(el);
           el.setAttribute('data-tsg-slime-popping', 'true');
           el.style.setProperty('--tsg-slime-pop-delay', `${idx * 0.08}s`);
-          const rect = getCardElementAnchor(el);
           return {
             card,
             x: rect.x,

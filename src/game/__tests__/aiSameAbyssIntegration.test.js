@@ -24,12 +24,12 @@ function localDecision(gs, choice) {
 }
 
 describe('same-abyss live and headless policy integration', () => {
-  it.each([10, 5, 4])('keeps all five cards and %i HP when zero discards are sufficient', hp => {
+  it.each([10, 5, 4])('discards down to the source current four cards and preserves %i HP', hp => {
     const card = abyss();
     const players = [makePlayer({ hand: hand(4) }), makePlayer({ name: '艾伦', hp, hand: hand(5) })];
     const result = game.applyFx(card, 0, null, players, [], [], makeGs({ players }), true);
     expect(result.P[1]).toMatchObject({ hp, isDead: false });
-    expect(result.P[1].hand).toHaveLength(5);
+    expect(result.P[1].hand).toHaveLength(4);
     expect(result.msgs.some(line => line.includes('选择承受伤害'))).toBe(false);
   });
 
@@ -37,7 +37,7 @@ describe('same-abyss live and headless policy integration', () => {
     const players = [makePlayer({ hand: hand(4) }), makePlayer({ hp: 6, hand: [...hand(5), createBlackGoatYoungCard()] })];
     const result = game.applyFx(abyss(), 0, null, players, [], [], makeGs({ players }), true);
     expect(result.P[1].hp).toBe(6);
-    expect(result.P[1].hand).toHaveLength(5);
+    expect(result.P[1].hand).toHaveLength(4);
     expect(result.P[1].hand.some(card => card.isBlackGoatYoung)).toBe(false);
   });
 

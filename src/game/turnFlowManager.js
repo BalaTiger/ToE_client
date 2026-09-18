@@ -101,6 +101,7 @@ function getResumeKind(state, hints) {
 // returned directive with the returned authoritative state.
 export function resolveTurnFlowAfterEvent(state, hints = {}) {
   if (!state) return { state, directive: TURN_FLOW_DIRECTIVE.APPLY_STATE };
+  if (state.gameOver) return { state, directive: TURN_FLOW_DIRECTIVE.APPLY_STATE };
   const phase = state.phase;
   if (phase && !SETTLED_INTERACTION_PHASES.has(phase)) {
     return { state, directive: TURN_FLOW_DIRECTIVE.HOLD_INTERACTION };

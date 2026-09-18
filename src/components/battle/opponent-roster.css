@@ -1,0 +1,9 @@
+.toe-opponent-roster { position: relative; width: 100%; overflow: visible; isolation: isolate; }
+.toe-opponent-roster-seat { box-sizing: border-box; outline: none; }
+.toe-opponent-roster-surface { position: relative; width: 100%; min-height: 118px; }
+/* The entry hit area survives reflow only until the pointer reaches the opened panel. */
+.toe-opponent-entry-bridge { position: absolute; }
+.toe-opponent-roster-seat:focus-visible > .toe-opponent-roster-surface { outline: 1px solid #bfa46b; outline-offset: 2px; }
+.toe-opponent-roster-seat[data-opponent-expanded='true'] .toe-opponent-panel { filter: drop-shadow(0 7px 6px #000c); }
+/* The surface includes the full tags/hand hit area; only compact seats may overlap. */
+.toe-opponent-roster-seat[data-opponent-collapsible='true'] { min-height: 118px; }

@@ -16,6 +16,17 @@ import {
 import { getBestCaveDuelCardIndex } from './caveDuel';
 import { resolveAiPublicChoiceState } from './publicChoiceResolution';
 import { localDisplayName } from './rotateState';
+import { getDecisionOwnerSeats } from './decisionContext';
+import { applyFx } from './effectEngine';
+import { deriveEffectDecisionState } from './effectStatePatch';
+import { buildTargetContinuationAbilityData, buildTargetContinuationState } from './targetContinuation';
+import { settlePendingZoneIncome } from './zoneCardIncome';
+import { createCardMoveVisualEvent } from './visualEvents';
+import { resolveSameAbyssState, resumeSameAbyssContinuation } from './sameAbyssResolution';
+import { aiStep } from './aiTurn';
+import { resolveHeadlessEtherealize, resolveHeadlessSlimeBalance } from './headlessSimulator';
+import { chooseAiEtherealizeRedirectTarget } from './etherealize';
+import { resolveApophisTarget } from './apophisNight';
 
 const CURRENT_TURN_PHASES = new Set([
   'DRAW_SELECT_TARGET',
@@ -46,6 +57,10 @@ const CURRENT_TURN_PHASES = new Set([
 export function isMpAiTakeoverRelevant(state, takeoverIdx) {
   if (!state || takeoverIdx < 0 || state.gameOver) return false;
   const phase = state.phase;
+  if (state.abilityData?.pendingZoneIncome || ['BURY_ALIVE_SELECT', 'IGNITE_TORCH_DISCARD'].includes(phase)) {
+    return getDecisionOwnerSeats(state).includes(takeoverIdx)
+      || (['ACTION', 'AI_TURN'].includes(phase) && state.currentTurn === takeoverIdx);
+  }
   if (phase === 'FIRST_COME_PICK_SELECT') {
     return state.abilityData?.pickOrder?.[state.abilityData?.pickIndex || 0] === takeoverIdx;
   }
@@ -148,6 +163,10 @@ function finishMpAiTakeoverTurn(
   getHandLimitForPlayer
 ) {
   if (!baseState) return null;
+  // A timeout can itself enter a mandatory effect decision. Taking over the
+  // turn never skips that decision or loses the card waiting outside the hand.
+  if (!baseState.gameOver && !['ACTION', 'AI_TURN', 'DISCARD_PHASE'].includes(baseState.phase)) return baseState;
+  baseState = settleCompletedIncome(baseState);
   const actorIdx = baseState.currentTurn ?? takeoverIdx;
   if (!baseState.gameOver && baseState._aiPendingHandLimitThorns?.length) {
     return withTimeoutDrawDiscardVisual(
@@ -190,6 +209,117 @@ function finishMpAiTakeoverTurn(
   );
 }
 
+function settleCompletedIncome(state) {
+  const pending = state?.abilityData?.pendingZoneIncome;
+  if (!pending || (!state.gameOver && (!['ACTION', 'AI_TURN'].includes(state.phase)
+    || state._decisionContinuations?.length || state._sameAbyssContinuation
+    || state.abilityData?.pendingSanInspection))) return state;
+  const playersBefore = copyPlayers(state.players);
+  const discardBefore = [...state.discard];
+  const players = copyPlayers(state.players);
+  const discard = [...state.discard];
+  const income = settlePendingZoneIncome(players, discard, pending);
+  const { pendingZoneIncome: _settled, ...abilityData } = state.abilityData;
+  const event = income && createCardMoveVisualEvent({
+    from: { zone: 'drawReveal' },
+    to: { zone: income.dest === 'player' ? 'hand' : 'discard', playerIdx: income.drawerIdx },
+    cards: [income.card], effect: 'zoneIncome', playersBefore, playersAfter: copyPlayers(players),
+    discardBefore, discardAfter: [...discard],
+  });
+  return { ...state, players, discard, abilityData,
+    _visualEvents: [...(state._visualEvents || []), ...(event ? [event] : [])],
+    gameOver: state.gameOver || checkWin(players, state._isMP),
+  };
+}
+
+function finishTakeoverDecision(state) {
+  if (!state) return state;
+  state = resumeSameAbyssContinuation(state);
+  if (state.gameOver || ['ACTION', 'AI_TURN'].includes(state.phase)) {
+    state = buildTargetContinuationState({ baseState: state });
+  }
+  return settleCompletedIncome(state);
+}
+
+function resolveTakeoverTarget(state, takeoverIdx) {
+  const ad = state.abilityData;
+  const players = copyPlayers(state.players);
+  const targets = (state.phase === 'ZONE_SWAP_SELECT_TARGET'
+    ? players.map((player, index) => index).filter(index => index !== takeoverIdx && !players[index].isDead)
+    : ad.peekHandTargets || ad.caveDuelTargets || [])
+    .filter(index => players[index] && !players[index].isDead);
+  if (!targets.length) return finishTakeoverDecision(buildTargetContinuationState({ baseState: state }));
+  const chosen = state.phase === 'ZONE_SWAP_SELECT_TARGET'
+    ? targets.reduce((best, index) => players[index].hand.length > players[best].hand.length ? index : best)
+    : targets[0];
+  const night = resolveApophisTarget({ gs: state, players, deck: [...state.deck], discard: [...state.discard],
+    log: [...state.log], actorIdx: takeoverIdx, selectedIdx: chosen, legalTargets: targets,
+    label: state.phase === 'PEEK_HAND_SELECT_TARGET' ? '选择偷看目标' : '选择区域牌目标' });
+  let next = { ...state, ...night.statePatch, players: night.players, deck: night.deck, discard: night.discard, log: night.log };
+  const targetIdx = night.targetIdx;
+  if (state.phase === 'CAVE_DUEL_SELECT_TARGET') {
+    const hand = next.players[takeoverIdx].hand;
+    const cardIndex = getBestCaveDuelCardIndex(hand, { state: next, actorIdx: takeoverIdx, opponentIdx: targetIdx });
+    if (cardIndex < 0) return finishTakeoverDecision(buildTargetContinuationState({ baseState: next }));
+    return { ...next, phase: 'CAVE_DUEL_SELECT_CARD', abilityData: { ...ad,
+      caveDuelTarget: targetIdx, sourceCardIndex: cardIndex, sourceCard: hand[cardIndex] } };
+  }
+  if (state.phase === 'PEEK_HAND_SELECT_TARGET') {
+    const hand = next.players[targetIdx].hand;
+    const card = hand[Math.floor(Math.random() * hand.length)];
+    if (card) {
+      const actor = next.players[takeoverIdx];
+      const memory = { key: card.key, letter: card.letter ?? null, number: card.number ?? null,
+        isGod: !!card.isGod, name: card.name || '' };
+      actor.peekMemories = { ...actor.peekMemories,
+        [targetIdx]: [memory, ...(actor.peekMemories?.[targetIdx] || []).filter(held => held.key !== memory.key)].slice(0, 4) };
+      next.log.push(`${actor.name} 偷看了 ${next.players[targetIdx].name} 的一张手牌`);
+    }
+  } else {
+    const card = ad.zoneSwapCard || ad.pendingZoneIncome?.card;
+    const result = applyFx(card, takeoverIdx, targetIdx, next.players, next.deck, next.discard, next);
+    next = { ...next, ...result.statePatch, players: result.P, deck: result.D, discard: result.Disc,
+      log: [...next.log, ...result.msgs] };
+  }
+  return settleCompletedIncome(buildTargetContinuationState({ baseState: next, abilityData: ad }));
+}
+
+function resolveTakeoverBury(state, takeoverIdx) {
+  const next = { ...state, players: copyPlayers(state.players), deck: [...state.deck],
+    discard: [...state.discard], log: [...state.log], abilityData: { ...state.abilityData } };
+  const ad = next.abilityData;
+  const targets = ad.targets || [];
+  const simultaneous = Array.isArray(ad.buryAliveChoices);
+  if (simultaneous) {
+    ad.buryAliveChoices = [...ad.buryAliveChoices];
+    const card = next.players[takeoverIdx]?.hand?.[0];
+    ad.buryAliveChoices[takeoverIdx] = { cardId: card?.id, cardIndex: 0 };
+    if (targets.some(index => !ad.buryAliveChoices[index] && next.players[index]?.hand?.length)) return next;
+  }
+  const resolving = simultaneous ? targets : [targets[ad.targetIndex || 0]];
+  for (const targetIdx of resolving) {
+    const hand = next.players[targetIdx]?.hand || [];
+    const choice = ad.buryAliveChoices?.[targetIdx];
+    const matchedIndex = hand.findIndex(card => choice?.cardId != null && card.id === choice.cardId);
+    const cardIndex = matchedIndex >= 0 ? matchedIndex : 0;
+    if (!hand[cardIndex]) continue;
+    const playersBefore = copyPlayers(next.players);
+    const [card] = hand.splice(cardIndex, 1);
+    next.deck.push(card);
+    const message = `【活埋】${next.players[targetIdx].name} 将 ${cardLogText(card, { alwaysShowName: true })} 放到了牌堆底`;
+    next.log.push(message);
+    const event = createCardMoveVisualEvent({ from: { zone: 'hand', playerIdx: targetIdx },
+      to: { zone: 'deckBottom' }, cards: [card], effect: 'buryAlive',
+      playersBefore, playersAfter: copyPlayers(next.players), msgs: [message] });
+    next._visualEvents = [...(next._visualEvents || []), event];
+  }
+  if (!simultaneous && (ad.targetIndex || 0) + 1 < targets.length) {
+    ad.targetIndex = (ad.targetIndex || 0) + 1;
+    return next;
+  }
+  return settleCompletedIncome(buildTargetContinuationState({ baseState: next, abilityData: ad }));
+}
+
 function autoResolveDecipherStoneCarving(baseState, actorIdx) {
   return resolveAiPublicChoiceState({
     ...baseState,
@@ -197,7 +327,18 @@ function autoResolveDecipherStoneCarving(baseState, actorIdx) {
   });
 }
 
-export function resolveMpAiTakeoverState(
+export function resolveMpAiTakeoverState(sourceState, takeoverIdx, dependencies) {
+  const next = resolveMpAiTakeoverDecision(sourceState, takeoverIdx, dependencies);
+  const turnOwner = sourceState?.abilityData?._turnOwner ?? sourceState?.currentTurn;
+  if (sourceState?.abilityData?.pendingZoneIncome && next
+    && takeoverIdx === turnOwner && next.currentTurn === turnOwner
+    && ['ACTION', 'AI_TURN'].includes(next.phase) && !next.abilityData?.pendingZoneIncome) {
+    return finishMpAiTakeoverTurn(next, sourceState, takeoverIdx, dependencies.getHandLimitForPlayer);
+  }
+  return next;
+}
+
+function resolveMpAiTakeoverDecision(
   sourceState,
   takeoverIdx,
   {
@@ -206,7 +347,15 @@ export function resolveMpAiTakeoverState(
   }
 ) {
   if (!isMpAiTakeoverRelevant(sourceState, takeoverIdx)) return null;
-  if (sourceState.players?.[takeoverIdx]?.isDead) {
+  if (sourceState.phase === 'BURY_ALIVE_SELECT') {
+    return resolveTakeoverBury(sourceState, takeoverIdx);
+  }
+  if (sourceState.players?.[takeoverIdx]?.isDead
+    && (!sourceState.abilityData?.pendingZoneIncome || ['ACTION', 'AI_TURN'].includes(sourceState.phase))) {
+    if (sourceState.abilityData?.pendingZoneIncome) {
+      if (!['ACTION', 'AI_TURN'].includes(sourceState.phase)) return sourceState;
+      sourceState = settleCompletedIncome(sourceState);
+    }
     if (sourceState.currentTurn !== takeoverIdx) return null;
     if (sourceState._aiPendingHandLimitThorns?.length) {
       return autoDiscardSeatAndAdvance(sourceState, takeoverIdx, getHandLimitForPlayer);
@@ -221,6 +370,45 @@ export function resolveMpAiTakeoverState(
     });
   }
   const phase = sourceState.phase;
+  if (['ETHEREALIZE_DECISION', 'ETHEREALIZE_SELECT_TARGET', 'TSG_SLIME_BALANCE'].includes(phase)) {
+    const resolved = phase === 'TSG_SLIME_BALANCE'
+      ? resolveHeadlessSlimeBalance(sourceState, false)
+      : resolveHeadlessEtherealize({ ...sourceState, phase: 'ETHEREALIZE_DECISION' },
+        phase === 'ETHEREALIZE_SELECT_TARGET' ? {
+          useEtherealize: true,
+          redirectTargetIdx: chooseAiEtherealizeRedirectTarget(sourceState.players, sourceState.abilityData.adjacentTargets || []),
+        } : null);
+    return finishTakeoverDecision(resolved);
+  }
+  if (['DAMAGE_LINK_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET'].includes(phase)) {
+    const resolved = aiStep({ ...sourceState, currentTurn: takeoverIdx }, { allAi: true });
+    return finishTakeoverDecision({ ...resolved, currentTurn: sourceState.abilityData._turnOwner ?? sourceState.currentTurn });
+  }
+  if (['ZONE_SWAP_SELECT_TARGET', 'PEEK_HAND_SELECT_TARGET', 'CAVE_DUEL_SELECT_TARGET'].includes(phase)) {
+    return resolveTakeoverTarget(sourceState, takeoverIdx);
+  }
+  if (['IGNITE_TORCH_DISCARD', 'GRAVE_DIG_SELECT', 'SPHINX_GUESS', 'ALBINO_CREATURE_SELECT_CARD'].includes(phase)) {
+    // These handlers suspend before their only mutation, so their existing AI
+    // branch safely performs exactly the pending choice and its reactions.
+    const ad = sourceState.abilityData;
+    const actorIdx = ad.playerIndex ?? takeoverIdx;
+    const fallbackCards = {
+      IGNITE_TORCH_DISCARD: { name: '引燃火把', type: 'igniteTorch' },
+      GRAVE_DIG_SELECT: { name: '掘墓', type: 'graveDigGod' },
+      SPHINX_GUESS: { name: '斯芬克斯', type: 'sphinxGuess' },
+      ALBINO_CREATURE_SELECT_CARD: { name: '白化生物', type: 'albinoCreature' },
+    };
+    const card = ad.pendingZoneIncome?.card || fallbackCards[phase];
+    const res = applyFx(card, actorIdx, null, copyPlayers(sourceState.players),
+      [...sourceState.deck], [...sourceState.discard], sourceState, false, [], true);
+    const decision = deriveEffectDecisionState(res.statePatch, {
+      baseAbilityData: buildTargetContinuationAbilityData(ad), turnOwner: ad._turnOwner ?? sourceState.currentTurn,
+    });
+    const next = { ...sourceState, ...res.statePatch, players: res.P, deck: res.D, discard: res.Disc,
+      log: [...sourceState.log, ...res.msgs], phase: decision.phase, abilityData: decision.abilityData };
+    return settleCompletedIncome(decision.hasDecision ? next : buildTargetContinuationState({ baseState: next, abilityData: ad }));
+  }
+  if (phase === 'SAME_ABYSS_SELECT') return settleCompletedIncome(resolveSameAbyssState(sourceState));
   if (phase === 'HUNT_WAIT_REVEAL') {
     if (sourceState.abilityData?.huntTi === takeoverIdx) {
       const hand = sourceState.players?.[takeoverIdx]?.hand || [];
@@ -350,10 +538,10 @@ export function resolveMpAiTakeoverState(
       abilityData.targetCard,
       { ...sourceState, abilityData }
     );
-    return nextGs;
+    return settleCompletedIncome(nextGs);
   }
   if (phase === 'DECIPHER_STONE_CARVING') {
-    const resolved = autoResolveDecipherStoneCarving(sourceState, takeoverIdx);
+    const resolved = settleCompletedIncome(autoResolveDecipherStoneCarving(sourceState, takeoverIdx));
     if (takeoverIdx !== sourceState.currentTurn || resolved.gameOver || !['ACTION', 'AI_TURN'].includes(resolved.phase)) return resolved;
     return finishMpAiTakeoverTurn(
       resolved,
@@ -363,7 +551,7 @@ export function resolveMpAiTakeoverState(
     );
   }
   if (phase === 'FIRST_COME_PICK_SELECT' || phase === 'TORTOISE_ORACLE_SELECT') {
-    return resolveAiPublicChoiceState(sourceState);
+    return settleCompletedIncome(resolveAiPublicChoiceState(sourceState));
   }
   if (
     phase === 'DRAW_REVEAL'
@@ -391,6 +579,8 @@ export function resolveMpAiTakeoverState(
       getHandLimitForPlayer
     );
   }
+  // Unknown future effect decisions must retain their card and continuation.
+  if (sourceState.abilityData?.pendingZoneIncome) return sourceState;
   const actorName = localDisplayName(
     takeoverIdx,
     sourceState.players?.[takeoverIdx]?.name || '该玩家'

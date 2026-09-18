@@ -56,6 +56,12 @@ describe('coastal battle composition', () => {
     expect(hand.props.handAreaRef).toBe(refs[4]);
     expect(hand.props.phasePrompt).toBe(prompt);
     expect(hand.props.coastalGeometry.piles.height).toBe(piles.props.baseHeight);
+    expect(hand.props.coastalGeometry.piles.centerX).toBe(603);
+    expect(root.props.style['--toe-coastal-self-left']).toBe('-5px');
+    expect(root.props.style['--toe-coastal-self-top']).toBe('180px');
+    expect(root.props.style['--toe-coastal-self-width']).toBe('150px');
+    expect(root.props.style['--toe-coastal-self-height']).toBe('284px');
+    expect(slot(root, 'drapery').props.children.props.className).toBe('toe-coastal-log-book');
     self.props.handleAIClick(2);
     hand.props.handleMyCardClick(4);
     hand.props.confirmDiscard();

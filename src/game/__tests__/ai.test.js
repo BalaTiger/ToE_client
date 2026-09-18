@@ -432,8 +432,9 @@ describe('AI visual event handoff', () => {
       caveDuelSource: 1,
     });
     expect(result.decision.abilityData.caveDuelTargets).toEqual([2]);
-    // 穴居人战争已收入手牌，但第二张 CTH 摸牌尚未抽取
-    expect(result.P[1].hand.some(card => card.id === 'cth-duel')).toBe(true);
+    // 战争结算与收入完成之前，第二张 CTH 摸牌不能开始。
+    expect(result.P[1].hand.some(card => card.id === 'cth-duel')).toBe(false);
+    expect(result.decision.abilityData.pendingZoneIncome?.card.id).toBe('cth-duel');
     expect(result.P[1].hand.some(card => card.id === 'cth-followup')).toBe(false);
     expect(result.D.map(card => card.id)).toEqual(['cth-followup']);
   });

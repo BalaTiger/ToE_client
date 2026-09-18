@@ -215,6 +215,64 @@ describe('visualEventTransactionCompiler', () => {
     expect(transaction.queue.every(step => step.visualEventId === event.id)).toBe(true);
   });
 
+  it('canonical draw replay also settles effects before each income, then starts the next draw', () => {
+    const before = [player('你', { hp: 6 })];
+    const cards = [{ id: 'heal-one' }, { id: 'heal-two' }];
+    const events = cards.flatMap((card, index) => {
+      const after = [player('你', { hp: 7 + index, hand: cards.slice(0, index + 1) })];
+      const effect = createStatEventsEvent({
+        statEvents: [{ type: 'HP_GAIN', target: 0, from: { hp: 6 + index, san: 10 }, to: { hp: 7 + index, san: 10 }, seq: index + 1 }],
+        turnStartStage: 'draw',
+      });
+      return [...createTurnDrawVisualEvents({
+        playerIdx: 0, card, drawOrder: index, keptInHand: true,
+        playersBefore: before, playersAfterKeep: after, effectVisualEventIds: [effect.id],
+      }), effect];
+    });
+    const transaction = compileRuleVisualEventsToAnimTransaction({ players: before, _visualEvents: events });
+    expect(transaction.queue.map(step => step.type)).toEqual([
+      'DRAW_CARD', 'HP_HEAL', 'CARD_TRANSFER', 'STATE_PATCH',
+      'DRAW_CARD', 'HP_HEAL', 'CARD_TRANSFER', 'STATE_PATCH',
+    ]);
+    expect(prepareAnimationQueueSteps(transaction.queue).issues).toEqual([]);
+  });
+
+  it('pending gifted effects do not animate income, and a fatal gift goes to discard after damage', () => {
+    const gift = { id: 'gift', type: 'damageHP', val: 3 };
+    const before = [player('你', { hand: [gift] }), player('艾伦', { hp: 2 })];
+    const removed = [player('你'), before[1]];
+    const pending = createBewitchGiftEvent({ sourceIdx: 0, targetIdx: 1, card: gift, playersBefore: before, playersAfter: removed });
+    const pendingQueue = compileVisualEventToAnimTransaction(pending, { players: removed }).queue;
+    expect(pendingQueue.filter(step => step.type === 'CARD_TRANSFER').map(step => step.dest)).toEqual(['reveal']);
+    const after = [removed[0], player('艾伦', { hp: 0, isDead: true })];
+    const lethal = createBewitchGiftEvent({
+      sourceIdx: 0, targetIdx: 1, card: gift, playersBefore: before, playersAfter: after, discardAfter: [gift],
+      statEvents: [{ type: 'HP_LOSS', target: 1, from: { hp: 2, san: 10 }, to: { hp: 0, san: 10 }, seq: 1 }],
+    });
+    const queue = compileVisualEventToAnimTransaction(lethal, { players: after }).queue;
+    expect(queue.at(-1)).toMatchObject({ type: 'CARD_TRANSFER', dest: 'discard', sourceAnchor: 'reveal', cards: [gift] });
+    expect(queue.findIndex(step => step.type === 'HP_DAMAGE')).toBeLessThan(queue.length - 1);
+    expect(queue.at(-1).visualTimeline.at(-1).patch).toEqual({ players: after, discard: [gift] });
+  });
+
+  it('a fatal kept draw reaches discard only after its damage settlement', () => {
+    const card = { id: 'fatal-fall', name: '坠落' };
+    const before = [player('你', { hp: 2 })];
+    const after = [player('你', { hp: 0, isDead: true })];
+    const effect = createStatEventsEvent({
+      statEvents: [{ type: 'HP_LOSS', target: 0, from: { hp: 2, san: 10 }, to: { hp: 0, san: 10 }, seq: 1 }],
+      turnStartStage: 'draw',
+    });
+    const [draw] = createTurnDrawVisualEvents({
+      playerIdx: 0, card, incomeDestination: 'discard', playersBefore: before,
+      playersAfterResolution: after, discardAfter: [card], effectVisualEventIds: [effect.id],
+    });
+    const queue = compileRuleVisualEventsToAnimTransaction({ players: after, discard: [card], _visualEvents: [draw, effect] }).queue;
+    const discardIndex = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.dest === 'discard');
+    expect(discardIndex).toBeGreaterThan(queue.findIndex(step => step.type === 'HP_DAMAGE'));
+    expect(queue[discardIndex + 1]).toMatchObject({ type: 'STATE_PATCH', players: after, discard: [card] });
+  });
+
   it('compiles a resolved god-gift keep as one owned transfer and landing patch', () => {
     const godCard = { id: 'gift-god', name: '伏行之混沌', isGod: true, godKey: 'NYA' };
     const beforePlayers = [player('你'), player('艾伦')];
@@ -1247,7 +1305,7 @@ describe('visualEventTransactionCompiler', () => {
     expect(inspectionIdx).toBeGreaterThan(damageIdx);
   });
 
-  it('蛊惑赠牌的飞牌步骤在飞行中段提交仅换牌的手牌快照,不等全场扣SAN', () => {
+  it('蛊惑揭示飞牌只移除施法者手牌，全场扣SAN后才收入目标手牌', () => {
     const gift = { id: 'echo-card', name: '空谷传音', type: 'allDamageSAN', val: 1 };
     const before = [
       player('你', { hand: [gift, { id: 'keep-1', name: '火把' }] }),
@@ -1280,12 +1338,15 @@ describe('visualEventTransactionCompiler', () => {
     const afterPoint = (transfer.visualTimeline || []).find(point => Array.isArray(point?.patch?.players));
     expect(afterPoint).toBeTruthy();
     expect(afterPoint.atMs).toBeGreaterThan(0);
-    // 换牌已生效
+    // 牌已离开施法者，尚未进入接收者手牌。
     expect(afterPoint.patch.players[0].hand.map(card => card.id)).toEqual(['keep-1']);
-    expect(afterPoint.patch.players[1].hand.map(card => card.id)).toEqual(['ai-1', 'echo-card']);
+    expect(afterPoint.patch.players[1].hand.map(card => card.id)).toEqual(['ai-1']);
     // 但不带入 SAN 结算
     expect(afterPoint.patch.players[0].san).toBe(10);
     expect(afterPoint.patch.players[1].san).toBe(10);
+    const income = transaction.queue.find(step => step.type === 'CARD_TRANSFER' && step.dest === 'player');
+    expect(transaction.queue.indexOf(income)).toBeGreaterThan(transaction.queue.findLastIndex(step => step.type === 'SAN_DAMAGE'));
+    expect(income.visualTimeline.at(-1).patch.players).toEqual(after);
     // 播放边界校验不再对蛊惑队列报缺提交
     const handCommitIssues = prepareAnimationQueueSteps(transaction.queue).issues
       .filter(item => item.code === 'HAND_TRANSFER_MISSING_AFTER_COMMIT');

@@ -119,16 +119,20 @@ describe('coastal panel presentation', () => {
     expect(arch).toContain('data-rendered-card-id="visible-zone"');
   });
 
-  it('keeps local faith and status descriptions on the banner with animation-owned values', () => {
+  it.each([false, true])('keeps local faith, animation-owned values and sidebar skin consistent (dimmed: %s)', dimmed => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const markup = renderToStaticMarkup(<SelfPlayerPanel
-      player={{ role: '寻宝者', hp: 10, san: 10, godName: 'CTH', godLevel: 2, godEncounters: 2, etherealizeStacks: 2, poisonStacks: 1, zoneCards: [] }}
+      player={{ role: '寻宝者', hp: 10, san: 10, godName: 'CTH', godLevel: 2, godEncounters: 2, isResting: true, etherealizeStacks: 2, poisonStacks: 1,
+        zoneCards: [{ id: 'self-side-zone', type: 'blankZone', name: '空白区域牌', isZone: true }] }}
       displayStats={[{ hp: 8, san: 5 }]} ri={{ icon: '✦', col: '#fff', goal: '执行期望' }}
       phase="ACTION" isMobile={false} isMobileLandscape={false} boardCssPx={value => value}
       middleRowHeight={180} fontSizes={{ tiny: 9, small: 10, body: 12 }} boardScaleRatio={1} vw={1280}
       hitIndices={[]} sanHitIndices={[]} hpHealIndices={[]} sanHealIndices={[]} guillotinedPids={new Set()} godHighlightPanelBursts={{}}
+      isSelfDeadPanelDimmed={dimmed}
     />);
-    expect(markup).toContain('当前信仰');
+    expect(markup).not.toContain('toe-faith-heading');
+    expect(markup).toContain('aria-label="当前信仰与状态"');
+    expect(markup).toContain('toe-faith-scroll-viewport');
     expect(markup).toContain('梦访拉莱耶 Lv.2');
     expect(markup).toContain('toe-self-skull-anchor');
     expect(markup).toContain('aria-label="骷髅标记：2 枚"');
@@ -137,7 +141,28 @@ describe('coastal panel presentation', () => {
     expect(markup).not.toContain('邪神遭遇');
     expect(markup).toContain('虚化 2');
     expect(markup).toContain('中毒 1');
+    const faith = markup.slice(markup.indexOf('class="toe-self-faith"'), markup.indexOf('class="toe-self-stats"'));
+    const side = markup.slice(markup.indexOf('class="toe-self-side-tags"'));
+    expect(faith).toContain('data-god-power-anchor="0"');
+    for (const anchor of ['data-resting-marker="0"', 'data-etherealize-badge="0"', 'data-rendered-card-id="self-side-zone"']) {
+      expect(faith).not.toContain(anchor);
+      expect(side).toContain(anchor);
+      expect(markup.split(anchor)).toHaveLength(2);
+    }
+    expect(faith).not.toContain('中毒 1');
+    expect(side).toContain('中毒 1');
+    expect(side).not.toContain('data-god-power-anchor');
     expect(markup).toContain('portrait-self.webp');
+    expect(markup).not.toContain('portrait-self-gray.webp');
+    expect(markup).toContain('toe-self-sidebar-skin');
+    const neutral = markup.match(/class="toe-self-sidebar-skin"[^>]+/)[0];
+    const warm = markup.match(/class="toe-self-sidebar-skin toe-self-sidebar-firelight"[^>]+/)[0];
+    expect(neutral).toContain(`opacity:${dimmed ? .32 : 1}`);
+    expect(warm).toContain(`opacity:${(dimmed ? .32 : 1) * .78}`);
+    for (const skin of [neutral, warm]) expect(skin).toContain(`filter:${dimmed ? 'grayscale(0.85) brightness(0.6)' : 'none'}`);
+    expect(markup.match(/src="[^"]*self-sidebar-warm-light.webp"/g)).toHaveLength(1);
+    expect(markup).not.toContain('self-sidebar-warm-rail.webp');
+    expect(markup).toContain('self-sidebar-divider.webp');
     expect(markup.slice(markup.indexOf('data-stat-label="SAN"'))).toContain('>5</span>');
   });
 

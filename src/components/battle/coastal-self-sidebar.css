@@ -1,0 +1,179 @@
+.toe-self-sidebar-skin { display: none; }
+
+/* A left-edge object, independent of the top roster. End caps and the circular
+   portrait keep their native proportions; only the plain rail fills height. */
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-self {
+  --toe-self-portrait-size: 76px;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-player-panel {
+  height: 100%;
+  display: block !important;
+  border: 0 !important;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-sidebar-skin {
+  display: flex;
+  position: absolute;
+  inset: 0;
+  flex-direction: column;
+  pointer-events: none;
+  z-index: -1;
+}
+.toe-self-sidebar-skin > img { display: block; width: 100%; height: auto; flex: none; }
+.toe-self-sidebar-skin > div { flex: 1; min-height: 0; background-size: 100% auto; background-repeat: repeat-y; }
+/* The light's fade is baked into a single RGBA image so death snapshots retain
+   it. It keeps its native ratio and belongs to the scene's Gamma. */
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content {
+  height: 100%;
+  box-sizing: border-box;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: var(--toe-self-portrait-size) 23px 36px max(14px, calc(var(--toe-encounter-skull-rows) * 15px)) minmax(0, 1fr);
+  gap: 3px;
+  padding: 12px 14px 20px 17px;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content::before { display: none; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content > .toe-coastal-portrait {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: center;
+  align-self: center;
+  /* The reused ring includes transparent ornament margins around the circle. */
+  width: 94px;
+  height: auto;
+  aspect-ratio: 439 / 448;
+  margin: 0;
+  border-radius: 0;
+  background-color: transparent;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
+  overflow: visible;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-title {
+  grid-column: 1;
+  grid-row: 2;
+  align-items: center !important;
+  justify-content: center;
+  gap: 5px !important;
+  padding: 0 0 3px;
+  margin: 0;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-name { flex: 0 1 auto; font-size: 13px !important; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-role { font-size: 11px !important; letter-spacing: .1px !important; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-stats {
+  grid-column: 1;
+  grid-row: 3;
+  padding: 2px 0 0 !important;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-stats [data-stat-label] {
+  grid-template-columns: 24px minmax(0, 1fr) 12px !important;
+  column-gap: 4px !important;
+  margin-bottom: 5px !important;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-skull-anchor {
+  position: relative;
+  grid-column: 1;
+  grid-row: 4;
+  inset: auto;
+  width: 100%;
+  aspect-ratio: auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-skull-anchor::before {
+  content: '';
+  position: absolute;
+  left: -5px;
+  right: -5px;
+  top: 50%;
+  height: 5px;
+  transform: translateY(-50%);
+  background: var(--toe-sidebar-divider) center / auto 100% repeat-x;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-skull-anchor > .toe-encounter-skulls {
+  --toe-skull-size: 15px;
+  --toe-skull-gap: 1px;
+  position: relative;
+  inset: auto;
+  transform: none;
+  max-width: 100%;
+  filter: brightness(.8);
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-self-faith {
+  grid-column: 1;
+  grid-row: 5;
+  width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  gap: 4px;
+  background: none;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content:has(.toe-self-skull-anchor) .toe-self-faith { margin: 0; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-faith-status { overscroll-behavior: contain; scrollbar-gutter: auto; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-power-description {
+  /* Smaller desktop copy, but compensate both board zoom and mobile iframe
+     scaling so CJK strokes still render at at least 11 screen CSS pixels. */
+  font-size: max(10.5px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  margin-top: 4px !important;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-god-name {
+  font-size: max(12px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  line-height: 1.35;
+}
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-faith-status [data-god-power-badge] > .toe-faith-power-name {
+  font-size: max(10.5px, calc(10px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  line-height: 1.35;
+}
+
+/* Status tabs hang off the frame, leaving the entire inner column for faith.
+   Keep a narrow single column so the torch shaft and flame remain clear. */
+[data-ui-layout='coastal'] .toe-self-side-tags {
+  position: absolute;
+  left: calc(100% - 5px);
+  top: 14px;
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 5px;
+  z-index: 2;
+}
+[data-ui-layout='coastal'] .toe-self-side-tags > :is([data-resting-marker], [data-etherealize-badge], [title^='中毒']) {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 0 !important;
+  padding: 3px 6px !important;
+  font-family: var(--toe-coastal-panel-font) !important;
+  font-size: max(11px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  line-height: 1.35;
+  letter-spacing: 0 !important;
+  border-radius: 0 4px 4px 0 !important;
+  text-shadow: 0 1px 2px #000;
+}
+[data-ui-layout='coastal'] .toe-self-side-tags > [data-resting-marker] {
+  color: #c4cbb5 !important;
+  background: #11150e;
+  border: 1px solid #8d947866;
+  filter: none !important;
+}
+[data-ui-layout='coastal'] .toe-self-side-tags > .toe-self-zone-tags {
+  margin: 0 !important;
+  padding-left: 7px;
+  flex-direction: column;
+}
+/* The legacy compact fallback has no sidebar corridor. Keep statuses outside
+   faith but within its player column, rather than covering the next region. */
+.toe-board-composition-coastal[data-compact='true'] .toe-self-side-tags {
+  position: relative;
+  left: auto;
+  top: auto;
+  grid-column: 1 / -1;
+  width: 100%;
+  flex-direction: row;
+  flex-wrap: wrap;
+}

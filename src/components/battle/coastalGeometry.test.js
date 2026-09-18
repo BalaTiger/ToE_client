@@ -68,9 +68,10 @@ describe('coastal shared play space', () => {
   });
 
   it.each([[900, 449.25], [1200, 603], [1600, 808], [1920, 972]])(
-    'aligns the pile camera to the measured opponent axis at width %i', (width, centerX) => {
+    'keeps the former pile-camera axis after widening the opponent rail at width %i', (width, centerX) => {
       const original = getCoastalGeometry({ width, height: 750, handCount: 5 });
       const aligned = getCoastalGeometry({ width, height: 750, handCount: 5, centerX, effectsHeight: 185 });
+      expect(original.piles.centerX).toBeCloseTo(centerX);
       expect(aligned.piles.left + aligned.piles.width / 2).toBeCloseTo(centerX);
       expect(aligned.piles.width).toBe(original.piles.width);
       expect(aligned.effects.left).toBe(aligned.piles.left);
@@ -80,6 +81,19 @@ describe('coastal shared play space', () => {
         .toBeGreaterThanOrEqual(COASTAL_PILE_CLEARANCE - .001);
     },
   );
+
+  it.each([620, 675, 750])('fits the local sidebar above unchanged counts at board height %i', height => {
+    const initial = getCoastalGeometry({ height, countsHeight: 128 });
+    expect(initial.self).toMatchObject({ left: -5, top: 180, width: 150 });
+    expect(height - 39 - 128 - initial.self.top - initial.self.height).toBe(14);
+    const { self, ...tallerCounts } = getCoastalGeometry({ height, countsHeight: 164 });
+    expect(self.height).toBe(initial.self.height - 36);
+    const { self: _initialSelf, ...originalScene } = initial;
+    expect(tallerCounts).toEqual(originalScene);
+    const { self: expandedSelf, ...smallerCounts } = getCoastalGeometry({ height, countsHeight: 103 });
+    expect(expandedSelf.height).toBe(initial.self.height + 25);
+    expect(smallerCounts).toEqual(originalScene);
+  });
 
   it.each([0, 56, 64])('keeps a %ipx persistent-effect row clear of roles, torch, piles, and hovered cards', effectsHeight => {
     const geometry = getCoastalGeometry({ height: 620, handCount: 8, rolesBottom: 190, effectsHeight });

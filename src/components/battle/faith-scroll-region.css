@@ -1,0 +1,54 @@
+.toe-faith-scroll-region {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  --toe-faith-arrow-size: max(24px, calc(22px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1)));
+}
+.toe-faith-scroll-viewport {
+  height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: none;
+}
+.toe-faith-scroll-viewport::-webkit-scrollbar { display: none; }
+[data-ui-layout='coastal'] .toe-faith-scroll-viewport > .toe-faith-status {
+  overflow: visible;
+  min-height: min-content;
+  flex: none;
+}
+/* Float controls over the frame's right padding, outside the text column.
+   Their visibility must not resize the viewport and create overflow feedback. */
+.toe-faith-scroll-region > .toe-faith-scroll-arrow {
+  position: absolute;
+  right: calc(-7px - var(--toe-faith-arrow-size) / 2);
+  width: var(--toe-faith-arrow-size);
+  height: var(--toe-faith-arrow-size);
+  min-width: 0;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: #c9b88e;
+  cursor: pointer;
+  filter: drop-shadow(0 1px 2px #000);
+  z-index: 1;
+}
+.toe-faith-scroll-arrow[data-direction='up'] { top: -3px; }
+.toe-faith-scroll-arrow[data-direction='down'] { bottom: -3px; }
+.toe-faith-scroll-arrow svg {
+  width: max(14px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1)));
+  height: auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  background: #091210e8;
+  border-radius: 3px;
+  box-shadow: 0 0 3px #000;
+}
+.toe-faith-scroll-arrow[data-direction='up'] svg { transform: rotate(180deg); }
+.toe-faith-scroll-region > .toe-faith-scroll-arrow:is(:hover, :focus-visible) { color: #f1deb0; background: #171c1a99; }

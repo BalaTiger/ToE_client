@@ -98,7 +98,8 @@ describe('AI acquisition rule previews', () => {
 
     expect(result._aiPreviewIncomplete).toBe(true);
     expect(result._aiPendingResolution).toBe('zoneEffect:decipherStoneCarving');
-    expect(result.players[0].hand).toContainEqual(card);
+    expect(result.players[0].hand).not.toContainEqual(card);
+    expect(result.abilityData.pendingZoneIncome).toEqual({ card, ownerId: state.players[0].id });
   });
 
   it('does not treat a hidden immortality reveal as an empty-deck guaranteed revival', () => {

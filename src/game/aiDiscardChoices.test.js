@@ -33,14 +33,14 @@ describe('AI shared discard decisions', () => {
     expect(gs).toEqual(before);
   });
 
-  it('same-abyss recomputes the current counts and includes an incoming source card', () => {
+  it('same-abyss recomputes current counts without including the pending source card', () => {
     const gs = game([
       knownPlayer({ hand: [makeZoneCard('A1'), makeZoneCard('A2')] }),
       knownPlayer({ hand: [makeZoneCard('B1'), makeZoneCard('B2'), makeZoneCard('B3')] }),
     ]);
     gs.abilityData = { actorHandCount: 0, discardCount: 99 };
     expect(getSameAbyssDiscardCount(gs, 1, 0)).toBe(1);
-    expect(getSameAbyssDiscardCount(gs, 1, 0, { incomingCardCount: 1 })).toBe(0);
+    expect(getSameAbyssDiscardCount(gs, 1, 0, { incomingCardCount: 1 })).toBe(1);
     gs.players[0].hand.push(makeZoneCard('C3'));
     expect(getSameAbyssDiscardCount(gs, 1, 0)).toBe(0);
     expect(chooseAiSameAbyssAction(gs, 1, 0)?.cardIndices).toEqual([]);
@@ -55,9 +55,9 @@ describe('AI shared discard decisions', () => {
     gs.abilityData = { sameAbyssIncomingCardId: incoming.id, sameAbyssIncomingCount: 1 };
     expect(getSameAbyssDiscardCount(gs, 1, 0)).toBe(1);
     const action = chooseAiSameAbyssAction(gs, 1, 0);
-    expect(action).toMatchObject({ type: 'discard', incomingCardCount: 0 });
+    expect(action).toMatchObject({ type: 'discard' });
     expect(action.cardIds).toHaveLength(1);
-    expect(getSameAbyssDiscardCount(gs, 1, 0, { incomingCardCount: 1 })).toBe(0);
+    expect(getSameAbyssDiscardCount(gs, 1, 0, { incomingCardCount: 1 })).toBe(1);
   });
 
   it('same-abyss chooses four HP over discarding two lethal life balances', () => {

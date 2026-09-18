@@ -48,6 +48,7 @@ export function buildTargetContinuationAbilityData(abilityData = {}) {
     ...(abilityData?.pendingSanInspection ? { pendingSanInspection: abilityData.pendingSanInspection } : {}),
     ...(abilityData?.pendingInspectionContinuation ? { pendingInspectionContinuation: abilityData.pendingInspectionContinuation } : {}),
     ...(abilityData?.pendingGodChoice ? { pendingGodChoice: abilityData.pendingGodChoice } : {}),
+    ...(abilityData?.pendingZoneIncome ? { pendingZoneIncome: abilityData.pendingZoneIncome } : {}),
     ...(abilityData?._pendingTurnStartPoison ? { _pendingTurnStartPoison: true } : {}),
     ...(abilityData?._pendingTurnStartLinkHeals ? { _pendingTurnStartLinkHeals: abilityData._pendingTurnStartLinkHeals } : {}),
     ...(abilityData?._pendingTurnStartEventIds ? { _pendingTurnStartEventIds: abilityData._pendingTurnStartEventIds } : {}),
@@ -99,11 +100,13 @@ export function buildTargetContinuationState({
     ? {
         ...queuedDecision.frame.abilityData,
         ...buildTargetContinuationAbilityData(queuedDecision.frame.abilityData),
+        ...(abilityData?.pendingZoneIncome ? { pendingZoneIncome: abilityData.pendingZoneIncome } : {}),
       }
     : legacyGodChoice
     ? {
         ...legacyGodChoice,
         ...buildTargetContinuationAbilityData(legacyGodChoice),
+        ...(abilityData?.pendingZoneIncome ? { pendingZoneIncome: abilityData.pendingZoneIncome } : {}),
       }
     : buildTargetContinuationAbilityData(abilityData);
   const nextState = {

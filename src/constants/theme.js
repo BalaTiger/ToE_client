@@ -26,7 +26,7 @@ export const BOARD_THEME_BY_EXPANSION = {
 export const BATTLE_BACKGROUND_BY_EXPANSION = {
   '地神的潜影': '/img/bg/battle/earth_shadow.webp',
   '先贤的馈赠': '/img/bg/battle/sage_gift.webp',
-  '群星呼唤': '/img/bg/battle/stars_call.webp',
+  '群星呼唤': '/img/bg/battle/stars_call_sea_ruins.webp',
   '析骨为柴': '/img/bg/battle/bone_fuel.webp',
 };
 
@@ -40,11 +40,17 @@ export const BATTLE_THEME_BY_EXPANSION = {
   },
   '群星呼唤': {
     ...BOARD_THEME_BY_EXPANSION['群星呼唤'],
-    tintTop: 'rgba(1,6,15,0.66)',
-    tintBottom: 'rgba(0,10,20,0.84)',
+    tintTop: 'rgba(1,6,15,0.58)',
+    tintBottom: 'rgba(0,10,20,0.68)',
     bg: '#020911',
     accent: '#78e2ff',
   },
+};
+
+// Exploration camera follows the environment theme, independently of the UI layout.
+export const BATTLE_CAMERA_BY_EXPANSION = {
+  '地神的潜影': { animation: 'toeDrawBackgroundWalk', origin: '50% 48%' },
+  '群星呼唤': { animation: 'toeDrawBackgroundSea', origin: '50% 32%' },
 };
 
 export const CARD_BACK_IMAGE_BY_EXPANSION = {
@@ -123,6 +129,10 @@ export function getBattleTheme(expansionKey = DEFAULT_EXPANSION_THEME) {
 
 export function getBattleBackgroundImage(expansionKey = DEFAULT_EXPANSION_THEME) {
   return BATTLE_BACKGROUND_BY_EXPANSION[expansionKey] || BATTLE_BACKGROUND_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
+}
+
+export function getBattleCamera(expansionKey = DEFAULT_EXPANSION_THEME) {
+  return BATTLE_CAMERA_BY_EXPANSION[expansionKey] || BATTLE_CAMERA_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
 }
 
 export function getReliefDisplayConfig(expansionKey = DEFAULT_EXPANSION_THEME) {

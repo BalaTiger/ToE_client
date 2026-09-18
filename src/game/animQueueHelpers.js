@@ -654,7 +654,11 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
     ...(options.skillVisualSetupPatch?{visualSetupPatch:options.skillVisualSetupPatch}:{}),
   }];
   if(toPid!=null&&toPid>=0){
-    acquisitionQueue.push(cardTransferStep({fromPid,dest:"player",toPid,count:1,...(options.transferSnapshots||{})}));
+    acquisitionQueue.push(cardTransferStep({
+      fromPid,dest:card?.isGod?"player":"reveal",toPid,count:1,
+      ...(card&&!card.isGod?{cards:[card],faceUp:false}:{}),
+      ...(options.transferSnapshots||{}),
+    }));
     if(options.afterGiftPatch)acquisitionQueue.push(statePatchStep(options.afterGiftPatch));
   }
   // 注意：被蛊惑者的操作是在当前回合内完成的，不应视为"回合开始"
@@ -680,7 +684,18 @@ export function buildBewitchForcedCardQueue(fromPid,toPid,card,triggerName,statQ
       zhuLightAfter:options.zhuLightAfter,
     });
   }
-  return composeCardAcquisitionQueue({acquisitionQueue,acceptanceQueue:settlementQueue});
+  const containsCard=cards=>(cards||[]).some(candidate=>candidate===card||(card?.id!=null&&candidate?.id===card.id));
+  const hasSourceIncome=settlementQueue.some(step=>step.type==="CARD_TRANSFER"&&step.effect==="zoneIncome"&&containsCard(step.cards));
+  const incomeDest=hasSourceIncome?null:containsCard(options.playersAfter?.[toPid]?.hand)?"player"
+    :containsCard(options.discardAfter)?"discard":null;
+  const incomeQueue=card&&incomeDest?[
+    cardTransferStep({
+      fromPid:toPid,dest:incomeDest,...(incomeDest==="player"?{toPid}:{}),count:1,
+      sourceAnchor:"reveal",effect:"draw",cards:[card],
+      playersAfter:options.playersAfter,discardAfter:options.discardAfter,
+    }),
+  ]:[];
+  return composeCardAcquisitionQueue({acquisitionQueue,acceptanceQueue:[...settlementQueue,...incomeQueue]});
 }
 
 export function buildInspectionRevealQueue(events){

@@ -12,7 +12,7 @@ export function resolveCardTransferFaceUp(transfer = {}, card = transfer.cards?.
 
 export function resolveCardTransferAnchors(transfer, card) {
   const hand = getPlayerHandCardAnchor(transfer.fromPid ?? 0, card);
-  const source = transfer.sourceAnchor === 'reveal' ? getRevealCardAnchor()
+  const source = ['reveal', 'drawReveal'].includes(transfer.sourceAnchor) ? getRevealCardAnchor()
     : transfer.sourceAnchor === 'discard' ? getPileCardAnchor('[data-discard-pile]')
     : transfer.sourceAnchor === 'deck' ? getPileCardAnchor('[data-deck-pile]')
     : transfer.sourceAnchor === 'godPower' ? { ...hand, ...getPlayerGodPowerAnchorCenter(transfer.fromPid) }
@@ -22,6 +22,7 @@ export function resolveCardTransferAnchors(transfer, card) {
   const from = Number.isFinite(transfer.sourcePoint?.x) && Number.isFinite(transfer.sourcePoint?.y)
     ? { ...source, ...transfer.sourcePoint } : source;
   const destination = transfer.dest === 'discard' ? getPileCardAnchor('[data-discard-pile]')
+    : transfer.dest === 'reveal' ? getRevealCardAnchor()
     : ['deck', 'deckTop', 'deckBottom'].includes(transfer.dest) ? getPileCardAnchor('[data-deck-pile]')
     : transfer.dest === 'player' ? getPlayerHandCardAnchor(transfer.toPid ?? 0, card)
     : getPlayerAreaCardAnchor(transfer.fromPid ?? 0);

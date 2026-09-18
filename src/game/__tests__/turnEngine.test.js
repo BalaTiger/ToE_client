@@ -14,6 +14,143 @@ const inspectionEventsOf = state => (state?._visualEvents || [])
 const slimeGrantEventsOf = state => (state?._visualEvents || [])
   .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT);
 
+describe('all region effects complete before income', () => {
+  it('puts a lethal forced draw into discard instead of a dead hand', () => {
+    const card = makeZoneCard('A1', 0, { id: 'fatal-draw', type: 'selfDamageHP', val: 3, forced: true });
+    const players = [makePlayer({ hp: 2, role: ROLE_CULTIST }), makePlayer({ role: ROLE_HUNTER })];
+    const result = playerDrawCard(players, [card], [], 0, makeGs({ players }));
+    expect(result.P[0]).toMatchObject({ hp: 0, isDead: true, hand: [] });
+    expect(result.Disc).toContainEqual(card);
+  });
+
+  it.each([
+    ['local', 0, false],
+    ['remote human', 1, true],
+    ['AI', 1, false],
+  ])('%s slime draw pauses for the effect before consuming another draw', (_label, drawerIdx, isMP) => {
+    const source = makeZoneCard('A1', 0, {
+      id: 'pending-army', name: '亡者军团', type: 'adjDamageHP', val: 2, forced: true,
+    });
+    const fixed = makeZoneCard('B1', 0, { id: 'fixed-draw', type: 'selfHealHP', val: 1 });
+    const players = [
+      makePlayer({ role: ROLE_CULTIST }),
+      makePlayer({ role: ROLE_CULTIST }),
+      makePlayer({ role: ROLE_HUNTER }),
+    ];
+    players[drawerIdx].godName = 'TSG';
+    players[drawerIdx].godLevel = 1;
+    players[drawerIdx].hand = [createTsathogguaSlimeCard()];
+    players[(drawerIdx + 1) % players.length].etherealizeStacks = 1;
+    const result = startNextTurn(makeGs({
+      players, deck: [source, fixed], currentTurn: (drawerIdx + 2) % 3, _isMP: isMP,
+    }));
+    expect(result.phase).toBe('ETHEREALIZE_DECISION');
+    expect(result.deck).toEqual([fixed]);
+    expect(result.players[drawerIdx].hand).toEqual([]);
+    expect(result.abilityData).toMatchObject({
+      pendingZoneIncome: { card: source, ownerId: players[drawerIdx].id },
+      continueTurnStartDraw: true, fromTsathogguaSlime: true, _turnOwner: drawerIdx,
+    });
+    expect(result._visualEvents.filter(event => event.type === VISUAL_EVENT.DRAW_CARD)).toHaveLength(1);
+  });
+
+  it('retains derived target choices alongside pending income for a local forced draw', () => {
+    const card = makeZoneCard('D3', 0, { id: 'forced-rose', type: 'roseThornGiftAllHand', forced: true });
+    const old = makeZoneCard('A1');
+    const players = [makePlayer({ hand: [old] }), makePlayer({ role: ROLE_CULTIST }), makePlayer({ role: ROLE_HUNTER })];
+    const result = startNextTurn(makeGs({ players, deck: [card], currentTurn: 2 }));
+    expect(result.phase).toBe('ROSE_THORN_SELECT_TARGET');
+    expect(result.abilityData).toMatchObject({ roseThornTargets: [1, 2], roseThornSource: 0,
+      pendingZoneIncome: { card, ownerId: players[0].id } });
+    expect(result.players[0].hand).toEqual([old]);
+  });
+
+  it('does not expose an empty-hand duel as a card-selection decision', () => {
+    const card = makeZoneCard('A1', 0, { id: 'forced-duel', type: 'caveDuel', forced: true });
+    const players = [makePlayer(), makePlayer({ hand: [makeZoneCard('B1')] })];
+    const result = playerDrawCard(players, [card], [], 0, makeGs({ players }));
+    expect(result.statePatch.caveDuelTargets).toBeUndefined();
+    expect(result.P[0].hand).toEqual([card]);
+  });
+});
+
+describe('活埋与火把完成效果后收入', () => {
+  it.each([
+    ['buryAlive', 'buryAliveSelect', false],
+    ['buryAlive', 'buryAliveSelect', true],
+    ['igniteTorch', 'igniteTorchDiscard', false],
+    ['igniteTorch', 'igniteTorchDiscard', true],
+  ])('%s 进入 %s（强制触发=%s）时保留旧手牌供选择', (type, decisionType, forced) => {
+    const oldCard = makeZoneCard('A1');
+    const card = makeZoneCard('A4', 0, { id: 'incoming', type, forced });
+    const players = [makePlayer({ role: ROLE_HUNTER, hand: [oldCard] }), makePlayer({ role: ROLE_CULTIST })];
+    const result = playerDrawCard(players, [card], [], 0, makeGs({
+      players, debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0,
+    }));
+
+    expect(result.P[0].hand).toEqual([oldCard]);
+    expect(result.statePatch.abilityData).toMatchObject({
+      type: decisionType, pendingZoneIncome: { card, ownerId: players[0].id },
+    });
+  });
+
+  it.each(['buryAlive', 'igniteTorch'])('AI %s 先处理旧牌后收入新牌', type => {
+    const oldCard = makeZoneCard('A1');
+    const card = makeZoneCard('A4', 0, { id: 'incoming', type });
+    const players = [makePlayer({ role: ROLE_HUNTER, hand: [oldCard] }), makePlayer({ role: ROLE_CULTIST })];
+    const result = aiDrawAndApply(0, players, [card], [], makeGs({
+      players, debugForceCardKeepPending: 'keep', debugForceCardKeepTarget: 0,
+    }));
+
+    expect(result.P[0].hand).toEqual([card]);
+    expect(type === 'buryAlive' ? result.D : result.Disc).toContainEqual(oldCard);
+    expect(result.statePatch?.abilityData?.pendingZoneIncome).toBeUndefined();
+  });
+
+  it('联机其他座位强制触发活埋后进入暗选而不是行动阶段', () => {
+    const oldCard = makeZoneCard('A1');
+    const card = makeZoneCard('A4', 0, { id: 'incoming', type: 'buryAlive', forced: true });
+    const players = [
+      makePlayer({ role: ROLE_CULTIST }),
+      makePlayer({ role: ROLE_HUNTER, hand: [oldCard] }),
+      makePlayer({ role: ROLE_TREASURE }),
+    ];
+    const result = startNextTurn(makeGs({ players, deck: [card], currentTurn: 0, _isMP: true }));
+
+    expect(result.currentTurn).toBe(1);
+    expect(result.phase).toBe('BURY_ALIVE_SELECT');
+    expect(result.players[1].hand).toEqual([oldCard]);
+    expect(result.abilityData).toMatchObject({
+      source: 1, buryAliveChoices: [null, null, null],
+      pendingZoneIncome: { card, ownerId: players[1].id },
+    });
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: makeGs({ players }), newGs: result });
+    expect(replay.queue.some(step => step.type === 'CARD_TRANSFER' && step.cards?.some(item => item.id === card.id))).toBe(false);
+  });
+
+  it.each([
+    ['buryAlive', 'BURY_ALIVE_SELECT'],
+    ['igniteTorch', 'IGNITE_TORCH_DISCARD'],
+  ])('本地回合强制触发 %s 后进入 %s 并保留待收入牌', (type, phase) => {
+    const oldCard = makeZoneCard('A1');
+    const card = makeZoneCard('A4', 0, { id: 'incoming', type, forced: true });
+    const players = [
+      makePlayer({ role: ROLE_HUNTER, hand: [oldCard] }),
+      makePlayer({ role: ROLE_CULTIST }),
+      makePlayer({ role: ROLE_TREASURE }),
+    ];
+    const before = makeGs({ players, deck: [card], currentTurn: 2 });
+    const result = startNextTurn(before);
+
+    expect(result.currentTurn).toBe(0);
+    expect(result.phase).toBe(phase);
+    expect(result.players[0].hand).toEqual([oldCard]);
+    expect(result.abilityData.pendingZoneIncome).toEqual({ card, ownerId: players[0].id });
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: before, newGs: result });
+    expect(replay.queue.some(step => step.type === 'CARD_TRANSFER' && step.cards?.some(item => item.id === card.id))).toBe(false);
+  });
+});
+
 describe('createFaithSettlementGodStatusEvent', () => {
   it('uses explicit player snapshots for worship and upgrade without log inference', () => {
     const before = [makePlayer({ name: '联机玩家', godName: null, godLevel: 0 })];
@@ -606,7 +743,8 @@ describe('turnEngine stat events', () => {
     const result = aiDrawAndApply(4, players, [roseThorn], [], gs);
 
     expect(result.kept).toBe(true);
-    expect(result.P[4].hand).toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(result.P[4].hand).not.toContainEqual(roseThorn);
+    expect(result.statePatch.abilityData.pendingZoneIncome.card).toEqual(roseThorn);
     expect(result.statePatch.roseThornSource).toBe(4);
     expect(result.statePatch.roseThornTargets).toEqual([0, 1, 2, 3]);
   });
@@ -632,7 +770,8 @@ describe('turnEngine stat events', () => {
 
     expect(result.needsDecision).toBe(false);
     expect(result.kept).toBe(true);
-    expect(result.P[0].hand).toContainEqual(expect.objectContaining({ name: '玫瑰倒刺' }));
+    expect(result.P[0].hand).not.toContainEqual(roseThorn);
+    expect(result.statePatch.abilityData.pendingZoneIncome.card).toEqual(roseThorn);
     expect(result.statePatch.roseThornSource).toBe(0);
     expect(result.statePatch.roseThornTargets).toEqual([1, 2, 3, 4]);
   });

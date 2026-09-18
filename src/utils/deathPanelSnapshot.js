@@ -5,20 +5,42 @@ export const DEATH_SNAPSHOT_TIMEOUT_MS = 2500;
 export function captureDeathPanelSnapshot(idx, { signal, timeoutMs = null } = {}) {
   let el;
   let target;
-  try {
-    el = document.querySelector(`[data-death-panel="${idx}"]`);
-    if (!el || signal?.aborted) return Promise.resolve(null);
+  let captureArea;
+  const measureTarget = () => {
     const r = _getZoomCompensatedRect(el);
     const panelStyle = window.getComputedStyle(el);
-    target = {
+    let left = r.left, top = r.top, right = r.left + r.width, bottom = r.top + r.height;
+    captureArea = { width: el.offsetWidth || undefined, height: el.offsetHeight || undefined };
+    const sideTags = idx === 0 ? el.querySelector?.('.toe-self-side-tags') : null;
+    if (sideTags) {
+      const style = window.getComputedStyle(sideTags);
+      const tags = _getZoomCompensatedRect(sideTags);
+      if (style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) !== 0 && tags.width > 0 && tags.height > 0) {
+        left = Math.min(left, tags.left);
+        top = Math.min(top, tags.top);
+        right = Math.max(right, tags.left + tags.width);
+        bottom = Math.max(bottom, tags.top + tags.height);
+        // Snapshot the hanging tabs too, without widening the live panel or
+        // changing the hit/hand anchors. html2canvas's clone has no board zoom.
+        const scaleX = r.width / (el.offsetWidth || r.width);
+        const scaleY = r.height / (el.offsetHeight || r.height);
+        captureArea = { x: (left - r.left) / scaleX, y: (top - r.top) / scaleY, width: (right - left) / scaleX, height: (bottom - top) / scaleY };
+      }
+    }
+    return {
       pi: idx,
-      x: r.left, y: r.top, w: r.width, h: r.height,
-      cx: r.left + r.width / 2, cy: r.top + r.height / 2,
+      x: left, y: top, w: right - left, h: bottom - top,
+      cx: (left + right) / 2, cy: (top + bottom) / 2,
       snapshotUrl: null,
       panelBackground: panelStyle.background,
       panelBorderColor: panelStyle.borderTopColor,
       panelBoxShadow: panelStyle.boxShadow,
     };
+  };
+  try {
+    el = document.querySelector(`[data-death-panel="${idx}"]`);
+    if (!el || signal?.aborted) return Promise.resolve(null);
+    target = measureTarget();
   } catch (err) {
     console.warn('[death-snapshot] panel unavailable for pid', idx, err);
     return Promise.resolve(null);
@@ -41,14 +63,16 @@ export function captureDeathPanelSnapshot(idx, { signal, timeoutMs = null } = {}
       try {
         const { default: html2canvas } = await import('html2canvas');
         if (settled) return;
+        // Hover can expand/collapse the same root while the renderer loads.
+        // Pair the captured pixels with the bounds of that actual panel state.
+        target = measureTarget();
         const inZoomContainer = !!el.closest?.('[data-zoom-container]');
         const canvas = await html2canvas(el, {
           backgroundColor: null,
           useCORS: true,
           logging: false,
           scale: Math.min(2, Math.max(1, window.devicePixelRatio || 1)),
-          width: el.offsetWidth || undefined,
-          height: el.offsetHeight || undefined,
+          ...captureArea,
           windowWidth: inZoomContainer ? 1200 : window.innerWidth,
           windowHeight: window.innerHeight,
           ignoreElements: node => node?.hasAttribute?.('data-theme-ornament'),

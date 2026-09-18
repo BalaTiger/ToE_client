@@ -13,18 +13,16 @@ export function resumeSameAbyssContinuation(state) {
   if (state._sameAbyssContinuation.awaitingSourceDamage) {
     const pending = state._sameAbyssContinuation;
     const source = state.players[pending.actorIdx];
-    const incoming = source?.isDead || source?.hand?.some(card => card.id === pending.sameAbyssIncomingCardId)
-      ? 0 : pending.sameAbyssIncomingCount || 0;
     const living = state.players.map((player, index) => ({ player, index,
-      count: player.hand.length + (index === pending.actorIdx ? incoming : 0) })).filter(({ player }) => !player.isDead);
+      count: player.hand.length })).filter(({ player }) => !player.isDead);
     const maximum = Math.max(...living.map(({ count }) => count));
     const tied = living.filter(({ count }) => count === maximum);
     const targetIdx = tied.find(({ index }) => index !== pending.actorIdx)?.index ?? tied[0]?.index;
     return { ...state, _sameAbyssContinuation: null, phase: 'SAME_ABYSS_SELECT', abilityData: {
       ...buildTargetContinuationAbilityData(state.abilityData), ...pending,
       awaitingSourceDamage: false, type: 'sameAbyssChoice', targetIdx, forceDiscard: false,
-      actorHandCount: (source?.hand?.length || 0) + incoming,
-      discardCount: Math.max(0, (state.players[targetIdx]?.hand?.length || 0) - ((source?.hand?.length || 0) + incoming)),
+      actorHandCount: source?.hand?.length || 0,
+      discardCount: Math.max(0, (state.players[targetIdx]?.hand?.length || 0) - (source?.hand?.length || 0)),
     } };
   }
   return { ...state, phase: 'SAME_ABYSS_SELECT', abilityData: {
@@ -41,16 +39,11 @@ export function resolveSameAbyssState(gs, { choice = null, card = null } = {}) {
   const actorIdx = ad.actorIdx ?? gs.currentTurn;
   if (!state.players[targetIdx]) return null;
   const turnOwner = ad._turnOwner ?? gs.currentTurn;
-  const incomingCount = () => ad.sameAbyssIncomingCardId != null
-    && state.players[actorIdx]?.hand?.some(held => held.id === ad.sameAbyssIncomingCardId)
-    ? 0 : (ad.sameAbyssIncomingCount || 0);
-  const obligation = () => getSameAbyssDiscardCount(state, targetIdx, actorIdx, { incomingCardCount: incomingCount() });
+  const obligation = () => getSameAbyssDiscardCount(state, targetIdx, actorIdx);
   const continuation = { ...buildTargetContinuationAbilityData(ad), actorIdx, targetIdx,
-    sameAbyssIncomingCount: ad.sameAbyssIncomingCount || 0,
-    sameAbyssIncomingCardId: ad.sameAbyssIncomingCardId, _turnOwner: turnOwner };
+    _turnOwner: turnOwner };
   const forced = !!(gs._sameAbyssContinuation || ad.forceDiscard);
-  const selected = forced ? 'discard' : choice || chooseAiSameAbyssAction(state, targetIdx, actorIdx,
-    { incomingCardCount: incomingCount() })?.type;
+  const selected = forced ? 'discard' : choice || chooseAiSameAbyssAction(state, targetIdx, actorIdx)?.type;
   const pause = damage => {
     state.phase = damage.phase;
     state.abilityData = damage.abilityData;
@@ -61,7 +54,7 @@ export function resolveSameAbyssState(gs, { choice = null, card = null } = {}) {
     if (!forced) state.log.push(`【同归深渊】${state.players[targetIdx].name} 选择弃置手牌`);
     while (!state.players[targetIdx].isDead && obligation() > 0) {
       const plan = chooseAiSameAbyssAction(state, targetIdx, actorIdx,
-        { forceDiscard: true, incomingCardCount: incomingCount() });
+        { forceDiscard: true });
       const index = plan?.cardIndices?.[0];
       if (index == null || index < 0) break;
       const beforePlayers = copyPlayers(state.players);

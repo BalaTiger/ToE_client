@@ -1,6 +1,8 @@
 import { applyFx } from './effectEngine';
 import { cardLogText, copyPlayers } from './coreUtils';
 import { playerDrawCard } from './turnEngine';
+import { applyZoneCardIncome } from './zoneCardIncome';
+import { deriveEffectDecisionState } from './effectStatePatch';
 import {
   ZHU_REVEAL_SOURCE,
   buildZhuRevealAbilityData,
@@ -24,7 +26,11 @@ export function resolveMpTimeoutToAction(gs) {
         P = res.P;
         D = res.D;
         Disc = res.Disc;
-        P[drawerIdx].hand.push(dr.card);
+        const statePatch = applyZoneCardIncome({
+          players: P, discard: Disc, card: dr.card, drawerIdx,
+          statePatch: res.statePatch || {},
+        });
+        const decision = deriveEffectDecisionState(statePatch, { turnOwner: gs.currentTurn });
         return {
           ...gs,
           players: P,
@@ -35,10 +41,10 @@ export function resolveMpTimeoutToAction(gs) {
             `(超时) ${dr.drawerName || '该玩家'}被迫收入 ${cardLogText(dr.card, { alwaysShowName: true })}`,
             ...res.msgs,
           ],
-          phase: 'ACTION',
           drawReveal: null,
-          abilityData: {},
-          ...(res.statePatch || {}),
+          ...statePatch,
+          phase: decision.phase,
+          abilityData: decision.abilityData,
         };
       }
       return {
@@ -109,15 +115,17 @@ export function resolveMpTimeoutToAction(gs) {
         abilityData: {},
       };
     }
+    const decision = deriveEffectDecisionState(res.statePatch, { turnOwner: gs.currentTurn });
     return {
       ...gs,
       players: P,
       deck: D,
       discard: Disc,
       log: [...L, ...res.effectMsgs],
-      phase: 'ACTION',
+      ...(res.statePatch || {}),
+      phase: decision.phase,
       drawReveal: res.drawnCard ? { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false } : null,
-      abilityData: {},
+      abilityData: decision.abilityData,
     };
   }
 

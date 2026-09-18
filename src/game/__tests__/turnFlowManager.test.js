@@ -12,6 +12,11 @@ import {
 } from '../turnFlowManager';
 
 describe('turnFlowManager', () => {
+  it('does not resume further draws or end-turn events after effect/income ends the game', () => {
+    const state = { phase: 'ACTION', gameOver: { winner: '寻宝者' },
+      abilityData: { fromRest: true, continueTurnStartDraw: true }, _turnFlowStage: TURN_FLOW_STAGE.END_TURN };
+    expect(resolveTurnFlowAfterEvent(state, { continueRest: true })).toEqual({ state, directive: TURN_FLOW_DIRECTIVE.APPLY_STATE });
+  });
   it('changes only flow metadata and never compiles or consumes presentation data', () => {
     const visualEvents = [{ id: 'event-1', type: 'cardGain' }];
     const animationQueue = [{ type: 'DRAW' }];

@@ -19,8 +19,11 @@ import {
   makeInspectionMeta,
 } from './coreUtils';
 import { VISUAL_EVENT } from './visualEvents';
-import { applyHpDamageWithLink, applyInspectionForSanLoss, resolvePendingDamageLinkBreak } from './effectEngine';
-import { deriveEffectDecisionState } from './effectStatePatch';
+import { applyInspectionForSanLoss, processInspectionTargets, resolvePendingDamageLinkBreak, submitLossEvents } from './effectEngine';
+import { buildStatChangeStatePatch } from './statChangeEngine';
+import { buildStatEvents } from './statEvents';
+import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { settlePendingZoneIncome } from './zoneCardIncome';
 import { initGame } from './setup';
 import {
   aiDrawAndApply,
@@ -36,7 +39,7 @@ import {
   removeZhuLightCard,
   requestZhuReveal,
 } from './zhuPower';
-import { buildTargetContinuationAbilityData } from './targetContinuation';
+import { buildTargetContinuationAbilityData, buildTargetContinuationState } from './targetContinuation';
 import { hasGodPowerImmunity } from './godPowerImmunity';
 import { buildTurnStartDrawReplayQueue } from './turnAnimState';
 import {
@@ -116,10 +119,17 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
     L.push(`【撒托古亚的赐福黏液】${target.name} 没有牺牲黏液`);
   }
 
+  const beforeLinkPlayers = copyPlayers(P), beforeLinkDiscard = [...Disc], linkLogs = [];
   const linkReaction = resolvePendingDamageLinkBreak(
-    P, targetIdx, Disc, L, abilityData._turnOwner ?? gs.currentTurn, D,
+    P, targetIdx, Disc, linkLogs, abilityData._turnOwner ?? gs.currentTurn, D,
     buildTargetContinuationAbilityData(abilityData),
   );
+  L.push(...linkLogs);
+  const linkSeq = (gs._statEventSeq || 0) + 1;
+  gs = { ...gs, ...buildStatChangeStatePatch(gs, {
+    statEvents: buildStatEvents(beforeLinkPlayers, P, linkLogs, { reason: '绳索断裂', seq: linkSeq,
+      discardBefore: beforeLinkDiscard, discardAfter: Disc }), statEventSeq: linkSeq, logs: linkLogs,
+  }) };
   if (linkReaction.etherealizeDecision) {
     return {
       ...gs,
@@ -189,6 +199,14 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false) {
     Disc = processed.Disc;
     L = processed.log;
     inspectionPatch = processed.inspectionMeta || {};
+    if (hasEffectDecisionState(inspectionPatch)) {
+      const decision = deriveEffectDecisionState(inspectionPatch);
+      return { ...gs, ...inspectionPatch, players: P, deck: D, discard: Disc, log: L,
+        phase: decision.phase, abilityData: {
+          ...buildTargetContinuationAbilityData({ ...abilityData, pendingSanInspection: null }),
+          ...decision.abilityData,
+        } };
+    }
     win = checkWin(P, gs._isMP);
   }
   if (!win) P.forEach((player, idx) => {
@@ -312,7 +330,7 @@ export function continueHeadlessTurnStartDraw(gs) {
       abilityData: { ...pendingAiGodChoice, ...continuationAbility },
     };
   }
-  const win = checkWin(P, gs._isMP);
+  const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, gs._isMP);
   if (win) return { ...base, phase: 'AI_TURN', abilityData: {}, gameOver: win };
   const decisionState = deriveEffectDecisionState(res.statePatch, { fallbackPhase: 'AI_TURN' });
   return {
@@ -357,7 +375,7 @@ export function resolveHeadlessZhuDraw(gs) {
       : (zhuDecision?.source === ZHU_REVEAL_SOURCE.PROLIFERATING_Z
         ? { fromProliferatingZ: true }
         : {}));
-  const win = checkWin(P, gs._isMP);
+  const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, gs._isMP);
   return {
     ...gs,
     ...(res.statePatch || {}),
@@ -381,7 +399,13 @@ function applyHeadlessLoss(gs, loss, state) {
   let { P, D, Disc, L, inspectionMeta } = state;
   const turnOwner = gs.abilityData?._turnOwner ?? gs.currentTurn;
   if ((loss.lostHp || 0) > 0) {
-    applyHpDamageWithLink(P, loss.targetIdx, loss.lostHp, Disc, L, turnOwner, D);
+    const message = `${P[loss.targetIdx]?.name} 失去 ${loss.lostHp} HP`;
+    const damage = submitLossEvents({ players: P, deck: D, discard: Disc, log: L,
+      currentTurn: turnOwner, events: [{ ...loss, lostSan: 0 }], skipEtherealize: true, deferPostDamageDecisions: true,
+      statEventSeq: (inspectionMeta._statEventSeq || 0) + 1, statEventLogs: [message],
+    });
+    L.push(message);
+    inspectionMeta = { ...inspectionMeta, ...buildStatChangeStatePatch(inspectionMeta, damage) };
   }
   if ((loss.lostSan || 0) > 0 && P[loss.targetIdx] && !P[loss.targetIdx].isDead) {
     const processed = applySanLossToPlayerWithInspection(
@@ -472,18 +496,26 @@ export function resolveHeadlessEtherealize(gs, decision = null) {
     player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
   ));
   if (pendingLinkTarget >= 0) {
+    const beforeLinkPlayers = copyPlayers(state.P), beforeLinkDiscard = [...state.Disc], linkLogs = [];
     const linkReaction = resolvePendingDamageLinkBreak(
       state.P,
       pendingLinkTarget,
       state.Disc,
-      state.L,
+      linkLogs,
       turnOwner,
       state.D,
       buildTargetContinuationAbilityData(abilityData),
     );
+    state.L.push(...linkLogs);
+    const linkSeq = (state.inspectionMeta._statEventSeq || 0) + 1;
+    state.inspectionMeta = { ...state.inspectionMeta, ...buildStatChangeStatePatch(state.inspectionMeta, {
+      statEvents: buildStatEvents(beforeLinkPlayers, state.P, linkLogs, { reason: '绳索断裂', seq: linkSeq,
+        discardBefore: beforeLinkDiscard, discardAfter: state.Disc }), statEventSeq: linkSeq, logs: linkLogs,
+    }) };
     if (linkReaction.etherealizeDecision) {
       return {
         ...gs,
+        ...state.inspectionMeta,
         players: state.P,
         deck: state.D,
         discard: state.Disc,
@@ -497,7 +529,9 @@ export function resolveHeadlessEtherealize(gs, decision = null) {
     ...buildTargetContinuationAbilityData(abilityData),
     _turnOwner: turnOwner,
   });
-  const win = slimeDecision ? null : checkWin(state.P, gs._isMP);
+  const inspectionDecision = hasEffectDecisionState(state.inspectionMeta)
+    ? deriveEffectDecisionState(state.inspectionMeta) : null;
+  const win = slimeDecision || inspectionDecision ? null : checkWin(state.P, gs._isMP);
   return {
     ...gs,
     ...(state.inspectionMeta || {}),
@@ -506,8 +540,10 @@ export function resolveHeadlessEtherealize(gs, decision = null) {
     discard: state.Disc,
     log: state.L,
     currentTurn: turnOwner,
-    phase: slimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN',
-    abilityData: slimeDecision
+    phase: inspectionDecision?.phase || (slimeDecision ? 'TSG_SLIME_BALANCE' : 'AI_TURN'),
+    abilityData: inspectionDecision
+      ? { ...buildTargetContinuationAbilityData(abilityData), ...inspectionDecision.abilityData }
+      : slimeDecision
       ? { ...buildTargetContinuationAbilityData(abilityData), ...slimeDecision }
       : buildTargetContinuationAbilityData(abilityData),
     ...(win ? { gameOver: win } : {}),
@@ -520,8 +556,44 @@ export function resolveHeadlessSameAbyss(gs) {
 }
 
 export function advanceHeadlessGame(gs) {
-  if (!gs || gs.gameOver) return { state: gs, status: 'terminal' };
+  if (!gs) return { state: gs, status: 'terminal' };
+  if (!gs.gameOver && ['ACTION', 'AI_TURN'].includes(gs.phase)
+    && (gs.abilityData?.pendingSanInspection || gs.abilityData?.pendingInspectionContinuation)) {
+    const abilityData = { ...gs.abilityData };
+    const pending = abilityData.pendingSanInspection || abilityData.pendingInspectionContinuation;
+    const targets = abilityData.pendingSanInspection ? [pending.targetIndex] : pending.targets;
+    if (abilityData.pendingSanInspection) delete abilityData.pendingSanInspection;
+    else delete abilityData.pendingInspectionContinuation;
+    const result = processInspectionTargets(
+      (targets || []).filter(index => gs.players[index] && !gs.players[index].isDead
+        && gs.players[index].san > 0 && gs.players[index].san <= 6),
+      pending.startIndex ?? gs.currentTurn, copyPlayers(gs.players), [...gs.deck], [...gs.discard], gs.log,
+      makeInspectionMeta(gs),
+    );
+    const decision = deriveEffectDecisionState(result.inspectionMeta, { baseAbilityData: abilityData, fallbackPhase: 'AI_TURN' });
+    return { state: { ...gs, ...result.inspectionMeta, players: result.P, deck: result.D, discard: result.Disc,
+      log: result.log, phase: decision.phase, abilityData: decision.abilityData }, status: 'advanced' };
+  }
   gs = resumeSameAbyssContinuation(gs);
+  if (!gs.gameOver && ['ACTION', 'AI_TURN'].includes(gs.phase)
+    && (gs._decisionContinuations?.length || gs.abilityData?.pendingGodChoice)) {
+    return { state: buildTargetContinuationState({ baseState: gs, clearTurnAnim: false }), status: 'advanced' };
+  }
+  if (gs.abilityData?.pendingZoneIncome && (gs.gameOver || ['ACTION', 'AI_TURN'].includes(gs.phase))) {
+    const players = copyPlayers(gs.players);
+    const discard = [...gs.discard];
+    settlePendingZoneIncome(players, discard, gs.abilityData.pendingZoneIncome);
+    const abilityData = { ...gs.abilityData };
+    delete abilityData.pendingZoneIncome;
+    const state = { ...gs, players, discard, abilityData, gameOver: gs.gameOver || checkWin(players, gs._isMP) };
+    return { state, status: state.gameOver ? 'terminal' : 'advanced' };
+  }
+  if (gs.gameOver) return { state: gs, status: 'terminal' };
+  if (gs.phase === 'GOD_CHOICE') {
+    gs = { ...gs, phase: 'AI_GOD_CHOICE', abilityData: {
+      ...gs.abilityData, playerIndex: gs.abilityData?.playerIndex ?? gs.abilityData?.drawerIdx ?? gs.currentTurn,
+    } };
+  }
   if (['FIRST_COME_PICK_SELECT', 'TORTOISE_ORACLE_SELECT', 'DECIPHER_STONE_CARVING', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(gs.phase)) {
     return { state: resolveAiPublicChoiceState(gs), status: 'advanced' };
   }

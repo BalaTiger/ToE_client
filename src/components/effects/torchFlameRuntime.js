@@ -25,10 +25,12 @@ export function canUseFlameHdr({ secure, gpu, highDynamicRange, enabled = true }
   return Boolean(enabled && secure && gpu && highDynamicRange);
 }
 
-export function flamePlaybackState({ hidden, paused, reducedMotion, visible = true, fullyCovered, occluded, intensity = 1 }) {
+export function flamePlaybackState({ hidden, paused, reducedMotion, visible = true, fullyCovered, intensity = 1 }) {
   return {
     animate: !hidden && !paused && !reducedMotion && visible && !fullyCovered,
-    opacity: Math.max(0, Math.min(1, intensity)) * (occluded ? .22 : 1),
+    // Overlay content already composites above the flame. Its presence alone
+    // must not dim areas outside the actual backdrop (e.g. a turn banner).
+    opacity: Math.max(0, Math.min(1, intensity)),
   };
 }
 

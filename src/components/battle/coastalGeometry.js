@@ -33,7 +33,7 @@ function handFan(cardWidth, count) {
   return { cardWidth, cardHeight, step, radius, lift, minY, maxY, height: maxY - minY, width: count ? cardWidth + Math.max(0, count - 1) * step : 0 };
 }
 
-export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, rolesBottom = 190, centerX = null, controlsHeight = 0, controlsBottom = 24, effectsHeight = 0 } = {}) {
+export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, rolesBottom = 190, centerX = null, controlsHeight = 0, controlsBottom = 24, effectsHeight = 0, countsHeight = 103 } = {}) {
   const handLeft = width * .15;
   const actionsWidth = width * .19;
   const rightInset = width * .04;
@@ -69,7 +69,9 @@ export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, 
   const handTop = handBottom - handHeight;
   const pileBottomLimit = handTop - handOffsetY - separation;
   const pileWidth = handRight - width * .27;
-  const pileLeft = Number.isFinite(centerX) ? centerX - pileWidth / 2 : width * .27;
+  // Keep the established tabletop axis when the top character rail grows left.
+  const pileCenterX = Number.isFinite(centerX) ? centerX : width * .5125 - 12;
+  const pileLeft = pileCenterX - pileWidth / 2;
   const pileCardWidth = Math.floor(Math.min(
     fan.cardWidth * COASTAL_PILE_DEPTH_RATIO,
     (pileBottomLimit - pileTopLimit - COASTAL_PILE_EXTRA_HEIGHT) / CARD_FACE_RATIO,
@@ -87,6 +89,8 @@ export function getCoastalGeometry({ width = 1200, height = 620, handCount = 5, 
   const logHeight = Math.min(bookHeight, controlsTop - logTop - 4);
   return {
     width, height: boardHeight, rolesBottom,
+    // Minor overlap with the hand is intentional; the shaft and flame stay clear.
+    self: { left: -5, top: 180, width: 150, height: Math.max(0, boardHeight - 180 - 39 - countsHeight - 14) },
     hand: { ...fan, height: handHeight, left: handLeft, right: handRight, top: handTop, bottom: handBottom, offsetY: handOffsetY,
       paddingTop: handCount ? -fan.minY : 0, paddingBottom: handCount ? fan.maxY - fan.cardHeight : 0,
       countLeft: handRight - Math.max(fan.width, 150) - 40 },

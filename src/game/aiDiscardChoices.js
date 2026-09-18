@@ -160,7 +160,7 @@ export function simulateAiDiscardAction(gs, actorIdx, action) {
     const currentPlayer = state.players[actorIdx];
     if (currentPlayer.isDead) break;
     if (action.sameAbyssSourceIdx != null && getSameAbyssDiscardCount(
-      state, actorIdx, action.sameAbyssSourceIdx, { incomingCardCount: action.incomingCardCount },
+      state, actorIdx, action.sameAbyssSourceIdx,
     ) === 0) break;
     const selectedCard = selected[offset];
     const index = selectedCard?.id != null
@@ -192,7 +192,7 @@ export function simulateAiDiscardAction(gs, actorIdx, action) {
   if (submitPreviewLosses(state, roseThornLossEvents(discarded))) return state;
   if (!state.players[actorIdx].isDead && action.sameAbyssSourceIdx != null) {
     const stillRequired = getSameAbyssDiscardCount(
-      state, actorIdx, action.sameAbyssSourceIdx, { incomingCardCount: action.incomingCardCount },
+      state, actorIdx, action.sameAbyssSourceIdx,
     );
     if (stillRequired > 0) {
       // A rope death can empty the source's hand during these discards. Finish
@@ -201,7 +201,6 @@ export function simulateAiDiscardAction(gs, actorIdx, action) {
       const continuations = orderedDiscardActions(state, actorIdx, stillRequired, {
         sameAbyss: true,
         sameAbyssSourceIdx: action.sameAbyssSourceIdx,
-        incomingCardCount: action.incomingCardCount,
       });
       return rankDiscardPlans(state, actorIdx, continuations)[0]?.outcome || state;
     }
@@ -256,21 +255,11 @@ function orderedDiscardActions(state, actorIdx, count, extra = {}) {
   return beam;
 }
 
-function getSameAbyssIncomingCount(gs, sourceIdx, options) {
-  if (options.incomingCardCount != null) return options.incomingCardCount;
-  const abilityData = gs?.abilityData || {};
-  const incomingId = abilityData.sameAbyssIncomingCardId;
-  const alreadyHeld = incomingId != null
-    && gs?.players?.[sourceIdx]?.hand?.some(card => card.id === incomingId);
-  return alreadyHeld ? 0 : abilityData.sameAbyssIncomingCount || 0;
-}
-
 /** The source's current hand is authoritative; discardCount is never cached. */
-export function getSameAbyssDiscardCount(gs, targetIdx, sourceIdx, options = {}) {
+export function getSameAbyssDiscardCount(gs, targetIdx, sourceIdx) {
   const source = gs?.players?.[sourceIdx];
-  const incomingCount = getSameAbyssIncomingCount(gs, sourceIdx, options);
   const sourceCount = source
-    ? (source.hand?.length || 0) + (source.isDead ? 0 : incomingCount)
+    ? (source.hand?.length || 0)
     : (gs?.abilityData?.actorHandCount || 0);
   return Math.max(0, (gs?.players?.[targetIdx]?.hand?.length || 0) - sourceCount);
 }
@@ -278,11 +267,10 @@ export function getSameAbyssDiscardCount(gs, targetIdx, sourceIdx, options = {})
 export function chooseAiSameAbyssAction(gs, targetIdx, sourceIdx, options = {}) {
   if (!gs?.players?.[targetIdx] || gs.players[targetIdx].isDead) return null;
   const observation = createAiObservationState(gs, targetIdx);
-  const required = getSameAbyssDiscardCount(gs, targetIdx, sourceIdx, options);
+  const required = getSameAbyssDiscardCount(gs, targetIdx, sourceIdx);
   const actions = orderedDiscardActions(observation, targetIdx, required, {
     sameAbyss: true,
     sameAbyssSourceIdx: sourceIdx,
-    incomingCardCount: getSameAbyssIncomingCount(gs, sourceIdx, options),
   });
   if (!options.forceDiscard) actions.push({ type: 'hp', lostHp: 4, cardIds: [], cardIndices: [] });
   return chooseAiAction({

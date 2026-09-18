@@ -28,11 +28,10 @@ describe('same abyss committed discard settlement', () => {
     expect(fx.P[1].hand).toHaveLength(3);
     const paused = { ...state, ...fx.statePatch, players: fx.P, deck: fx.D, discard: fx.Disc,
       log: fx.msgs, phase: 'ETHEREALIZE_DECISION' };
-    paused.players[0].hand.push(card);
     const reacted = resolveHeadlessEtherealize(paused, { useEtherealize: false });
     const resumed = resumeSameAbyssContinuation(reacted);
     expect(resumed.players[0].hp).toBe(8);
-    expect(resumed.abilityData).toMatchObject({ actorIdx: 0, targetIdx: 1, actorHandCount: 2, forceDiscard: false });
+    expect(resumed.abilityData).toMatchObject({ actorIdx: 0, targetIdx: 1, actorHandCount: 1, forceDiscard: false });
   });
   it('recomputes the obligation after rope damage kills and empties the source', () => {
     const state = stateWithBalances(2);
@@ -80,18 +79,14 @@ describe('same abyss committed discard settlement', () => {
     expect(finished.players[1].hp).toBe(7);
   });
 
-  it('does not count the incoming triggering card twice after it enters the source hand', () => {
+  it('ignores legacy incoming counts while the triggering card is outside the hand', () => {
     const state = stateWithBalances();
-    const triggeringCard = makeZoneCard('D4');
     state.players[0].hand = [];
-    state.players[1].etherealizeStacks = 1;
+    state.players[1].hand = [makeZoneCard('A1'), makeZoneCard('B2')];
     state.abilityData.sameAbyssIncomingCount = 1;
-    state.abilityData.sameAbyssIncomingCardId = triggeringCard.id;
-    const paused = resolveSameAbyssState(state, { choice: 'discard' });
-    paused.players[0].hand.push(triggeringCard);
-    const reacted = resolveHeadlessEtherealize(paused, { useEtherealize: false });
-    const finished = advanceHeadlessGame(reacted).state;
-    expect(finished.players[1].hand).toHaveLength(1);
+    state.abilityData.sameAbyssIncomingCardId = 'pending-card';
+    const finished = resolveSameAbyssState(state, { choice: 'discard' });
+    expect(finished.players[1].hand).toHaveLength(0);
   });
 
   it('rotates the paused source, target, turn owner and resumed ability indices', () => {

@@ -7,15 +7,84 @@ import {
   simulateHeadlessGames,
   withRandomSource,
   continueHeadlessTurnStartDraw,
+  resolveHeadlessEtherealize,
   validateHeadlessPresentationTransition,
 } from '../headlessSimulator';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { playerDrawCard } from '../turnEngine';
+import { deriveEffectDecisionState } from '../effectStatePatch';
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { makeGs, makePlayer, makeZoneCard } from './factory';
 
 const PRESETS = [
   { [ROLE_TREASURE]: 2, [ROLE_HUNTER]: 2, [ROLE_CULTIST]: 1 },
 ];
+
+describe('headless deferred region income', () => {
+  it('settles damage before a queued peek choice and retains income until both finish', () => {
+    const card = makeZoneCard('D2', 0, { id: 'peek-reaction', name: '火中取栗', type: 'selfDamageHPPeek', val: 2, forced: true });
+    const players = [makePlayer({ role: ROLE_HUNTER }), makePlayer({ role: ROLE_CULTIST, etherealizeStacks: 1 })];
+    const gs = makeGs({ players, phase: 'AI_TURN', _headless: true });
+    const draw = playerDrawCard(players, [card], [], 1, gs);
+    const decision = deriveEffectDecisionState(draw.statePatch);
+    expect(decision.phase).toBe('ETHEREALIZE_DECISION');
+    expect(draw.statePatch.peekHandTargets).toBeUndefined();
+    expect(draw.statePatch._decisionContinuations.at(-1).phase).toBe('PEEK_HAND_SELECT_TARGET');
+    const paused = { ...gs, ...draw.statePatch, phase: decision.phase, abilityData: decision.abilityData,
+      players: draw.P, deck: draw.D, discard: draw.Disc };
+    const reacted = resolveHeadlessEtherealize(paused, { useEtherealize: false });
+    expect(reacted.players[1].hp).toBe(8);
+    expect(reacted.players[1].hand).toEqual([]);
+    expect(reacted._statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'HP_LOSS', target: 1, from: expect.objectContaining({ hp: 10 }), to: expect.objectContaining({ hp: 8 }) }),
+    ]));
+    const peek = advanceHeadlessGame(reacted).state;
+    expect(peek.phase).toBe('PEEK_HAND_SELECT_TARGET');
+    expect(peek.abilityData).toMatchObject({ peekHandTargets: [0], peekHandSource: 1,
+      pendingZoneIncome: { card, ownerId: players[1].id } });
+    expect(peek.players[1].hand).toEqual([]);
+  });
+
+  it('settles the source before resuming any further draw', () => {
+    const source = makeZoneCard('A1');
+    const next = makeZoneCard('B2');
+    const players = [makePlayer({ role: ROLE_CULTIST }), makePlayer({ role: ROLE_HUNTER })];
+    const gs = makeGs({ players, deck: [next], phase: 'AI_TURN', _headless: true,
+      abilityData: { pendingZoneIncome: { card: source, ownerId: players[0].id }, continueTurnStartDraw: true, _turnOwner: 0 },
+    });
+    const finished = advanceHeadlessGame(gs).state;
+    expect(finished.players[0].hand).toEqual([source]);
+    expect(finished.deck).toEqual([next]);
+    expect(finished.abilityData.pendingZoneIncome).toBeUndefined();
+    expect(finished.abilityData.continueTurnStartDraw).toBe(true);
+    expect(gs.players[0].hand).toEqual([]);
+  });
+
+  it('does not settle before a queued effect decision', () => {
+    const card = makeZoneCard('A1');
+    const players = [makePlayer({ role: ROLE_CULTIST }), makePlayer({ role: ROLE_HUNTER })];
+    const gs = makeGs({ players, phase: 'AI_TURN', _headless: true,
+      abilityData: { pendingZoneIncome: { card, ownerId: players[0].id } },
+      _sameAbyssContinuation: { actorIdx: 0, targetIdx: 1, _turnOwner: 0, awaitingSourceDamage: true },
+    });
+    const finished = advanceHeadlessGame(gs).state;
+    expect(finished.players[0].hand).toEqual([]);
+    expect(finished.abilityData.pendingZoneIncome).toEqual(gs.abilityData.pendingZoneIncome);
+  });
+
+  it('disposes of pending income when the game ends with its owner dead', () => {
+    const card = makeZoneCard('A1');
+    const players = [makePlayer({ isDead: true, hp: 0 })];
+    const gs = makeGs({ players, gameOver: { winner: ROLE_HUNTER },
+      abilityData: { pendingZoneIncome: { card, ownerId: players[0].id } },
+    });
+    const result = advanceHeadlessGame(gs);
+    expect(result.status).toBe('terminal');
+    expect(result.state.players[0].hand).toEqual([]);
+    expect(result.state.discard).toEqual([card]);
+    expect(result.state.abilityData.pendingZoneIncome).toBeUndefined();
+  });
+});
 
 describe('headless simulator', () => {
   it('creates an all-AI game with the requested exact role composition', () => {

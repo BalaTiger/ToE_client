@@ -595,6 +595,16 @@ describe('applyFx', () => {
     expect(res.msgs.at(-1)).toContain('本回合不受邪神之力影响');
   });
 
+  it('igniteTorch: 空手时跳过弃牌选择并获得免疫', () => {
+    const players = makeStandardPlayers(3);
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 0, null, players, [], [], makeGs({ players }));
+
+    expect(res.P[0].hand).toEqual([]);
+    expect(res.P[0].godPowerImmuneThisTurn).toBe(true);
+    expect(res.statePatch?.abilityData?.type).not.toBe('igniteTorchDiscard');
+    expect(res.Disc).toEqual([]);
+  });
+
   it('swapDeckDiscard: 交换牌堆和弃牌堆', () => {
     const players = makeStandardPlayers(3);
     const deck = [{ id: 'deck-1' }, { id: 'deck-2' }];
@@ -655,7 +665,7 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
-  it('sameAbyssChoice: 触发者自己最多手牌时计入刚收入的同归深渊', () => {
+  it('sameAbyssChoice: 触发者自己最多手牌时不计入尚未收入的同归深渊', () => {
     const players = [
       makePlayer({
         name: '你',
@@ -687,11 +697,11 @@ describe('applyFx', () => {
       type: 'sameAbyssChoice',
       actorIdx: 0,
       targetIdx: 0,
-      actorHandCount: 5,
-      targetHandCount: 5,
+      actorHandCount: 4,
+      targetHandCount: 4,
       discardCount: 0,
     });
-    expect(res.msgs).toContain('【同归深渊】你 手牌最多（5 张），须做出选择');
+    expect(res.msgs).toContain('【同归深渊】你 手牌最多（4 张），须做出选择');
   });
 
   it('sameAbyssChoice: 触发者与他人并列手牌最多时触发者目标优先级最低', () => {
@@ -706,7 +716,7 @@ describe('applyFx', () => {
         hp: 10,
         hand: [{ id: 'b1' }],
       }),
-      makePlayer({ name: '卡洛斯', hp: 10, hand: [{ id: 'c1' }, { id: 'c2' }] }),
+      makePlayer({ name: '卡洛斯', hp: 10, hand: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }] }),
     ];
     const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
     const gs = makeGs({ players, currentTurn: 2 });
@@ -763,8 +773,8 @@ describe('applyFx', () => {
     const gs = makeGs({ players });
     const res = applyFx({ id: 'eth-1', type: 'etherealize', name: '半物质化' }, 0, null, players, [], [], gs);
 
-    expect(res.P[0].etherealizeStacks).toBe(4);
-    expect(res.msgs[0]).toContain('获得 4 层虚化');
+    expect(res.P[0].etherealizeStacks).toBe(3);
+    expect(res.msgs[0]).toContain('获得 3 层虚化');
   });
 
   it('snakePoisonTrap: 按存活人数随机分配中毒层数且可重复命中', () => {
@@ -1270,6 +1280,7 @@ describe('applyFx', () => {
 
   it('caveDuel: 设置状态补丁', () => {
     const players = makeStandardPlayers(3);
+    players[0].hand = [makeZoneCard('B1', 0)];
     players[1].hand = [makeZoneCard('A1', 0)];
     const card = { type: 'caveDuel', name: '穴居人战争', key: 'DUEL' };
     const gs = makeGs({ players });
@@ -1987,14 +1998,15 @@ describe('inspection and AI decision regressions', () => {
     const result = applyFx(card, 1, null, players, [], [], makeGs({ players }), false, [], true);
 
     expect(result.statePatch.abilityData).toBeUndefined();
-    expect(result.P[0].hand).toHaveLength(2);
-    expect(result.Disc).toEqual([discardedNormal]);
+    expect(result.P[0].hand).toHaveLength(1);
+    expect(result.Disc).toEqual([discardedNormal, { id: 'c' }]);
     const discardEvents = result.statePatch._visualEvents?.filter(event => (
       event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
     ));
     expect(discardEvents?.flatMap(event => event.discardEvents.map(discard => discard.card))).toEqual([
       derived,
       discardedNormal,
+      { id: 'c' },
     ]);
   });
 });

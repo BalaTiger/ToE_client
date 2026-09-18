@@ -4,6 +4,7 @@ import { isRevealedCultist, isTsathogguaSlime } from './coreUtils';
 import { chooseAiSameAbyssAction, simulateAiDiscardAction } from './aiDiscardChoices';
 import { getActiveDamageLinksForPlayer } from './damageLinks';
 import { hasGodPowerImmunity } from './godPowerImmunity';
+import { settlePendingZoneIncome } from './zoneCardIncome';
 
 // These handlers have no private-card lookup or automatic AI subdecision.
 // New complex handlers must supply a decision adapter before claiming that a
@@ -138,12 +139,21 @@ export function previewAiZoneAcquisition(observation, {
     giver.roleRevealed = true;
   }
   if (incoming.isGod) return previewGodEncounter(state, incoming, receiverIdx);
-  receiver.hand.push(incoming);
-  if (!DIRECT_ZONE_EFFECTS.has(incoming.type)) return incomplete(state, `zoneEffect:${incoming.type}`);
+  const pendingZoneIncome = { card: incoming, ownerId: receiver.id };
+  if (!DIRECT_ZONE_EFFECTS.has(incoming.type)) {
+    state.abilityData.pendingZoneIncome = pendingZoneIncome;
+    return incomplete(state, `zoneEffect:${incoming.type}`);
+  }
   const result = applyFx(
     incoming, receiverIdx, giverIdx == null ? null : receiverIdx,
     state.players, state.deck, state.discard, state,
     avoidNegative, avoidNegativeFor, false,
   );
-  return inspectRuleResult(state, result);
+  const next = inspectRuleResult(state, result);
+  if (next._aiPreviewIncomplete || next.abilityData?.type) {
+    next.abilityData = { ...next.abilityData, pendingZoneIncome };
+  } else {
+    settlePendingZoneIncome(next.players, next.discard, pendingZoneIncome);
+  }
+  return next;
 }

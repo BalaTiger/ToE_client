@@ -20,13 +20,14 @@ import { PanelFrame } from '../battle/PanelFrame';
 import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import '../battle/coastal-panels.css';
+import './compact-player-panel.css';
 
 function CoastalPortrait({ playerIndex = 0, framed = false }) {
   // Portraits are decoration, never a signal of a player's hidden role.
   const portrait = playerIndex === 0 ? 'self' : ((playerIndex - 1) % 4) + 1;
   return <div className={`toe-coastal-portrait${framed ? ' toe-coastal-portrait-framed' : ''}`} aria-hidden="true"
     style={framed ? { backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/hand-count.webp')}')` } : undefined}>
-    <img src={buildPublicUrl(`/img/ui/coastal/portrait-${portrait}${framed ? '-gray' : ''}.webp`)} alt="" draggable="false" />
+    <img src={buildPublicUrl(`/img/ui/coastal/portrait-${portrait}${framed && playerIndex > 0 ? '-gray' : ''}.webp`)} alt="" draggable="false" />
   </div>;
 }
 
@@ -558,7 +559,7 @@ function GodPowerBadge({player,playerIndex,pendant=false}){
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null}){
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null,simplified=false}){
   const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
   const ri=RINFO[player.role];
   const theme=getBoardTheme(expansionKey);
@@ -590,7 +591,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     const ro=new ResizeObserver(update);
     ro.observe(el);
     return()=>ro.disconnect();
-  },[]);
+  },[simplified]);
   const computedCardWidth=handStripWidth>0
     ? Math.max(0,(handStripWidth-(HAND_CARD_GAP*3))/4)
     : HAND_CARD_WIDTH;
@@ -640,7 +641,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
   </div>;
   return(
-    <div className="toe-battle-panel toe-player-panel toe-opponent-panel" data-current-turn={isCurrentTurn} data-death-panel={playerIndex} onClick={isSelectable?onSelect:undefined} style={{
+    <div className="toe-battle-panel toe-player-panel toe-opponent-panel" data-current-turn={isCurrentTurn} data-opponent-simplified={simplified} data-death-panel={playerIndex} aria-label={simplified?player.name:undefined} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
       '--toe-panel-frame-color':isBeingHit?'#cc2222':isSanHit?'#8840cc':isSelectable?selectableColor:isCurrentTurn?'#d6ae51':'#8e7446',
       '--toe-coastal-opponent-frame':`url('${buildPublicUrl('/img/ui/coastal/opponent-frame.webp')}')`,
@@ -656,14 +657,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       position:'relative',
       overflow:'visible',
     }}>
-      <PanelFrame />
-      <ThemeCornerOrnament
+      {!simplified && <PanelFrame />}
+      {!simplified && <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"
         size={154}
         opacity={0.16}
         style={{top:-8,right:-8}}
-      />
+      />}
       {godHighlightBurst?.godKey&&(
         <GodHighlightBurst
           key={godHighlightBurst.key}
@@ -677,7 +678,25 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         />
       )}
       {(isHpHeal||isSanHeal)&&<HealCrossEffect color={isSanHeal?'#a78bfa':'#4ade80'}/>}
-      <div className="toe-opponent-core">
+      {simplified && <div className="toe-opponent-compact-core">
+        <div className="toe-opponent-compact-portrait">
+          <CoastalPortrait playerIndex={playerIndex} framed />
+          <EncounterSkulls count={player.godEncounters} playerIndex={playerIndex} variant="portrait-arc"/>
+        </div>
+        <div className="toe-opponent-hand-count" data-player-hand-strip={playerIndex} data-hand-card-width={28} ref={handStripRef} aria-label={`手牌 ${player.hand.length} 张`}>
+          <svg viewBox="0 0 28 23" aria-hidden="true" focusable="false">
+            <path d="M7 19 2 6l7-3 5 14ZM21 19l5-13-7-3-5 14Z" />
+            <rect x="8.5" y="2" width="11" height="17" rx="1" />
+            <path d="m14 7 2 3-2 3-2-3Z" />
+          </svg>
+          <span>{player.hand.length}</span>
+        </div>
+        <div className="toe-opponent-compact-stats" role="img" aria-label={`生命 HP ${displayStats?.[playerIndex]?.hp ?? player.hp}/10，理智 SAN ${displayStats?.[playerIndex]?.san ?? player.san}/10`}>
+          <StatBar label="HP" val={displayStats?.[playerIndex]?.hp ?? player.hp} color="#a54138" trackColor="#1a0808" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+          <StatBar label="SAN" val={displayStats?.[playerIndex]?.san ?? player.san} color="#3e9195" trackColor="#081b1e" scaleRatio={scaleRatio} viewportWidth={viewportWidth} labelColor={theme.muted} valueColor={theme.text} lineColor={theme.lineDim}/>
+        </div>
+      </div>}
+      {!simplified && <div className="toe-opponent-core">
       {coastal && <CoastalPortrait playerIndex={playerIndex} framed />}
       {/* Name plate */}
       <div className="toe-opponent-heading" style={{
@@ -739,9 +758,9 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
           );
         })}
       </div>
-      </div>
-      <EncounterSkulls count={player.godEncounters} playerIndex={playerIndex}/>
-      {coastal && <div className="toe-opponent-pendants">
+      </div>}
+      {!simplified && <EncounterSkulls count={player.godEncounters} playerIndex={playerIndex}/>}
+      {!simplified && coastal && <div className="toe-opponent-pendants">
         {player.isResting&&!player.isDead&&<span data-resting-marker={playerIndex} style={{color:'#a7b79b'}}>♥ 翻面中</span>}
         {statusTags}{zones}
       </div>}

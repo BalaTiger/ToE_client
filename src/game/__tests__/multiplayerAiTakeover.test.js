@@ -4,10 +4,13 @@ import {
   resolveMpAiTakeoverState,
   withTimeoutDrawDiscardVisual,
 } from '../multiplayerAiTakeover';
-import { makeBlankZoneCard, makeGs, makePlayer, makeZoneCard } from './factory';
+import { makeBlankZoneCard, makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
 import { addDamageLink } from '../damageLinks';
 import { resolveHeadlessEtherealize } from '../headlessSimulator';
+import { applyFx } from '../effectEngine';
+import { applyZoneCardIncome } from '../zoneCardIncome';
+import { deriveEffectDecisionState } from '../effectStatePatch';
 
 const dependencies = {
   getHandLimitForPlayer: () => 4,
@@ -15,6 +18,138 @@ const dependencies = {
 };
 
 describe('multiplayer AI takeover decisions', () => {
+  it('finishes the last bury choice before receiving the pending card', () => {
+    const card = makeZoneCard('A4', 0, { type: 'buryAlive', id: 'pending-bury' });
+    const buried = makeZoneCard('B1', 0);
+    const player = makePlayer({ hand: [buried] });
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase: 'BURY_ALIVE_SELECT', players: [player, makePlayer()],
+      abilityData: { type: 'buryAliveSelect', source: 0, targets: [0], targetIndex: 0, _turnOwner: 1,
+        pendingZoneIncome: { card, ownerId: player.id } } });
+    const next = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(next.phase).toBe('ACTION');
+    expect(next.players[0].hand).toEqual([card]);
+    expect(next.deck).toEqual([buried]);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+    expect(next._visualEvents.map(event => event.effect)).toEqual(['buryAlive', 'zoneIncome']);
+    expect(state.players[0].hand).toEqual([buried]);
+  });
+
+  it('fills only the disconnected bury choice and retains income while another player is choosing', () => {
+    const card = makeZoneCard('A4', 0, { type: 'buryAlive' });
+    const players = [makePlayer({ hand: [makeZoneCard('B1')] }), makePlayer({ hand: [makeZoneCard('C1')] })];
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase: 'BURY_ALIVE_SELECT', players,
+      abilityData: { type: 'buryAliveSelect', source: 0, targets: [0, 1], targetIndex: 0, _turnOwner: 1,
+        buryAliveChoices: [null, null], pendingZoneIncome: { card, ownerId: players[0].id } } });
+    expect(isMpAiTakeoverRelevant(state, 1)).toBe(true);
+    const waiting = resolveMpAiTakeoverState(state, 1, dependencies);
+    expect(waiting.phase).toBe('BURY_ALIVE_SELECT');
+    expect(waiting.players.map(player => player.hand)).toEqual(players.map(player => player.hand));
+    expect(waiting.abilityData.buryAliveChoices).toEqual([null, { cardId: players[1].hand[0].id, cardIndex: 0 }]);
+    expect(waiting.abilityData.pendingZoneIncome.card).toEqual(card);
+    const next = resolveMpAiTakeoverState(waiting, 0, dependencies);
+    expect(next.players[0].hand).toEqual([card]);
+    expect(next.players[1].hand).toEqual([]);
+    expect(next.deck).toEqual([players[0].hand[0], players[1].hand[0]]);
+  });
+
+  it('resolves a torch cost before income and retains unknown future decisions', () => {
+    const card = makeZoneCard('C3', 0, { type: 'igniteTorch', id: 'pending-torch' });
+    const discarded = makeZoneCard('A2', 0);
+    const player = makePlayer({ hand: [discarded] });
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase: 'IGNITE_TORCH_DISCARD', players: [player, makePlayer()],
+      abilityData: { type: 'igniteTorchDiscard', playerIndex: 0, _turnOwner: 1,
+        pendingZoneIncome: { card, ownerId: player.id } } });
+    const next = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(next.players[0].hand).toEqual([card]);
+    expect(next.players[0].godPowerImmuneThisTurn).toBe(true);
+    expect(next.discard).toEqual([discarded]);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+    const unsupported = { ...state, phase: 'DRAW_SELECT_TARGET',
+      abilityData: { ...state.abilityData, type: 'futureEffectChoice', drawerIdx: 0 } };
+    expect(resolveMpAiTakeoverState(unsupported, 0, dependencies)).toBe(unsupported);
+  });
+
+  it('advances a disconnected turn only after the source income completes', () => {
+    const card = makeZoneCard('A4', 0, { type: 'buryAlive', id: 'takeover-income' });
+    const buried = makeZoneCard('B1');
+    const player = makePlayer({ hand: [buried] });
+    const next = resolveMpAiTakeoverState(makeGs({ _isMP: true, phase: 'BURY_ALIVE_SELECT',
+      players: [player, makePlayer()], abilityData: { type: 'buryAliveSelect', source: 0,
+        targets: [0], targetIndex: 0, pendingZoneIncome: { card, ownerId: player.id } } }), 0, dependencies);
+    expect(next.currentTurn).toBe(1);
+    expect(next.players[0].hand).toEqual([card]);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+  });
+
+  it.each([
+    ['SPHINX_GUESS', 'sphinxGuess', { deck: [makeBlankZoneCard()] }],
+    ['GRAVE_DIG_SELECT', 'graveDigGod', { discard: [makeGodCard('NYA')] }],
+    ['ALBINO_CREATURE_SELECT_CARD', 'albinoCreature', {}],
+  ])('completes %s without dropping its pending source card', (phase, type, piles) => {
+    const card = makeZoneCard('D4', 0, { type, id: `takeover-${type}` });
+    const fireCard = makeZoneCard('C3', 0, { name: '引燃火把' });
+    const player = makePlayer({ role: ROLE_HUNTER, hand: [fireCard] });
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase, players: [player, makePlayer()], ...piles,
+      abilityData: { type, playerIndex: 0, _turnOwner: 1, fireCardIds: [fireCard.id],
+        pendingZoneIncome: { card, ownerId: player.id } } });
+    const next = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(next.phase).toBe('ACTION');
+    expect(next.players[0].hand).toContainEqual(card);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+  });
+
+  it('finishes damage redirection before income and preserves the original human turn', () => {
+    const card = makeZoneCard('A1', 0, { type: 'selfDamageHP', val: 2, id: 'reaction-income' });
+    const player = makePlayer({ role: ROLE_HUNTER, etherealizeStacks: 1 });
+    const state = makeGs({ _isMP: true, currentTurn: 1, players: [player, makePlayer()] });
+    const result = applyFx(card, 0, null, state.players, [], [], state);
+    const patch = applyZoneCardIncome({ players: result.P, discard: result.Disc, card,
+      drawerIdx: 0, statePatch: result.statePatch });
+    const decision = deriveEffectDecisionState(patch, { turnOwner: 1 });
+    const paused = { ...state, ...patch, ...decision, players: result.P, deck: result.D, discard: result.Disc };
+    expect(paused.phase).toBe('ETHEREALIZE_DECISION');
+    expect(paused.players[0].hand).toEqual([]);
+    const next = resolveMpAiTakeoverState(paused, 0, dependencies);
+    expect(next.currentTurn).toBe(1);
+    expect(next.phase).toBe('ACTION');
+    expect(next.players[0].hand).toEqual([card]);
+    expect(next.players.reduce((total, actor) => total + actor.hp, 0)).toBe(18);
+    expect(next._visualEvents.flatMap(event => event.statEvents || []).some(event => event.type === 'HP_LOSS')).toBe(true);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+  });
+
+  it('keeps the source outside a full-hand swap and receives it only after the swap', () => {
+    const card = makeZoneCard('D1', 0, { type: 'swapAllHands' });
+    const first = makeZoneCard('A1');
+    const second = makeZoneCard('B2');
+    const player = makePlayer({ hand: [first] });
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase: 'ZONE_SWAP_SELECT_TARGET',
+      players: [player, makePlayer({ hand: [second] })],
+      abilityData: { zoneSwapSource: 0, zoneSwapCard: card, _turnOwner: 1,
+        pendingZoneIncome: { card, ownerId: player.id } } });
+    const next = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(next.players[0].hand).toEqual([second, card]);
+    expect(next.players[1].hand).toEqual([first]);
+    expect(next.currentTurn).toBe(1);
+    expect(next.abilityData.pendingZoneIncome).toBeUndefined();
+  });
+
+  it('takes over only the disconnected cave-duel side and preserves the opposing decision', () => {
+    const card = makeZoneCard('D3', 0, { type: 'caveDuel' });
+    const held = makeZoneCard('A1');
+    const player = makePlayer({ hand: [held] });
+    const state = makeGs({ _isMP: true, currentTurn: 1, phase: 'CAVE_DUEL_SELECT_TARGET',
+      players: [player, makePlayer({ hand: [makeZoneCard('B2')] })],
+      abilityData: { caveDuelSource: 0, caveDuelTargets: [1], _turnOwner: 1,
+        pendingZoneIncome: { card, ownerId: player.id } } });
+    const next = resolveMpAiTakeoverState(state, 0, dependencies);
+    expect(next.phase).toBe('CAVE_DUEL_SELECT_CARD');
+    expect(next.players[0].hand).toEqual([held]);
+    expect(next.abilityData.sourceCard).toEqual(held);
+    expect(next.abilityData.targetCard).toBeUndefined();
+    expect(next.abilityData.pendingZoneIncome.card).toEqual(card);
+  });
+
   it('keeps a life balance at 3 HP when a safe hand-limit discard is available', () => {
     const balance = makeZoneCard('B1', 2);
     const state = makeGs({

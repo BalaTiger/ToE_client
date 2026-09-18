@@ -313,23 +313,56 @@ animation path.
 
 ## Reveal Decision Presentation Boundary
 
+### Deferred region-card income
+
+Every region card finishes its entire effect before entering the hand, including
+forced draws and bewitch gifts. `zoneCardIncome.js` stores the source card in
+`abilityData.pendingZoneIncome` while a choice/reaction is pending; its owner
+uses stable `player.id`, not a seat index. It survives target, rest-draw,
+inspection, etherealize and slime continuations. A replay of an existing hand
+card (`fromEndTurnReplay`) never creates a second income.
+
+`finishTargetContinuation` adds the card only when the effect returns to
+ACTION/AI_TURN (or terminates the game), appends its actual transfer and commit,
+then resumes any further draws. A dead owner sends the pending card to discard.
+Multiplayer publishes the complete effect/income queue as one transaction.
+Sequential burial uses transition-scoped coverage: historical `logOnly` events
+do not belong to the next burial, while newly omitted events still fail strict
+validation. AI sequential targets reuse the same confirmation handler.
+
+The pending source cannot pay costs, participate in choices, be gifted, or count
+toward a winning hand. 同归深渊 and 半物质化 use the hand before income;
+斯芬克斯 receives its source only after guessing, damage, dodge and reactions.
+The same contract applies to AI rule previews, timeout/disconnect takeover and
+headless simulation. A takeover must finish the outstanding decision, not clear
+its pending income. Presentation plays each draw's effects and income before the
+next draw; bewitch's initial transfer ends at the reveal area, not in the hand.
+
 `DRAW_REVEAL` and `GOD_CHOICE` remain rule-owned decision phases, held by the
 existing turn-flow manager. Their UI now lives in `CardRevealDecisionLayer`
 under `GlobalAnimLayer`, outside board zoom. `BattleDecisionModals` no longer
 renders separate area-exploration or god-choice panels.
 
-- `DRAW_CARD` completes normally, including encounter inspection/stat tails.
-  Never leave an active animation step waiting for a click: this would block
-  decision transactions and multiplayer replay.
+- `DRAW_CARD` completes normally without input. Eligible local decision buttons
+  appear 850 ms after the central rise/spin starts, before the card settles.
+  A click can finish only that active reveal step through `useAnimationQueue`;
+  encounter inspection/stat tails still run and commit normally. Never leave an
+  active animation step waiting for a click: this would block decision transactions
+  and multiplayer replay. Paused playback, inspection draws, custom cues/callbacks,
+  hidden/travel-only draws and scripted tutorials keep their existing timing.
 - The reveal host preserves the playback key and `CardFlipAnim` final frame.
   `settled` stops one-shot effects without replaying the rise/spin. During
   subsequent stat effects only the card remains, so its backdrop cannot hide
   the affected player panels. Restored snapshots can render a settled card
   without replay history.
-- `RevealDecisionActions` appears below that frame only when the queue and
-  pending state have committed and submission is unlocked. Existing handlers,
-  tutorial restrictions, decision ownership, and multiplayer waiting states
-  are reused. Submission removes the held card before transfer/discard playback.
+- Early `RevealDecisionActions` uses the pending decision for its button preview.
+  `CardRevealDecisionLayer` saves only the selected action name and reveal identity;
+  it invokes the latest existing handler after pending state commits and submission
+  unlocks. Revalidate ownership, card identity and button permissions before dispatch;
+  changed decisions cancel the saved choice. A click lock and playback identity
+  invalidation prevent duplicate dispatch and stale timer advancement. Normal settled
+  decisions, tutorial restrictions and multiplayer waiting states are reused.
+  Submission removes the held card before transfer/discard playback.
 - `getCardRevealMetrics` supplies both the responsive frame and flight fallback;
   `captureDecisionCardAnchors` records the displayed face before pointer/keyboard
   decisions, including restored snapshots and resize. Blind-zone concealment

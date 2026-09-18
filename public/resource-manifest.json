@@ -1,6 +1,6 @@
 {
-  "version": "650908992842fdb4",
-  "generatedAt": "2026-09-16T15:02:14.268Z",
+  "version": "8b4ed0818e74969d",
+  "generatedAt": "2026-09-17T12:04:47.843Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -109,6 +109,18 @@
       "type": "image",
       "size": 42614,
       "revision": "ffa8a2b1a45b8561"
+    },
+    {
+      "path": "/img/bg/battle/stars_call_sea.webp",
+      "type": "image",
+      "size": 223686,
+      "revision": "0dc9ea5d299a435c"
+    },
+    {
+      "path": "/img/bg/battle/stars_call_sea_ruins.webp",
+      "type": "image",
+      "size": 264428,
+      "revision": "439d6809f5d8996d"
     },
     {
       "path": "/img/bg/bg_main.webp",
@@ -2743,6 +2755,36 @@
       "type": "image",
       "size": 73010,
       "revision": "91b30d9c5b87baa0"
+    },
+    {
+      "path": "/img/ui/coastal/self-sidebar-divider.webp",
+      "type": "image",
+      "size": 1862,
+      "revision": "9ebe50e01cb2ee81"
+    },
+    {
+      "path": "/img/ui/coastal/self-sidebar-neutral-bottom.webp",
+      "type": "image",
+      "size": 35102,
+      "revision": "729b8fad24daaf88"
+    },
+    {
+      "path": "/img/ui/coastal/self-sidebar-neutral-rail.webp",
+      "type": "image",
+      "size": 29736,
+      "revision": "5299daca6221d6bc"
+    },
+    {
+      "path": "/img/ui/coastal/self-sidebar-neutral-top.webp",
+      "type": "image",
+      "size": 40698,
+      "revision": "6c10aecf16b30e6f"
+    },
+    {
+      "path": "/img/ui/coastal/self-sidebar-warm-light.webp",
+      "type": "image",
+      "size": 142980,
+      "revision": "c196a58128b45c8c"
     },
     {
       "path": "/img/ui/coastal/system-pause.webp",

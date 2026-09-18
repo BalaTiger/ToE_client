@@ -317,6 +317,7 @@ import {
   isLocalWinnerSeat,
 } from "./game/rotateState";
 import { getDecisionContext } from './game/decisionContext';
+import { applyZoneCardIncome, settlePendingZoneIncome } from './game/zoneCardIncome';
 import {
   splitAnimBoundLogs,
   bindAnimLogChunks,
@@ -449,7 +450,6 @@ const ZONE_CARD_KEYS = LETTERS.flatMap(L => NUMS.map(N => `${L}${N}`));
 function getBattleBackgroundStyle(expansionKey,isMobile){
   const url=buildPublicUrl(getBattleBackgroundImage(expansionKey));
   const theme=getBattleTheme(expansionKey);
-  const isStarsCall=expansionKey==='群星呼唤';
   return {
     '--toe-bg':theme.bg,
     '--toe-text':theme.text,
@@ -462,9 +462,9 @@ function getBattleBackgroundStyle(expansionKey,isMobile){
     '--toe-glow':theme.glow,
     '--toe-accent':theme.accent,
     '--toe-battle-bg-image':`linear-gradient(180deg,${theme.tintTop},${theme.tintBottom}), url('${url}')`,
-    '--toe-battle-bg-size':isStarsCall?'cover, auto 100%':'cover, cover',
+    '--toe-battle-bg-size':'cover, cover',
     '--toe-battle-bg-position':'center center, center center',
-    '--toe-battle-bg-repeat':isStarsCall?'no-repeat, repeat-x':'no-repeat, no-repeat',
+    '--toe-battle-bg-repeat':'no-repeat, no-repeat',
     '--toe-battle-bg-attachment':isMobile?'scroll, scroll':'fixed, fixed',
     backgroundColor:theme.bg,
   };
@@ -1179,6 +1179,8 @@ export default function Game(){
     pendingGsRef,
     resetAnimationQueue,
     playAnimationTransaction,
+    canFinishRevealEarly,
+    finishRevealEarly,
   } = useAnimationQueue({
     gs,
     copyPlayers,
@@ -2882,7 +2884,7 @@ export default function Game(){
     if(!gs||gs.gameOver||showTutorial)return;
     if(anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     if(gs.phase==='TREASURE_WIN'||gs.phase==='PLAYER_WIN_PENDING'||gs.phase==='MP_PLAYER_WIN_WAIT')return;
-    if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD')return;
+    if(gs.phase==='SWAP_STEAL_CARD'||gs.phase==='SWAP_GIVE_CARD'||gs.abilityData?.pendingZoneIncome)return;
     const p0=gs.players[0];
     if(p0&&!p0.isDead&&(p0._nyaBorrow||p0.role)===ROLE_TREASURE&&isWinHand(p0.hand)){
       setGs(g=>g?{...g,phase:'TREASURE_WIN'}:g);
@@ -3027,39 +3029,16 @@ export default function Game(){
   },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
 
   useEffect(()=>{
-    if(!gs||gs.phase!=='FIRST_COME_PICK_SELECT'||gs.gameOver||anim||showTutorial||softGuidePauseActive)return;
-    const pickOrder=gs.abilityData?.pickOrder||[];
-    const pickIndex=gs.abilityData?.pickIndex||0;
-    const pickerIdx=pickOrder[pickIndex];
-    if(pickerIdx==null||isLocalSeatIndex(pickerIdx))return;
-    const t=setTimeout(()=>{
-      setGs(prev=>{
-        if(!prev||prev.phase!=='FIRST_COME_PICK_SELECT')return prev;
-        const ad=prev.abilityData||{};
-        const cards=[...(ad.revealedCards||[])];
-        const currentPicker=ad.pickOrder?.[ad.pickIndex||0];
-        if(currentPicker==null||isLocalSeatIndex(currentPicker)||!cards.length)return prev;
-        let P=copyPlayers(prev.players),D=[...prev.deck],Disc=[...prev.discard],L=[...prev.log];
-        const chosenIdx=chooseFirstComePickForAI(cards,currentPicker,P,prev);
-        const [chosenCard]=cards.splice(chosenIdx,1);
-        P[currentPicker].hand.push(chosenCard);
-        L.push(`【先到先得】${P[currentPicker].name} 选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`);
-        const proliferatingZPatch=appendPublicCardGainTriggers(prev,P,currentPicker,chosenCard);
-        const nextPickIndex=(ad.pickIndex||0)+1;
-        const win=checkWin(P,prev._isMP);
-        if(win)return {...prev,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...proliferatingZPatch};
-        if(nextPickIndex>=(ad.pickOrder?.length||0)||cards.length===0){
-          const nextTurnOwner=ad._turnOwner??prev.currentTurn;
-          return withClearedTurnAnimFields({...prev,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurnOwner,phase:isAiSeat(prev,nextTurnOwner)?'AI_TURN':'ACTION',...proliferatingZPatch,abilityData:{
-            ...(ad.fromRest?{fromRest:true}:{}),
-            ...(ad.cthDrawsRemaining!=null?{cthDrawsRemaining:ad.cthDrawsRemaining}:{}),
-          }});
-        }
-        return {...prev,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',...proliferatingZPatch,abilityData:{...ad,revealedCards:cards,pickIndex:nextPickIndex}};
-      });
-    },AI_PICK_STEP_DELAY);
+    if(!gs||gs.phase!=='FIRST_COME_PICK_SELECT'||gs.gameOver||anim||animExiting||animQueueRef.current.length||pendingGsRef.current||showTutorial||softGuidePauseActive)return;
+    const pickerIdx=gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex||0];
+    if(pickerIdx==null||isLocalSeatIndex(pickerIdx)||!isAiSeat(gs,pickerIdx))return;
+    const cards=gs.abilityData?.revealedCards||[];
+    if(!cards.length)return;
+    const cardIndex=chooseFirstComePickForAI(cards,pickerIdx,gs.players,gs);
+    const t=setTimeout(()=>firstComePickSelectCard(cardIndex,true),AI_PICK_STEP_DELAY);
     return()=>clearTimeout(t);
-  },[gs,anim,showTutorial,softGuidePauseActive]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
 
   useEffect(()=>{
     if(!gs||gs.phase!=='ETHEREALIZE_DECISION'||gs.gameOver||anim||animExiting||showTutorial||softGuidePauseActive)return;
@@ -3093,35 +3072,13 @@ export default function Game(){
 
   useEffect(()=>{
     if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||gs.gameOver||anim||showTutorial||softGuidePauseActive)return;
+    if(animExiting||animQueueRef.current.length||pendingGsRef.current)return;
     if(isMultiplayerGame(gs))return;
     const ad=gs.abilityData||{};
     const targets=ad.targets||[];
     const targetIdx=targets[ad.targetIndex||0];
     if(targetIdx==null||isLocalSeatIndex(targetIdx))return;
-    const t=setTimeout(()=>{
-      if(!gs||gs.phase!=='BURY_ALIVE_SELECT')return;
-      const currentAd=gs.abilityData||{};
-      const currentTargets=currentAd.targets||[];
-      const currentTarget=currentTargets[currentAd.targetIndex||0];
-      if(currentTarget==null||isLocalSeatIndex(currentTarget))return;
-      let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-      if(!P[currentTarget]?.hand?.length)return;
-      const [buriedCard]=P[currentTarget].hand.splice(0,1);
-      D.push(buriedCard);
-      L.push(`【活埋】${P[currentTarget].name} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`);
-      const nextTargetIndex=(currentAd.targetIndex||0)+1;
-      const nextGs=nextTargetIndex>=currentTargets.length
-        ? (()=>{const turnOwner=currentAd._turnOwner??gs.currentTurn;return {...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:turnOwner,phase:isAiSeat(gs,turnOwner)?'AI_TURN':'ACTION',abilityData:{
-          ...(currentAd.fromRest?{fromRest:true}:{}),
-          ...(currentAd.cthDrawsRemaining!=null?{cthDrawsRemaining:currentAd.cthDrawsRemaining}:{}),
-        }};})()
-        : {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{...currentAd,targetIndex:nextTargetIndex,buryAliveSelectedIndex:null}};
-      const buryQueue=[
-        buryToDeckStep({fromPid:currentTarget,msgs:L.slice(-1),players:gs.players}),
-        statePatchStep({players:P,deck:D,log:L}),
-      ];
-      triggerAnimQueue(buryQueue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,buryQueue));
-    },AI_PICK_STEP_DELAY);
+    const t=setTimeout(()=>buryAliveSelectCard(0,true),AI_PICK_STEP_DELAY);
     return()=>clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
@@ -4360,6 +4317,7 @@ export default function Game(){
       fromTsathogguaSlime:!!continuingSlime,
       keptInHand:!!res.kept&&!res.discardedDrawnCard
         &&(P[drawerIdx]?.hand||[]).some(card=>sameCardIdentity(card,res.drawnCard)),
+      incomeDestination:res.kept&&!res.discardedDrawnCard&&!res.statePatch?.abilityData?.pendingZoneIncome&&P[drawerIdx]?.isDead?'discard':null,
       discarded:!!res.discardedDrawnCard,
       playersBefore:_P_beforeDraw,
       playersAfterKeep:P,
@@ -4421,7 +4379,7 @@ export default function Game(){
       queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
       return queue;
     };
-    if(res.needGodChoice||res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice){
+    if((res.needGodChoice||res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice)&&!hasEffectDecisionState(res.statePatch)){
       const pendingAiGodChoice=res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice||null;
       const phase=pendingAiGodChoice?'AI_GOD_CHOICE':'GOD_CHOICE';
       const godAbilityData=pendingAiGodChoice
@@ -4432,7 +4390,7 @@ export default function Game(){
       triggerAnimQueue(queue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
       return;
     }
-    const win=checkWin(P,baseGsAfterDecision._isMP);
+    const win=hasEffectDecisionState(res.statePatch)?null:checkWin(P,baseGsAfterDecision._isMP);
     if(win){
       const newGs={...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{}),_visualEvents:continuationVisualEvents};
       const queue=buildResolvedDrawQueue(newGs);
@@ -4446,7 +4404,7 @@ export default function Game(){
       triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
       return;
     }
-    if(res.kept){
+    if(res.kept||hasEffectDecisionState(res.statePatch)){
       const fallbackPhase=isAiDrawer?'AI_TURN':'ACTION';
       const decisionState=deriveEffectDecisionState(res.statePatch,{baseAbilityData:{},fallbackPhase});
       const pendingAiGodChoice=res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice||null;
@@ -4463,6 +4421,7 @@ export default function Game(){
   }
 
   function _cthContinueRestDraws(baseGsAfterDecision){
+    if(baseGsAfterDecision.gameOver){setGs(baseGsAfterDecision);return;}
     // 拉莱耶连续摸牌会从上一张牌的结算动画 callback 再次进入这里。
     // 上一张即时结算区域牌的 visualEvent 仍可能保留在状态中，但已经由前一段
     // 队列消费；后续翻牌只需覆盖尚未消费的事件。新产生而未入队的事件仍会被
@@ -4563,7 +4522,7 @@ export default function Game(){
         });
         if(!cthEvent||!broadcastCthRestDrawReplay(pauseState,cthEvent))broadcastMpStateBeforeLocalReplay(pauseState);
       };
-      if(r2.needGodChoice){
+      if(r2.needGodChoice&&!hasEffectDecisionState(r2.statePatch)){
         const split=splitGodEncounterReplayLogs(r2.effectMsgs||[]);
         const encounterLogs=split.encounterLogs;
         const inspectionLogs=split.inspectionLogs;
@@ -4592,26 +4551,33 @@ export default function Game(){
         triggerAnimQueue(revealQueue,newGs,undefined,cthRestDrawQueueMeta(newGs,revealQueue));
         return;
       }
-      // forced card: already applied, continue
-      if(r2.kept){
+      // Forced draws can still pause for a target or a damage reaction.
+      if(r2.kept||hasEffectDecisionState(r2.statePatch)){
         if(r2.effectMsgs.length)L.push(...r2.effectMsgs);
         const split=splitAnimBoundLogs(r2.effectMsgs||[]);
-        const forcedGs={...baseGsAfterDecision,...(r2.statePatch||{}),players:P,deck:D,discard:Disc,log:L,phase:'ACTION',drawReveal:null,selectedCard:null,
-          abilityData:{...(fromRest?{fromRest:true}:{}),cthDrawsRemaining:remaining-_d-1}};
+        const decision=deriveEffectDecisionState(r2.statePatch,{baseAbilityData:{fromRest:!!fromRest,cthDrawsRemaining:remaining-_d-1}});
+        const win=decision.hasDecision?null:checkWin(P,baseGsAfterDecision._isMP);
+        const forcedGs={...baseGsAfterDecision,...(r2.statePatch||{}),players:P,deck:D,discard:Disc,log:L,phase:decision.phase,drawReveal:null,selectedCard:null,
+          abilityData:decision.abilityData,...(win?{gameOver:win}:{})};
         const statQ=bindAnimLogChunks(compileFreshVisualEventQueue(baseGsAfterDecision,forcedGs),{statLogs:split.stat});
+        const income=r2.drawnCard.isGod||r2.statePatch?.abilityData?.pendingZoneIncome?null:cardTransferStep({
+          fromPid:0,dest:r2.discardedDrawnCard||P[0].isDead?'discard':'player',toPid:0,count:1,
+          sourceAnchor:'playerArea',effect:'draw',cards:[r2.drawnCard],
+        });
         const queue=[
             ...dreamSteps(drawMsg?[drawMsg]:[]),
             {type:'DRAW_CARD',card:r2.drawnCard,triggerName:'你',targetPid:0,msgs:split.preStat.length?split.preStat:(drawMsg?[`${drawMsg}（强制触发）`]:[])},
             ...statQ,
+            ...(income?[income]:[]),
             statePatchStep({players:P,discard:Disc})
           ];
-        if(forcedGs._isMP)broadcastAnimTransaction(forcedGs,queue,{context:'cthRlyehDream',barrier:'continuation',msgs:L.slice(baseGsAfterDecision.log.length),beforePlayers:baseGsAfterDecision.players,beforeDiscard:baseGsAfterDecision.discard});
+        if(forcedGs._isMP)broadcastAnimTransaction(forcedGs,queue,{context:'cthRlyehDream',barrier:decision.hasDecision?'decision':'continuation',msgs:L.slice(baseGsAfterDecision.log.length),beforePlayers:baseGsAfterDecision.players,beforeDiscard:baseGsAfterDecision.discard});
         triggerAnimQueue(
           queue,
           null,
           ()=>{
             setGs(forcedGs);
-            _cthContinueRestDraws(forcedGs);
+            if(!decision.hasDecision&&!forcedGs.gameOver)_cthContinueRestDraws(forcedGs);
           },
           cthRestDrawQueueMeta(forcedGs,queue)
         );
@@ -4946,7 +4912,7 @@ export default function Game(){
       const drawerIdx=dr.drawerIdx??0;
       const P=copyPlayers(gs.players);
       clearBlindZoneDecisionFlag(P,drawerIdx,dr);
-      setGs({...gs,players:P,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{zoneSwapCard:resolutionCard,fromRest:dr.fromRest,fromEndTurnReplay:dr.fromEndTurnReplay,fromTsathogguaSlime:dr.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，请选择交换手牌的目标`],...replayPatch});
+      setGs({...gs,players:P,phase:'ZONE_SWAP_SELECT_TARGET',drawReveal:null,abilityData:{...buildTargetContinuationAbilityData(gs.abilityData),...(!dr.fromEndTurnReplay?{pendingZoneIncome:{card:resolutionCard,ownerId:P[drawerIdx].id}}:{}),zoneSwapCard:resolutionCard,fromRest:dr.fromRest,fromEndTurnReplay:dr.fromEndTurnReplay,fromTsathogguaSlime:dr.fromTsathogguaSlime,continueTurnStartDraw:gs.abilityData?.continueTurnStartDraw,cthDrawsRemaining:gs.abilityData?.cthDrawsRemaining},log:[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`你摸到 ${cardLogText(resolutionCard,{alwaysShowName:true})}，请选择交换手牌的目标`],...replayPatch});
       return;
     }
     // 检查是否为AOE负面效果，且当前玩家是寻宝者
@@ -4983,11 +4949,16 @@ export default function Game(){
     }
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,effectGs,false,[],false);
     P=res.P;D=res.D;Disc=res.Disc;
-    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
+    res.statePatch=applyZoneCardIncome({players:P,discard:Disc,card:resolutionCard,drawerIdx,statePatch:res.statePatch,fromEndTurnReplay:dr.fromEndTurnReplay});
+    const pendingIncome=!!res.statePatch?.abilityData?.pendingZoneIncome;
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
-    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`,...res.msgs];
+    const keepLog=pendingIncome
+      ?`${who} 选择保留 ${cardLogText(resolutionCard,{alwaysShowName:true})}，效果结算后收入手牌`
+      :P[drawerIdx].isDead?`${who} 已死亡，${cardLogText(resolutionCard,{alwaysShowName:true})} 放入弃牌堆`
+      :`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`;
+    const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),...(pendingIncome?[keepLog,...res.msgs]:[...res.msgs,keepLog])];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
-    const win=checkWin(P,gs._isMP);if(win){
+    const win=pendingIncome?null:checkWin(P,gs._isMP);if(win){
       const winGs={...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null,...(res.statePatch||{})};
       // A card such as 鼠群 can synchronously trigger SAN inspections whose
       // effect ends the game.  The generic state-diff queue contains the
@@ -5002,7 +4973,7 @@ export default function Game(){
         ?winInspectionResult.queue
         :bindAnimLogChunks(winInspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
       const winTransfer=cardTransferStep({
-        fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
+        fromPid:drawerIdx,dest:P[drawerIdx].isDead?'discard':'player',toPid:drawerIdx,count:1,
         sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
       });
       const winQueue=[...winEffectQueue,winTransfer,statePatchStep({players:P,deck:D,discard:Disc,log:L,drawReveal:null})];
@@ -5012,7 +4983,7 @@ export default function Game(){
       return;
     }
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
-    if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)==='寻宝者'&&isWinHand(P[0].hand)){
+    if(!pendingIncome&&isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
       const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
       const inspectionResult=compileFreshVisualEventReplay(gs,pendingWinGs);
@@ -5054,7 +5025,7 @@ export default function Game(){
         :bindAnimLogChunks(inspectionResult.queue,splitAnimBoundLogs(L.slice(gs.log.length)));
       // 已在队列里播放的检定标记为已消费，避免检定 useEffect 再次重放
       const decisionGs={...newGs,phase,abilityData,_inspectionSeq:Math.max(newGs._inspectionSeq||0,inspectionResult.inspectionSeq||0)};
-      const decisionIncomeTransfer=cardTransferStep({
+      const decisionIncomeTransfer=pendingIncome?null:cardTransferStep({
         fromPid:drawerIdx,
         dest:'player',
         toPid:drawerIdx,
@@ -5063,7 +5034,10 @@ export default function Game(){
         effect:'draw',
         cards:[resolutionCard],
       });
-      const decisionQueue=[...effectQueue,decisionIncomeTransfer,statePatchStep({players:P,discard:Disc})];
+      const decisionQueue=[...effectQueue,decisionIncomeTransfer,statePatchStep({players:P,discard:Disc})].filter(Boolean);
+      // Keeping a pending effect starts its choice now, not another draw phase.
+      // Stats/cards remain animation-owned while the effect prelude plays.
+      if(pendingIncome)setGs({...gs,phase,abilityData,drawReveal:null});
       if(decisionQueue.length){
         if(dr.fromEndTurnReplay){
           broadcastEndTurnDecisionAnimTransaction(decisionGs,decisionQueue,L.slice(gs.log.length));
@@ -5089,7 +5063,7 @@ export default function Game(){
     // 视觉上仍需与回合开始摸牌队列一致：效果结算后飞入手牌，再落最终状态。
     const drawKeepTransfer=cardTransferStep({
       fromPid:drawerIdx,
-      dest:'player',
+      dest:P[drawerIdx].isDead?'discard':'player',
       toPid:drawerIdx,
       count:1,
       sourceAnchor:'playerArea',
@@ -5378,7 +5352,7 @@ export default function Game(){
       actorLabel:drawerIdx===0?'你':gs.players?.[drawerIdx]?.name,
     });
     const config=treasureDodgeModeConfig(aoe);
-    const flowKind=classifyTreasureDodgeRoll(dr,result,aoe);
+    const flowKind=result.newGs?.abilityData?.pendingZoneIncome?'standard':classifyTreasureDodgeRoll(dr,result,aoe);
     const presentation=buildTreasureDodgeRollPresentation(result.transaction,{
       flowKind,
       tutorialHold:isTutorialDodgeStep,
@@ -5465,14 +5439,17 @@ export default function Game(){
     clearBlindZoneDecisionFlag(P,drawerIdx,dr);
     const res=applyFx(resolutionCard,drawerIdx,null,P,D,Disc,gs,false,[],false);
     P=res.P;D=res.D;Disc=res.Disc;
-    if(!dr.fromEndTurnReplay)P[drawerIdx].hand.push(resolutionCard);
+    res.statePatch=applyZoneCardIncome({players:P,discard:Disc,card:resolutionCard,drawerIdx,statePatch:res.statePatch,fromEndTurnReplay:dr.fromEndTurnReplay});
+    const pendingIncome=!!res.statePatch?.abilityData?.pendingZoneIncome;
     const who=localDisplayName(drawerIdx,P[drawerIdx].name);
-    const skipLog=aoe?'你选择不规避负面效果':`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`;
+    const skipLog=aoe?'你选择不规避负面效果':pendingIncome
+      ?`${who} 选择保留 ${cardLogText(resolutionCard,{alwaysShowName:true})}，效果结算后收入手牌`
+      :`${who} 收入了 ${cardLogText(resolutionCard,{alwaysShowName:true})}`;
     const L=[...gs.log,...(dr.reshuffleLog?[dr.reshuffleLog]:[]),skipLog,...res.msgs];
     // 1. 检查卡牌效果是否让任何人HP归零或SAN归零（通过checkWin）
-    const win=checkWin(P,gs._isMP);if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,drawReveal:null});return;}
+    const win=pendingIncome?null:checkWin(P,gs._isMP);
     // 2. 最后，如果游戏仍未结束，且该寻宝者仍然存活，检查该寻宝者是否达成胜利条件
-    if(isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
+    if(!pendingIncome&&isLocalSeatIndex(drawerIdx)&&!P[0].isDead&&P[0].role==='寻宝者'&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
       const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',drawReveal:null,abilityData:{winReason:localTreasureWinReason(gs)},...(res.statePatch||{})};
       const effectQueue=bindAnimLogChunks(compileFreshVisualEventQueue(gs,pendingWinGs),splitAnimBoundLogs(L.slice(gs.log.length)));
@@ -5480,7 +5457,7 @@ export default function Game(){
         fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,
         sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard],
       }):null;
-      const pendingWinQueue=[transfer,...effectQueue].filter(Boolean);
+      const pendingWinQueue=[...effectQueue,transfer].filter(Boolean);
       triggerAnimQueue(pendingWinQueue,pendingWinGs,undefined,dr.fromEndTurnReplay
         ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,pendingWinQueue,consumedVisualEventIdsRef.current)
         :authoritativeResolvedQueueMeta(pendingWinGs,pendingWinQueue));
@@ -5488,7 +5465,8 @@ export default function Game(){
     }
     const replayPatch=dr.fromEndTurnReplay?advanceEndTurnReplayPatch(gs):{};
     const fallbackAbilityData={...buildTargetContinuationAbilityData(gs.abilityData),...(dr.fromEndTurnReplay?{fromEndTurnReplay:true}:{})};
-    const decisionState=config.deriveSkipDecision?deriveEffectDecisionState(res.statePatch,{
+    const deriveSkipDecision=config.deriveSkipDecision||hasEffectDecisionState(res.statePatch);
+    const decisionState=deriveSkipDecision?deriveEffectDecisionState(res.statePatch,{
       baseAbilityData:gs.abilityData,
       fallbackPhase:'ACTION',
       extraAbilityData:{
@@ -5498,19 +5476,21 @@ export default function Game(){
         ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
       },
     }):{hasDecision:false,phase:'ACTION',abilityData:fallbackAbilityData};
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',drawReveal:null,abilityData:decisionState.hasDecision?decisionState.abilityData:fallbackAbilityData,...(config.deriveSkipDecision?(res.statePatch||{}):{}),...replayPatch};
+    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:decisionState.hasDecision?decisionState.phase:'ACTION',drawReveal:null,abilityData:decisionState.hasDecision?decisionState.abilityData:fallbackAbilityData,...(res.statePatch||{}),...replayPatch,...(win?{gameOver:win}:{})};
     if(decisionState.hasDecision){
       newGs.phase=decisionState.phase;
       newGs.abilityData=decisionState.abilityData;
     }
-    const flowKind=classifyTreasureDodgeSkip(dr,decisionState.hasDecision,aoe);
-    if(flowKind==='rest'&&!win){_cthContinueRestDraws(newGs);return;}
+    const flowKind=pendingIncome?'standard':classifyTreasureDodgeSkip(dr,decisionState.hasDecision,aoe);
+    if(pendingIncome)setGs({...gs,phase:newGs.phase,abilityData:newGs.abilityData,drawReveal:null});
     const queue=bindAnimLogChunks(compileFreshVisualEventQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
-    if(flowKind==='slime'&&!win){
-      queue.push(cardTransferStep({fromPid:drawerIdx,dest:'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
+    if(!pendingIncome&&!dr.fromEndTurnReplay){
+      queue.push(cardTransferStep({fromPid:drawerIdx,dest:P[drawerIdx].isDead?'discard':'player',toPid:drawerIdx,count:1,sourceAnchor:'playerArea',effect:'draw',cards:[resolutionCard]}));
+    }
+    if((flowKind==='slime'||flowKind==='rest')&&!win){
       queue.push(statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData}));
       queue.push({type:'TURN_BOUNDARY_PAUSE',durationMs:300});
-      triggerAnimQueue(queue,newGs,()=>_tsgContinueTurnStartDraw(newGs),authoritativeResolvedQueueMeta(newGs,queue));
+      triggerAnimQueue(queue,newGs,()=>flowKind==='rest'?_cthContinueRestDraws(newGs):_tsgContinueTurnStartDraw(newGs),authoritativeResolvedQueueMeta(newGs,queue));
       return;
     }
     if(queue.length){
@@ -5588,7 +5568,7 @@ export default function Game(){
       :queue;
     const logDelta=L.slice(gs.log.length);
     if(gs._endTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,fullQueue,logDelta);
-    else if(nextGs._isMP&&fullQueue.length)broadcastAnimTransaction(nextGs,fullQueue,{
+    else if(nextGs._isMP&&fullQueue.length&&!continuationAbilityData.pendingZoneIncome)broadcastAnimTransaction(nextGs,fullQueue,{
       context:'sphinxDodge',barrier:damageDecision?.phase?'decision':'continuation',msgs:logDelta,
       beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
@@ -5771,35 +5751,12 @@ export default function Game(){
     P=night.players;D=night.deck;Disc=night.discard;baseLog=night.log;ti=night.targetIdx;
     const res=applyFx(card,actorIdx,ti,P,D,Disc,gs);
     P=res.P;D=res.D;Disc=res.Disc;
-    if(!fromEndTurnReplay)P[actorIdx].hand.push(card); // 区域牌留在执行者手中（效果已执行）
     const L=[...baseLog,...res.msgs];
-    const win=checkWin(P,gs._isMP);
-    if(win){
-      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...apophisNightPatch(night)});
-      return;
-    }
-    if(isLocalSeatIndex(actorIdx)&&P[actorIdx].role==='寻宝者'&&isWinHand(P[actorIdx].hand)){
-      P[0].roleRevealed=true;
-      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...apophisNightPatch(night)};
-      const queue=[
-        ...fullHandSwapSteps({
-          fromPid:actorIdx,toPid:ti,fromCount:actorHandCountBefore,toCount:targetHandCountBefore,
-          msgs:[L[L.length-1]],playersBefore:gs.players,playersAfter:P,zhuLight:gs.zhuLight||null,
-        }),
-        ...compileFreshVisualEventQueue(gs,pendingWinGs,{excludedStepTypes:['CARD_TRANSFER','SKILL_SWAP']}),
-      ];
-      triggerAnimQueue(queue,pendingWinGs,undefined,fromEndTurnReplay
-        ?authoritativeEndTurnReplayQueueMeta(pendingWinGs,queue,consumedVisualEventIdsRef.current)
-        :authoritativeResolvedQueueMeta(pendingWinGs,queue));
-      return;
-    }
-    const nextTurnOwner=abilityData._turnOwner??gs.currentTurn;
-    const newGs={...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:nextTurnOwner,phase:isAiSeat(gs,nextTurnOwner)?'AI_TURN':'ACTION',abilityData:{
-      ...(fromRest?{fromRest:true}:{}),
-      ...(gs.abilityData?.fromTsathogguaSlime?{fromTsathogguaSlime:true}:{}),
-      ...(continueTurnStartDraw?{continueTurnStartDraw:true}:{}),
-      ...(gs.abilityData?.cthDrawsRemaining!=null?{cthDrawsRemaining:gs.abilityData.cthDrawsRemaining}:{}),
-    },...apophisNightPatch(night)};
+    const pendingZoneIncome=abilityData.pendingZoneIncome||(!fromEndTurnReplay?{card,ownerId:P[actorIdx].id}:null);
+    const newGs={...buildTargetContinuationGs({
+      players:P,deck:D,discard:Disc,log:L,
+      abilityData:{...abilityData,...(pendingZoneIncome?{pendingZoneIncome}:{})},
+    }),...apophisNightPatch(night)};
     const swapSteps=fullHandSwapSteps({
       fromPid:actorIdx,
       toPid:ti,
@@ -5817,13 +5774,7 @@ export default function Game(){
     // and the black-night roll is only discovered after the continuation state
     // is published.
     const queue=mergeApophisTargetQueue([...swapSteps,...statQ],gs,newGs);
-    const baseQueueMeta=fromEndTurnReplay
-      ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
-      :authoritativeResolvedQueueMeta(newGs,queue);
-    const queueMeta={...baseQueueMeta,preserveQueueOrder:true};
-    if(fromRest){triggerAnimQueue(queue,null,()=>_cthContinueRestDraws(newGs),queueMeta);return;}
-    if(continueTurnStartDraw){triggerAnimQueue(queue,null,()=>_tsgContinueTurnStartDraw(newGs),queueMeta);return;}
-    triggerAnimQueue(queue,newGs,undefined,queueMeta);
+    finishTargetContinuation({queue,nextGs:newGs,continueRest:!!fromRest,continueTurnStartDraw});
   }
 
   function buildTargetContinuationGs(options){
@@ -5882,7 +5833,7 @@ export default function Game(){
     });
     if(slimeDecision)nextGs={...nextGs,phase:'TSG_SLIME_BALANCE',abilityData:slimeDecision};
     const win=slimeDecision?null:checkWin(players,gs._isMP);
-    if(win)nextGs={...nextGs,phase:'ACTION',abilityData:{},gameOver:win};
+    if(win)nextGs={...nextGs,phase:'ACTION',abilityData:buildTargetContinuationAbilityData(abilityData),gameOver:win};
     const queueWithStats=queue.length?queue:compileFreshVisualEventQueue(gs,{...gs,players,deck,discard,log,...extraPatch});
     const queueWithPatch=queueWithStats.length
       ?[...queueWithStats,statePatchStep({players,deck,discard,log,...extraPatch})]
@@ -6077,6 +6028,7 @@ export default function Game(){
 
 
   function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false}){
+    const pendingIncome=nextGs?.abilityData?.pendingZoneIncome;
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.pendingInspectionContinuation?.targets?.length){
       const pendingContinuation=nextGs.abilityData.pendingInspectionContinuation;
@@ -6105,7 +6057,7 @@ export default function Game(){
         : [];
       const {pendingInspectionContinuation: _pendingInspectionContinuation, ...restAbilityData}=nextGs.abilityData||{};
       const nextAbilityData=processed.inspectionMeta.abilityData?.type
-        ? processed.inspectionMeta.abilityData
+        ? {...restAbilityData,...processed.inspectionMeta.abilityData}
         : restAbilityData;
       const nextPhase=processed.inspectionMeta.abilityData?.type==='etherealizeRedirect'
         ? 'ETHEREALIZE_DECISION'
@@ -6137,13 +6089,44 @@ export default function Game(){
       ];
     }
     nextGs=resumeSameAbyssContinuation(nextGs);
+    if(pendingIncome&&(nextGs.gameOver||nextGs.phase==='PLAYER_WIN_PENDING'||nextGs.phase==='ACTION'||nextGs.phase==='AI_TURN')){
+      const playersBefore=copyPlayers(nextGs.players),discardBefore=[...nextGs.discard];
+      const players=copyPlayers(nextGs.players),discard=[...nextGs.discard];
+      const income=settlePendingZoneIncome(players,discard,pendingIncome);
+      const {pendingZoneIncome:_settledIncome,...abilityData}=nextGs.abilityData||{};
+      nextGs={...nextGs,players,discard,abilityData};
+      if(income){
+        const {card,drawerIdx,dest}=income;
+        const msg=dest==='discard'
+          ?`${localDisplayName(drawerIdx,players[drawerIdx].name)} 已死亡，待收入的 ${cardLogText(card,{alwaysShowName:true})} 放入弃牌堆`
+          :`${localDisplayName(drawerIdx,players[drawerIdx].name)} 收入了 ${cardLogText(card,{alwaysShowName:true})}`;
+        nextGs={...nextGs,log:[...nextGs.log,msg],...appendPublicCardGainTriggers(nextGs,players,drawerIdx,dest==='player'?[card]:[])};
+        const win=nextGs.gameOver||checkWin(players,nextGs._isMP);
+        if(win)nextGs={...nextGs,gameOver:win};
+        else if(!players[0].isDead&&(players[0]._nyaBorrow||players[0].role)==='寻宝者'&&isWinHand(players[0].hand)){
+          players[0].roleRevealed=true;
+          nextGs={...nextGs,phase:'PLAYER_WIN_PENDING',abilityData:{...abilityData,winReason:localTreasureWinReason(nextGs)},log:[...nextGs.log,localTreasureWinLog(nextGs)]};
+        }
+        queue=[...queue,cardTransferStep({
+          fromPid:drawerIdx,dest,toPid:dest==='player'?drawerIdx:undefined,count:1,
+          sourceAnchor:'playerArea',effect:'draw',cards:[card],msgs:[msg],
+          playersBefore,playersAfter:players,discardBefore,discardAfter:discard,
+        }),statePatchStep({players,discard,log:nextGs.log,phase:nextGs.phase,abilityData:nextGs.abilityData})];
+      }
+    }
     const flowResolution=resolveTargetContinuation(nextGs,{continueRest,continueTurnStartDraw});
     nextGs=flowResolution.state;
     const continuationRoute=flowResolution.route;
     const continuationMeta={
-      ...strictActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current,'target continuation'),
+      ...strictActionQueueMeta(nextGs,queue,consumedVisualEventIdsRef.current,'target continuation',{previousState:gs}),
       preserveQueueOrder:true,
     };
+    // Publish the effect and deferred income together, after the final queue
+    // exists. Observers must not resume the turn between these two segments.
+    if(pendingIncome&&nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
+      context:'zoneEffectIncome',barrier:continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION?'decision':'continuation',
+      msgs:nextGs.log.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
+    });
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW){
       // AI 座位（单机 AI 对手）在梦访拉莱耶摸牌途中触发决策（如穴居人战争）后，
       // 交还给 aiStep 续跑剩余摸牌，而不是用座位0的本地续跑逻辑。
@@ -6421,7 +6404,7 @@ export default function Game(){
       ?statEventsToAnimQueue(finalDeathEvents,beforeFinalDeathPlayers,L.slice(gs.log.length))
       :[];
     const queue=[...slimeQueue,...inspectionReplay.queue,...finalDeathQueue];
-    if(!broadcastSlimeTransaction(finalNextGs,queue,finalNextGs.log.slice(gs.log.length))&&finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
+    if(!abilityData.pendingZoneIncome&&!broadcastSlimeTransaction(finalNextGs,queue,finalNextGs.log.slice(gs.log.length))&&finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
     finishTargetContinuation({
       queue,
       nextGs:finalNextGs,
@@ -6701,7 +6684,7 @@ export default function Game(){
     // The choosing client starts this queue immediately. Publish the exact same
     // queue first so remote viewers do not have to wait for the post-animation
     // state update before starting the rope effect.
-    if(nextGs._isMP&&damageLinkQueue.length){
+    if(nextGs._isMP&&damageLinkQueue.length&&!nextGs.abilityData?.pendingZoneIncome){
       const syncedQueue=mergeApophisTargetQueue(damageLinkQueue,gs,nextGs);
       broadcastAnimTransaction(nextGs,syncedQueue,{
         context:'damageLink',
@@ -6740,40 +6723,6 @@ export default function Game(){
     const giftedCount=gifted.length;
     targetPlayer.hand.push(...gifted);
     const L=[...baseLog,`【玫瑰倒刺】${sourcePlayer.name} 将全部手牌交给了 ${targetPlayer.name}`];
-    const win=checkWin(P,gs._isMP);
-    if(win){
-      setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...apophisNightPatch(night)});
-      return;
-    }
-    if(ti===0&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
-      P[0].roleRevealed=true;
-      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...apophisNightPatch(night)};
-      const winStatQ=compileFreshVisualEventQueue(gs,pendingWinGs,{excludedStepTypes:['CARD_TRANSFER']});
-      const winQueue=[
-        ...buildPendingTurnStartDrawQueue(gs),
-        cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
-        ...winStatQ,
-      ];
-      triggerAnimQueue(winQueue,pendingWinGs,undefined,authoritativeResolvedQueueMeta(pendingWinGs,winQueue));
-      return;
-    }
-    if(ti!==0&&!P[ti].isDead&&P[ti].role===ROLE_TREASURE&&isWinHand(P[ti].hand)){
-      P[ti].roleRevealed=true;
-      const reason=`${P[ti].name} 集齐了全部编号并获胜！`;
-      const winGs={...gs,players:P,deck:D,discard:Disc,log:[...L,reason],
-        gameOver:{winner:ROLE_TREASURE,reason,winnerIdx:ti},
-        phase:'ACTION',abilityData:{},...apophisNightPatch(night)};
-      // 与非本地寻宝者获胜的同步队列模式一致：本地同样播放转牌动画队列再进结算，
-      // 避免本地直接跳到 gameOver 而远端重播转牌动画导致两端动画队列不同步。
-      const winStatQ=compileFreshVisualEventQueue(gs,winGs,{excludedStepTypes:['CARD_TRANSFER']});
-      const queue=[
-        ...buildPendingTurnStartDrawQueue(gs),
-        cardTransferStep({fromPid:roseThornSource,dest:'player',toPid:ti,count:giftedCount,msgs:[L[L.length-1]]}),
-        ...winStatQ
-      ];
-      triggerSyncedAnimTransaction(queue,winGs,{context:'roseThorn',barrier:'gameOver',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
-      return;
-    }
     const nextGs={...buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L}),...apophisNightPatch(night)};
     const turnStartDrawQueue=buildPendingTurnStartDrawQueue(gs);
     const statQ=compileFreshVisualEventQueue(gs,nextGs,{excludedStepTypes:['CARD_TRANSFER']});
@@ -6785,32 +6734,32 @@ export default function Game(){
     finishTargetContinuation({queue,nextGs,continueRest:!!gs.abilityData?.fromRest});
   }
 
-  function firstComePickSelectCard(cardIndex){
+  function firstComePickSelectCard(cardIndex,allowAi=false){
     const abilityData=gs.abilityData||{};
     const revealedCards=[...(abilityData.revealedCards||[])];
     const pickOrder=abilityData.pickOrder||[];
     const pickIndex=abilityData.pickIndex||0;
     const pickerIdx=pickOrder[pickIndex];
-    if(pickerIdx!==0||cardIndex<0||cardIndex>=revealedCards.length)return;
+    if((pickerIdx!==0&&!allowAi)||pickerIdx==null||cardIndex<0||cardIndex>=revealedCards.length)return;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const [chosenCard]=revealedCards.splice(cardIndex,1);
-    P[0].hand.push(chosenCard);
-    const L=[...gs.log,`【先到先得】你选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
-    const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,0,chosenCard);
+    P[pickerIdx].hand.push(chosenCard);
+    const L=[...gs.log,`【先到先得】${localDisplayName(pickerIdx,P[pickerIdx].name)}选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
+    const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,pickerIdx,chosenCard);
     const nextPickIndex=pickIndex+1;
     const win=checkWin(P,gs._isMP);
     if(win){
-      setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},...proliferatingZPatch});
+      finishTargetContinuation({nextGs:buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,abilityData,extraPatch:{gameOver:win,...proliferatingZPatch}})});
       return;
     }
-    if(!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
+    if(pickerIdx===0&&!P[0].isDead&&(P[0]._nyaBorrow||P[0].role)===ROLE_TREASURE&&isWinHand(P[0].hand)){
       P[0].roleRevealed=true;
-      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{winReason:localTreasureWinReason(gs)},...proliferatingZPatch};
+      const pendingWinGs={...gs,players:P,deck:D,discard:Disc,log:[...L,localTreasureWinLog(gs)],phase:'PLAYER_WIN_PENDING',abilityData:{...buildTargetContinuationAbilityData(abilityData),winReason:localTreasureWinReason(gs)},...proliferatingZPatch};
       const queue=[
-        cardTransferStep({fromPid:0,dest:'player',toPid:0,count:1,sourceAnchor:'reveal',effect:'draw',cards:[chosenCard],msgs:[L[L.length-1]]}),
+        cardTransferStep({fromPid:pickerIdx,dest:'player',toPid:pickerIdx,count:1,sourceAnchor:'reveal',effect:'draw',cards:[chosenCard],msgs:[L[L.length-1]]}),
         ...compileFreshVisualEventQueue(gs,pendingWinGs,{excludedStepTypes:['CARD_TRANSFER']}),
       ];
-      triggerAnimQueue(queue,pendingWinGs,undefined,authoritativeResolvedQueueMeta(pendingWinGs,queue));
+      finishTargetContinuation({queue,nextGs:pendingWinGs});
       return;
     }
     if(nextPickIndex>=pickOrder.length||revealedCards.length===0){
@@ -6906,6 +6855,7 @@ export default function Game(){
         players:P,deck:D,discard:Disc,log:L,ownerIdx:actorIdx,cards:[discardedCard],reason:'引燃火把弃牌',
         applyHpDamage:applyHpDamageWithLink,submitDamage:submitLossEvents,currentTurn:activeGs.currentTurn,
         statEventSeq:(activeGs._statEventSeq||0)+1,statEventReason:'引燃火把弃牌',
+        continuation:buildTargetContinuationAbilityData(abilityData),
       });
       P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
       damageDecision=balance.damageDecision||null;
@@ -6947,14 +6897,17 @@ export default function Game(){
       canResumeAi:true,
       extraPatch:{
         ...balanceStatPatch,
-        ...(discardEvent&&activeGs._isMP?{
-          _visualEvents:[discardEvent,...(activeGs._visualEvents||[])],
+        ...(discardEvent?{
+          _visualEvents:[...(balanceStatPatch._visualEvents||activeGs._visualEvents||[]),discardEvent],
         }:{}),
       },
     });
     if(damageDecision?.phase)nextGs={...nextGs,phase:damageDecision.phase,abilityData:damageDecision.abilityData};
     const balanceSteps=statEventsToAnimQueue(damageDecision?.statEvents||[],playersAfterDiscard,L.slice(activeGs.log.length));
-    const effectQueue=[
+    const effectQueue=discardEvent?[
+      ...compileFreshVisualEventQueue(activeGs,nextGs),
+      statePatchStep({players:P,discard:Disc,log:L}),
+    ]:[
       discardStep({
         card:discardedCard,
         targetPid:actorIdx,
@@ -6965,8 +6918,8 @@ export default function Game(){
       }),
       ...balanceSteps,
       statePatchStep({players:P,discard:Disc,log:L}),
-    ].map(step=>discardEvent?.id&&!step.visualEventId?{...step,visualEventId:discardEvent.id}:step);
-    if(nextGs._isMP)broadcastAnimTransaction(nextGs,effectQueue,{context:'cardEffectDiscard',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+    ];
+    if(nextGs._isMP&&!abilityData.pendingZoneIncome)broadcastAnimTransaction(nextGs,effectQueue,{context:'cardEffectDiscard',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
     finishTargetContinuation({
       queue:effectQueue,
       nextGs,
@@ -7503,7 +7456,7 @@ export default function Game(){
     }
     const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,phase:'BURY_ALIVE_SELECT',abilityData:{...abilityData,targetIndex:nextTargetIndex,buryAliveSelectedIndex:null}};
     const buryQueue=[buryToDeckStep({fromPid:actorIdx,msgs:L.slice(-1),players:gs.players}),statePatchStep({players:P,deck:D,log:L})];
-    triggerAnimQueue(buryQueue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,buryQueue));
+    triggerAnimQueue(buryQueue,nextGs,undefined,authoritativeResolvedTransitionQueueMeta(gs,nextGs,buryQueue,consumedVisualEventIdsRef.current));
   }
 
   function toggleBuryAliveSelect(idx){
@@ -7557,7 +7510,7 @@ export default function Game(){
     });
     const turnOwner=abilityData._turnOwner??state.currentTurn;
     const nextGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,turnOwner,abilityData});
-    if(queue.length)broadcastAnimTransaction(nextGs,queue,{context:'buryAlive',barrier:'continuation',msgs:L.slice(state.log.length),beforePlayers:state.players,beforeDiscard:state.discard});
+    if(queue.length&&!abilityData.pendingZoneIncome)broadcastAnimTransaction(nextGs,queue,{context:'buryAlive',barrier:'continuation',msgs:L.slice(state.log.length),beforePlayers:state.players,beforeDiscard:state.discard});
     finishTargetContinuation({
       queue,
       nextGs,
@@ -7638,16 +7591,8 @@ export default function Game(){
       }:{}),
     };
     queue.push(...compileFreshVisualEventQueue(gs,nextGs));
-    if(nextGs.phase==='ACTION'&&!win&&(abilityData.fromRest||abilityData.fromEndTurnReplay)){
-      const logDelta=L.slice(gs.log.length);
-      if(abilityData.fromEndTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,queue,logDelta);
-      else if(nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
-        context:'albinoCreature',barrier:'continuation',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard,
-      });
-      finishTargetContinuation({queue,nextGs,continueRest:!!abilityData.fromRest});
-      return;
-    }
-    triggerSyncedAnimTransaction(queue,nextGs,{context:'albinoCreature',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+    if(!abilityData.pendingZoneIncome&&nextGs._isMP)broadcastAnimTransaction(nextGs,queue,{context:'albinoCreature',barrier:nextGs.phase==='ACTION'?'continuation':'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+    finishTargetContinuation({queue,nextGs,continueRest:!!abilityData.fromRest});
   }
 
   function decipherStoneCarvingConfirm({ handCard, deckTopCards, deckBottomCards, allowAi = false }) {
@@ -7697,12 +7642,13 @@ export default function Game(){
       D.push(...[...normalizedBottom].reverse());
       L.push(`【解读石刻】${normalizedBottom.length} 张牌放到牌堆底`);
     }
-    const win = checkWin(P, gs._isMP);
-    const continuationAbilityData=buildTargetContinuationAbilityData(abilityData);
+    const effectDecision=deriveEffectDecisionState(inspectionMeta,{baseAbilityData:buildTargetContinuationAbilityData(abilityData)});
+    const win = effectDecision.hasDecision?null:checkWin(P, gs._isMP);
     const nextGs = {
       ...gs, players: P, deck: D, discard: Disc, log: L,
-      phase: 'ACTION', abilityData: continuationAbilityData, drawReveal: null, selectedCard: null,
+      drawReveal: null, selectedCard: null,
       ...inspectionMeta,
+      phase:effectDecision.phase,abilityData:effectDecision.abilityData,
       ...proliferatingZPatch,
       ...(win ? { gameOver: win } : {}),
     };
@@ -7741,25 +7687,8 @@ export default function Game(){
       ...(decipherTransferStep ? [decipherTransferStep] : []),
       ...compileFreshVisualEventQueue(gs,nextGs,{excludedStepTypes:['CARD_TRANSFER']}),
     ];
-    if (fromEndTurnReplay) {
-      broadcastEndTurnDecisionAnimTransaction(nextGs, queue, L.slice(gs.log.length));
-      // 石刻是无尽通道重播过程中产生的二级决策。必须在收入/归堆动画提交完毕后显式续跑；
-      // 若只等待监听 gs 的兜底 useEffect，pendingGs 在动画完成的同一批更新里仍为非空，
-      // effect 会错过这次 ACTION 状态，导致回合切换表现播完后队列不再推进。
-      triggerAnimQueue(queue, nextGs, () => {
-        if (!nextGs.gameOver) continueEndTurnReplay(nextGs);
-      }, authoritativeEndTurnReplayQueueMeta(nextGs, queue, consumedVisualEventIdsRef.current));
-      return;
-    }
-    if(abilityData.fromRest&&!nextGs.gameOver){
-      if(nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
-        context:'decipherStoneCarving',barrier:'continuation',msgs:L.slice(gs.log.length),
-        beforePlayers:gs.players,beforeDiscard:gs.discard,
-      });
-      finishTargetContinuation({queue,nextGs,continueRest:true});
-      return;
-    }
-    triggerAnimQueue(queue,nextGs,undefined,authoritativeResolvedQueueMeta(nextGs,queue));
+    if(!abilityData.pendingZoneIncome&&fromEndTurnReplay)broadcastEndTurnDecisionAnimTransaction(nextGs,queue,L.slice(gs.log.length));
+    finishTargetContinuation({queue,nextGs,continueRest:!!abilityData.fromRest});
   }
 
   function handleSwapBlindDrawSelect(cardIdx){
@@ -8575,8 +8504,8 @@ export default function Game(){
       Disc.push(...revealedCards);
     }
     const win=checkWin(P,gs._isMP);
-    if(win){setGs({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{}});return;}
-    const newGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,abilityData});
+
+    const newGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,abilityData,extraPatch:win?{gameOver:win}:{}});
     const queue=bindAnimLogChunks(compileFreshVisualEventQueue(gs,newGs),splitAnimBoundLogs(L.slice(gs.log.length)));
     finishTargetContinuation({queue,nextGs:newGs,continueRest:!!abilityData.fromRest});
   }
@@ -8649,16 +8578,7 @@ export default function Game(){
         playersAfterResult:guessCorrect?P:null,
       });
     };
-    const win=checkWin(P,gs._isMP);
-    if(win){
-      const winGs={
-        ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,phase:'ACTION',abilityData:{},
-        ...damageStatPatch,...proliferatingZPatch,
-      };
-      const queue=buildSphinxQueue(winGs);
-      triggerSyncedAnimTransaction(queue,winGs,{context:'sphinxResult',barrier:'gameOver',msgs:logDelta,beforePlayers:gs.players,beforeDiscard:gs.discard});
-      return;
-    }
+    const win=damageDecision?.phase||needsSphinxDodge?null:checkWin(P,gs._isMP);
     const nextTurn=turnOwner;
     const resumesAiTurn=isAiSeat(gs,nextTurn)&&!P[nextTurn]?.isDead;
     const nextPhase=resumesAiTurn?'AI_TURN':'ACTION';
@@ -8668,8 +8588,8 @@ export default function Game(){
       abilityData:needsSphinxDodge
         ?{...continuationAbilityData,sphinxPending:{turnOwner:nextTurn}}
         :(damageDecision?.abilityData||continuationAbilityData),
-      drawReveal:needsSphinxDodge?{card:(P[actorIdx]?.hand||[]).find(card=>card.type==='sphinxGuess'||card.name==='斯芬克斯'),drawerIdx:actorIdx}:gs.drawReveal,
-      ...damageStatPatch,...proliferatingZPatch,
+      drawReveal:needsSphinxDodge?{card:gs.abilityData?.pendingZoneIncome?.card||(P[actorIdx]?.hand||[]).find(card=>card.type==='sphinxGuess'||card.name==='斯芬克斯'),drawerIdx:actorIdx}:gs.drawReveal,
+      ...damageStatPatch,...proliferatingZPatch,...(win?{gameOver:win}:{}),
     };
     const newGsWithEvent=newGs;
     const queue=buildSphinxQueue(newGsWithEvent);
@@ -8678,7 +8598,7 @@ export default function Game(){
       return;
     }
     if(gs._endTurnReplay)broadcastEndTurnDecisionAnimTransaction(newGsWithEvent,queue,logDelta);
-    else if(newGsWithEvent._isMP&&queue.length)broadcastAnimTransaction(newGsWithEvent,queue,{
+    else if(newGsWithEvent._isMP&&queue.length&&!continuationAbilityData.pendingZoneIncome)broadcastAnimTransaction(newGsWithEvent,queue,{
       context:'sphinxResult',barrier:damageDecision?.phase?'decision':'continuation',msgs:logDelta,
       beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
@@ -8801,10 +8721,18 @@ export default function Game(){
       );
       return;
     }
-    const res=applyFx(bewitchCard,ti,bewitchCard.type==='swapAllHands'?null:ti,P,D,Disc,gs);L.push(...res.msgs);
-    res.P[ti].hand.push(bewitchCard);
-    const win=checkWin(res.P,gs._isMP);
+    const res=bewitchCard.type==='swapAllHands'
+      ?{P,D,Disc,msgs:[],statePatch:{}}
+      :applyFx(bewitchCard,ti,ti,P,D,Disc,gs);
+    L.push(...res.msgs);
+    // Swap chooses a target before its effect; other region effects share the
+    // normal draw's deferred-income contract.
+    res.statePatch=bewitchCard.type==='swapAllHands'
+      ?{...res.statePatch,abilityData:{...res.statePatch?.abilityData,pendingZoneIncome:{card:bewitchCard,ownerId:res.P[ti].id}}}
+      :applyZoneCardIncome({players:res.P,discard:res.Disc,card:bewitchCard,drawerIdx:ti,statePatch:res.statePatch});
+    const win=res.statePatch?.abilityData?.pendingZoneIncome?null:checkWin(res.P,gs._isMP);
     const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+      baseAbilityData:{_turnOwner:gs.currentTurn},
       fallbackPhase:'ACTION',
       leadingPhase:bewitchCard.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
       leadingAbilityData:bewitchCard.type==='swapAllHands'?{
@@ -8840,9 +8768,8 @@ export default function Game(){
       ...(Array.isArray(res.statePatch?._visualEvents)?res.statePatch._visualEvents:[]),
     ].filter((event,index,events)=>event&&(!event.id||events.findIndex(candidate=>candidate?.id===event.id)===index));
     const bewitchBaseGs=clearTurnDrawReplayHints({...gs,players:res.P,deck:res.D,discard:res.Disc,log:L,drawReveal:null,
-      abilityData:phaseAbilityData,
-      phase:nextPhase,
-      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:bewitchVisualEvents,...(win?{gameOver:win}:{})});
+      skillUsed:true,...(res.statePatch||{}),...apophisNightPatch(night),_visualEvents:bewitchVisualEvents,...(win?{gameOver:win}:{}),
+      abilityData:phaseAbilityData,phase:nextPhase});
       const {state:newGs,queue,inspectionEvents}=buildBewitchGiftVisualTransaction({
         previousState:gs,
         state:bewitchBaseGs,
@@ -10427,6 +10354,8 @@ export default function Game(){
       disabled={suppressAnim}
       decisionProps={{...battleScreenProps,decisionSubmitting}}
       pendingState={pendingGsRef.current}
+      canFinishRevealEarly={canFinishRevealEarly&&!isSpectating&&!softGuidePauseActive&&!showTutorial}
+      finishRevealEarly={finishRevealEarly}
       playEndlessCorridorTunnelSound={playEndlessCorridorTunnelSound}
     />
     {!suppressAnim&&huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}

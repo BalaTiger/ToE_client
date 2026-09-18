@@ -93,6 +93,8 @@ import {
 import { addDamageLink } from './damageLinks';
 import { chooseAiHuntDiscardIndex } from './aiDiscardChoices';
 import { resolveAiHandLimitDiscards } from './aiHandLimitDiscard';
+import { applyZoneCardIncome, settlePendingZoneIncome } from './zoneCardIncome';
+import { buildTargetContinuationAbilityData } from './targetContinuation';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -903,17 +905,42 @@ export function continueAiCthRestDraws(gs, opts = {}) {
   };
 }
 
-// Preserve only the CTH rest-draw continuation fields after an AI decision is
-// resolved mid-draw, so the remaining 「梦访拉莱耶」 draws are not lost.
+// Preserve the outer resolution, including income waiting for this decision.
 function cthRestContinuationAbilityData(abilityData = {}) {
-  return {
-    ...(abilityData?.fromRest ? { fromRest: true } : {}),
-    ...(abilityData?.cthDrawsRemaining != null ? { cthDrawsRemaining: abilityData.cthDrawsRemaining } : {}),
+  return buildTargetContinuationAbilityData(abilityData);
+}
+
+function settleAiZoneIncome(state) {
+  const pending = state?.abilityData?.pendingZoneIncome;
+  if (!pending || (!state.gameOver && (!['ACTION', 'AI_TURN'].includes(state.phase)
+    || hasEffectDecisionState({ abilityData: state.abilityData }) || state._sameAbyssContinuation
+    || state._decisionContinuations?.length || state.abilityData?.pendingSanInspection))) return state;
+  const playersBefore = copyPlayers(state.players);
+  const discardBefore = [...state.discard];
+  const players = copyPlayers(state.players);
+  const discard = [...state.discard];
+  const income = settlePendingZoneIncome(players, discard, pending);
+  const { pendingZoneIncome: _settled, ...abilityData } = state.abilityData;
+  const event = income && createCardMoveVisualEvent({
+    from: { zone: 'drawReveal' },
+    to: { zone: income.dest === 'player' ? 'hand' : 'discard', playerIdx: income.drawerIdx },
+    cards: [income.card], effect: 'zoneIncome',
+    playersBefore, playersAfter: copyPlayers(players),
+    discardBefore, discardAfter: [...discard],
+  });
+  return { ...state, players, discard, abilityData,
+    _visualEvents: [...(state._visualEvents || []), ...(event ? [event] : [])],
+    gameOver: state.gameOver || checkWin(players, state._isMP),
   };
 }
 
 export function aiStep(gs, opts = {}) {
-  const result=resolveAiStep(gs,opts);
+  const ready = settleAiZoneIncome(gs);
+  let result = settleAiZoneIncome(ready.gameOver ? ready : resolveAiStep(ready,opts));
+  if (result?.currentTurn === ready.currentTurn && result?.abilityData?._turnOwner != null && ['ACTION', 'AI_TURN'].includes(result.phase)
+    && !hasEffectDecisionState({ abilityData: result.abilityData })) {
+    result = { ...result, currentTurn: result.abilityData._turnOwner };
+  }
   if(result&&(result.currentTurn!==gs.currentTurn||result.gameOver)){
     const {_aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...next}=result;
     return next;
@@ -1225,8 +1252,13 @@ function resolveAiStep(gs, opts = {}) {
         ...((gr.inspectionMeta?.abilityData || inspectionMeta?.abilityData) ? { abilityData: gr.inspectionMeta?.abilityData || inspectionMeta.abilityData } : {}),
       };
       _gs = { ..._gs, ...mergedInspectionMeta, ...(gr.statePatch || {}) };
+    } else if (_sc.type === 'swapAllHands' && !opts.allAi) {
+      fxResult = { P: _P, D: _D, Disc: _Disc, msgs: [], statePatch: { abilityData: {
+        zoneSwapCard: _sc, zoneSwapSource: _ti, _turnOwner: _ct,
+        pendingZoneIncome: { card: _sc, ownerId: _P[_ti].id },
+      } } };
+      _gs = { ..._gs, ...fxResult.statePatch };
     } else {
-      _P[_ti].hand.push(_sc);
       fxResult = applyFx(
         _sc,
         _ti,
@@ -1240,6 +1272,10 @@ function resolveAiStep(gs, opts = {}) {
         !!opts.allAi,
       );
       _P = fxResult.P; _D = fxResult.D; _Disc = fxResult.Disc;
+      fxResult.statePatch = applyZoneCardIncome({
+        players: _P, discard: _Disc, card: _sc, drawerIdx: _ti,
+        statePatch: fxResult.statePatch || {},
+      });
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
     }
@@ -1311,6 +1347,7 @@ function resolveAiStep(gs, opts = {}) {
   };
 
   const buildBewitchTreasureWinState = (_gs, _P, _D, _Disc, _L, targetIdx) => {
+    if (hasEffectDecisionState(_gs) || _gs.abilityData?.pendingZoneIncome) return null;
     const target = _P[targetIdx];
     const effectiveRole = target?._nyaBorrow || target?.role;
     if (!target || target.isDead || effectiveRole !== ROLE_TREASURE || !isWinHand(target.hand)) return null;
@@ -1359,7 +1396,7 @@ function resolveAiStep(gs, opts = {}) {
     const pickOrder=abilityData.pickOrder||[];
     const pickIndex=abilityData.pickIndex||0;
     const pickerIdx=pickOrder[pickIndex];
-    if(pickerIdx==null)return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+    if(pickerIdx==null)return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData};
   }
 
@@ -1396,7 +1433,7 @@ function resolveAiStep(gs, opts = {}) {
       recordActionVisualEvents([damageLinkEvent]);
       const win=checkWin(P,gs._isMP);
       const visualPatch=getUnifiedReplayVisualEvents(gs);
-      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN',_visualEvents:visualPatch};
+      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN',_visualEvents:visualPatch};
       return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN',_visualEvents:visualPatch};
     }
     return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
@@ -1430,7 +1467,7 @@ function resolveAiStep(gs, opts = {}) {
           discard:Disc,
           log:[...L,`${P[targetIdx].name} 集齐全部编号并获胜！`],
           gameOver:{winner:ROLE_TREASURE,reason:`${P[targetIdx].name} 集齐了全部编号并获胜！`,winnerIdx:targetIdx},
-          abilityData:{},
+          abilityData:cthRestContinuationAbilityData(abilityData),
           phase:'AI_TURN',
           _visualEvents:getUnifiedReplayVisualEvents(gs),
         });
@@ -2192,17 +2229,19 @@ function resolveAiStep(gs, opts = {}) {
         if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
+          const deferredSwap=!!res.statePatch?.abilityData?.zoneSwapCard;
+          if(deferredSwap||hasEffectDecisionState(res.statePatch)){
             const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+              baseAbilityData:{_turnOwner:gs.currentTurn},
               fallbackPhase:'ACTION',
-              leadingPhase:sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
-              leadingAbilityData:sc.type==='swapAllHands'?{
+              leadingPhase:deferredSwap?'ZONE_SWAP_SELECT_TARGET':null,
+              leadingAbilityData:deferredSwap?{
                 zoneSwapCard:sc,
                 zoneSwapSource:ti,
               }:{},
               turnOwner:gs.currentTurn,
             });
-            const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
+            const needsPlayerDecision = deferredSwap || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
             return {
               ...gs,
               players:P,
@@ -2329,10 +2368,10 @@ function resolveAiStep(gs, opts = {}) {
         if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(hasEffectDecisionState(res.statePatch)){
-            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'ACTION',turnOwner:gs.currentTurn});
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
+          const deferredSwap=!!res.statePatch?.abilityData?.zoneSwapCard;
+          if(deferredSwap||hasEffectDecisionState(res.statePatch)){
+            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{baseAbilityData:{_turnOwner:gs.currentTurn},fallbackPhase:'ACTION',leadingPhase:deferredSwap?'ZONE_SWAP_SELECT_TARGET':null,turnOwner:gs.currentTurn});
+            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:deferredSwap||res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
           }
         }
         const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};

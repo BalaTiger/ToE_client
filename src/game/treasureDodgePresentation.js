@@ -45,10 +45,12 @@ export function buildTreasureDodgeRollPresentation(transaction, {
   const config = treasureDodgeModeConfig(!!transaction.isAOE);
   const effectQueue = buildEffectQueue(transaction);
   const dice = createTreasureDodgeDiceAnim({ transaction, tutorialHold, onTutorialSettled });
-  const shouldTransfer = config.includeStandardTransfer && !transaction.drawReveal?.fromEndTurnReplay;
+  const shouldTransfer = config.includeStandardTransfer
+    && !transaction.drawReveal?.fromEndTurnReplay
+    && !transaction.afterState.abilityData?.pendingZoneIncome;
   const transfer = shouldTransfer ? cardTransferStep({
     fromPid: transaction.drawerIdx,
-    dest: 'player',
+    dest: transaction.afterState.players[transaction.drawerIdx]?.isDead ? 'discard' : 'player',
     toPid: transaction.drawerIdx,
     count: 1,
     sourceAnchor: 'playerArea',

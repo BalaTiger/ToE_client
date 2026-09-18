@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { _getZoomCompensatedRect, getCardElementAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter, getRevealCardAnchor } from './dom';
+import { _getZoomCompensatedRect, getCardElementAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from './dom';
 import { getCardFlightStyle } from '../components/anim/cardSizing';
 import { projectTableCard } from './cardPlane';
 
@@ -67,6 +67,19 @@ describe('zoomed board viewport anchors', () => {
 });
 
 describe('card flight perspective', () => {
+  it('lands on a collapsed opponent hand badge at its actual zoomed icon size', () => {
+    const badge = {
+      dataset: { handCardWidth: '24' },
+      offsetWidth: 60,
+      querySelectorAll: () => [],
+      getBoundingClientRect: () => ({ left: 600, top: 42, width: 30, height: 12 }),
+    };
+    vi.stubGlobal('document', { querySelector: selector => selector === '[data-player-hand-strip="7"]' ? badge : null });
+    const anchor = getPlayerHandCardAnchor(7, { id: 'not-mounted-in-collapsed-panel' });
+    expect(anchor).toMatchObject({ x: 615, y: 48, width: 12, rotation: 0 });
+    expect(anchor.height / anchor.width).toBeCloseTo(590 / 392);
+  });
+
   it.each([[1280, 720], [844, 390], [667, 320], [3440, 1440]])('keeps the reveal and its fallback aligned at %s×%s with room for choices', (innerWidth, innerHeight) => {
     vi.stubGlobal('window', { innerWidth, innerHeight });
     vi.stubGlobal('document', { querySelector: () => null });

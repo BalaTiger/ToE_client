@@ -17,6 +17,32 @@ import { createRandomTargetVisualEvent } from '../visualEvents';
 import { makeGs, makePlayer, makeZoneCard } from './factory';
 
 describe('treasure dodge flow variants', () => {
+  it.each([1, 6])('活埋规避掷出 %s 后等待所有埋牌完成再收入', roll => {
+    const oldCard = makeZoneCard('B1');
+    const adjacentCard = makeZoneCard('C2');
+    const card = makeZoneCard('A4', 0, { id: 'incoming-bury', name: '活埋', type: 'buryAlive' });
+    const players = [
+      makePlayer({ role: '寻宝者', hand: [oldCard] }),
+      makePlayer({ role: '追猎者', hand: [adjacentCard] }),
+      makePlayer({ role: '邪祀者' }),
+    ];
+    const drawReveal = { card, drawerIdx: 0, fromRest: true };
+    const gs = makeGs({ players, drawReveal, abilityData: { fromRest: true, cthDrawsRemaining: 2 } });
+    const result = resolveTreasureDodge(gs, drawReveal, { roll });
+
+    expect(result.newGs.phase).toBe('BURY_ALIVE_SELECT');
+    expect(result.newGs.players[0].hand).toEqual([oldCard]);
+    expect(result.newGs.abilityData).toMatchObject({
+      targets: roll >= 4 ? [1] : [0, 1],
+      fromRest: true, cthDrawsRemaining: 2,
+      pendingZoneIncome: { card, ownerId: players[0].id },
+    });
+    expect(result.newGs.log.some(line => line.includes('收入了'))).toBe(false);
+    expect(classifyTreasureDodgeRoll(drawReveal, result)).toBe('standard');
+    const presentation = buildTreasureDodgeRollPresentation(result.transaction);
+    expect(presentation.queue.some(step => step.type === 'CARD_TRANSFER')).toBe(false);
+  });
+
   it('preserves normal and AOE mode differences', () => {
     expect(treasureDodgeModeConfig(false)).toMatchObject({
       rollContext: 'treasureDodge', includeStandardTransfer: true, supportsTutorialHold: true,

@@ -30,7 +30,8 @@ import {
   requestZhuReveal,
   refreshZhuLightAtOwnerTurn,
 } from './zhuPower';
-import { deriveEffectDecisionState } from './effectStatePatch';
+import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { applyZoneCardIncome } from './zoneCardIncome';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { clearExpiredProliferatingZ } from './proliferatingZ';
@@ -121,26 +122,17 @@ function sameDrawnCard(left, right) {
   return left.key === right.key && left.name === right.name && left.type === right.type;
 }
 
-// Every resolved draw owns the presentation snapshots for its own keep step.
-// playersAfterKeep deliberately changes only the hand: card effects (including
-// Sphinx's reward card) are committed by their later visual events instead of
-// leaking into the frame where the originally drawn card lands.
-function buildDrawKeepPresentation({ playersBefore = [], playersAfter = [], playerIdx = 0, card } = {}) {
+// Income follows every effect, so its snapshot preserves the completed effects.
+function buildDrawKeepPresentation({ playersBefore = [], playersAfter = [], discardAfter = [], playerIdx = 0, card } = {}) {
   const before = copyPlayers(playersBefore);
   const after = copyPlayers(playersAfter);
   const keptInHand = !!card && (after[playerIdx]?.hand || []).some(candidate => sameDrawnCard(candidate, card));
-  const playersAfterKeep = keptInHand
-    ? before.map((player, idx) => idx === playerIdx ? {
-        ...player,
-        hand: (player.hand || []).some(candidate => sameDrawnCard(candidate, card))
-          ? [...(player.hand || [])]
-          : [...(player.hand || []), card],
-      } : player)
-    : null;
   return {
     keptInHand,
+    ...(after[playerIdx]?.isDead && discardAfter.some(candidate => sameDrawnCard(candidate, card))
+      ? { incomeDestination: 'discard', discardAfter: [...discardAfter] } : {}),
     playersBefore: before,
-    ...(playersAfterKeep ? { playersAfterKeep } : {}),
+    ...(keptInHand ? { playersAfterKeep: copyPlayers(after) } : {}),
     playersAfterResolution: after,
   };
 }
@@ -1089,7 +1081,8 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
   // Forced trigger cards
   if (drawnCard.forced) {
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
+    P = res.P; D = res.D; Disc = res.Disc;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
     return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
 
@@ -1124,11 +1117,6 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       { moldyFoodRoll },
     );
     let effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
-    // Sphinx is the one zone card whose effect visually and semantically starts
-    // after the trigger card has entered the hand. Keep it before applyFx so a
-    // correctly guessed reward is appended after D4 in both rule and visual state.
-    const keepBeforeEffect = drawnCard.type === 'sphinxGuess' || drawnCard.name === '斯芬克斯';
-
     let failedDodgeLog = null;
     if (isTreasureHunter && isDodgeableEffect && conditionalNegativeApplies) {
       P[ci].roleRevealed = true;
@@ -1139,10 +1127,9 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       const dodgeEvent = createDiceResultVisualEvent({ mode: 'treasureDodge', actorIdx: ci, actorName: P[ci].name, d1, msgs: [dodgeLog] });
       effectGs = { ...effectGs, _visualEvents: [...(effectGs._visualEvents || []), dodgeEvent] };
       if (dodgeSuccess) {
-        if (keepBeforeEffect) P[ci].hand.push(drawnCard);
         const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, true, [], isAI);
         P = res.P; D = res.D; Disc = res.Disc;
-        if (!keepBeforeEffect) P[ci].hand.push(drawnCard);
+        res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
         const effectMsgs = drawnCard.type === 'albinoCreature' ? [...res.msgs, dodgeLog] : [dodgeLog, ...res.msgs];
         return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs, statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
       }
@@ -1150,11 +1137,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
     }
 
     // Apply effect for AI
-    if (keepBeforeEffect) P[ci].hand.push(drawnCard);
     const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc;
-    if (!keepBeforeEffect) P[ci].hand.push(drawnCard);
-    const keepLog = `${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    const keepLog = `${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择保留，先结算效果`;
     return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: failedDodgeLog ? [failedDodgeLog, ...res.msgs] : [keepLog, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
 
@@ -1163,8 +1149,9 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (playerKeepOverride === 'keep') {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+    P = res.P; D = res.D; Disc = res.Disc;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 选择保留 ${cardLogText(drawnCard, { alwaysShowName: true })}，先结算效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
   if (playerKeepOverride === 'discard') {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
@@ -1938,6 +1925,25 @@ function resolveNextTurnState(gs, opts = {}) {
   if (turnStartEventIds.has(TURN_START_EVENT.ZHU_LIGHT_REFRESH)) {
     zhuLight = turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight);
   }
+  const pauseSlimeDrawForEffect = (result, events, beforeDrawPlayers) => {
+    if (!hasEffectDecisionState(result.statePatch)) return null;
+    const decision = deriveEffectDecisionState(result.statePatch, {
+      fallbackPhase: shouldUseAiController(next) ? 'AI_TURN' : 'ACTION',
+      turnOwner: next,
+      extraAbilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next },
+    });
+    return withMergedVisualEvents({
+      ...gs, ...result.statePatch, zhuLight, players: P, deck: D, discard: Disc, log: L,
+      currentTurn: next, turn: newTurn, _turnKey: newTurnKey,
+      phase: decision.phase, abilityData: decision.abilityData,
+      skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false,
+      godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, globalOnlySwapOwner,
+      _playersBeforeThisDraw: beforeDrawPlayers, _preTurnPlayers: _P_beforeTurn,
+      _drawnCard: result.drawnCard, _drawSourcePile: result.sourcePile,
+      _aiDrawnCard: shouldUseAiController(next) ? result.drawnCard : null,
+      _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs,
+    }, events);
+  };
   if (next === 0 && !shouldUseAiController(next)) {
     // Debug: 强制摸牌 - 玩家
     applyDebugForceDrawToTop(gs, next, D);
@@ -2021,6 +2027,7 @@ function resolveNextTurnState(gs, opts = {}) {
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
+            discardAfter: Disc,
             playerIdx: 0,
             card: rSlime.drawnCard,
           }),
@@ -2044,6 +2051,8 @@ function resolveNextTurnState(gs, opts = {}) {
       }
       // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
       // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
       const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
       if (slimeDrawWin) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, globalOnlySwapOwner, gameOver: slimeDrawWin, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
@@ -2087,6 +2096,7 @@ function resolveNextTurnState(gs, opts = {}) {
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
+          discardAfter: Disc,
           playerIdx: 0,
           card: res.drawnCard,
         }),
@@ -2187,14 +2197,14 @@ function resolveNextTurnState(gs, opts = {}) {
       _preTurnPlayers: _P_beforeTurn,
       ...(res.statePatch || {}),
     };
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
     // 强制触发牌：效果已执行，直接进入 ACTION；drawReveal 保留卡牌供翻牌动画使用，但不广播 DRAW_REVEAL
     if (res.kept) {
       const decisionState = deriveEffectDecisionState(res.statePatch, {
         baseAbilityData: {},
         fallbackPhase: 'ACTION',
       });
-      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) }, turnDrawVisualEvents);
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}), phase: decisionState.phase, abilityData: decisionState.abilityData }, turnDrawVisualEvents);
     }
     return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
   } else if (gs._isMP && !shouldUseAiController(next)) {
@@ -2273,6 +2283,7 @@ function resolveNextTurnState(gs, opts = {}) {
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
+            discardAfter: Disc,
             playerIdx: next,
             card: rSlime.drawnCard,
           }),
@@ -2296,6 +2307,8 @@ function resolveNextTurnState(gs, opts = {}) {
       }
       // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 团灭非追猎者）。
       // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeMpDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
       const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, true);
       if (slimeDrawWin) {
         return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, gameOver: slimeDrawWin, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
@@ -2337,6 +2350,7 @@ function resolveNextTurnState(gs, opts = {}) {
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
+          discardAfter: Disc,
           playerIdx: next,
           card: res.drawnCard,
         }),
@@ -2361,10 +2375,13 @@ function resolveNextTurnState(gs, opts = {}) {
       const decisionState=deriveGodEncounterDecisionState(res.statePatch,{godCard:res.drawnCard,godEncounterCost:res.godEncounterCost});
       return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}), phase:decisionState.phase,abilityData:decisionState.abilityData }, turnDrawVisualEvents);
     }
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ beforeDrawPlayers: _P_beforeMpDraw }), ...(res.statePatch || {}) }, turnDrawVisualEvents);
-    // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ beforeDrawPlayers: _P_beforeMpDraw }), ...(res.statePatch || {}) }, turnDrawVisualEvents);
+    // 强制触发牌不再询问保留；待收入的交互效果仍需先完成选择。
     if (res.kept) {
-      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) }, turnDrawVisualEvents);
+      const decisionState = res.statePatch?.abilityData?.pendingZoneIncome
+        ? deriveEffectDecisionState(res.statePatch)
+        : null;
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}), ...(decisionState ? { phase: decisionState.phase, abilityData: decisionState.abilityData } : {}) }, turnDrawVisualEvents);
     }
     return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
   } else {
@@ -2452,6 +2469,7 @@ function resolveNextTurnState(gs, opts = {}) {
           ...buildDrawKeepPresentation({
             playersBefore: playersBeforeSlimeDraw,
             playersAfter: P,
+            discardAfter: Disc,
             playerIdx: next,
             card: rSlime.drawnCard,
           }),
@@ -2467,6 +2485,8 @@ function resolveNextTurnState(gs, opts = {}) {
       }
       // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
       // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
       const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
       if (slimeDrawWin) {
         return withMergedVisualEvents({
@@ -2548,6 +2568,7 @@ function resolveNextTurnState(gs, opts = {}) {
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
           playersAfter: P,
+          discardAfter: Disc,
           playerIdx: next,
           card: res.drawnCard,
         }),
@@ -2588,8 +2609,8 @@ function resolveNextTurnState(gs, opts = {}) {
       _statLogs: statLogs,
       _preTurnPlayers: _P_beforeTurn,
     };
-    const win = hasPendingDamageReaction(res.statePatch) ? null : checkWin(res.P, gs._isMP); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
-    if (!res.P[next].isDead && res.P[next].role === ROLE_TREASURE && isWinHand(res.P[next].hand)) {
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(res.P, gs._isMP); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
+    if (!hasEffectDecisionState(res.statePatch) && !res.P[next].isDead && res.P[next].role === ROLE_TREASURE && isWinHand(res.P[next].hand)) {
       res.P[next].roleRevealed = true;
       return withMergedVisualEvents({
         ...gs,

@@ -1,5 +1,19 @@
-import { describe, expect, it } from 'vitest';
-import { resolveCardTransferFaceUp } from '../useCardTransferAnimationEffects';
+import { describe, expect, it, vi } from 'vitest';
+import { resolveCardTransferAnchors, resolveCardTransferFaceUp } from '../useCardTransferAnimationEffects';
+
+vi.mock('../../utils/dom', () => ({
+  getPlayerHandCardAnchor: playerIdx => ({ x: 100 + playerIdx, y: 800, width: 120 }),
+  getRevealCardAnchor: () => ({ x: 500, y: 350, width: 200 }),
+  getPileCardAnchor: () => ({ x: 700, y: 500, width: 140 }),
+}));
+
+it('蛊惑赠牌落在翻牌停留位置，结算后从同一位置收入手牌', () => {
+  const giftFlight = resolveCardTransferAnchors({ fromPid: 1, toPid: 0, dest: 'reveal' });
+  const incomeFlight = resolveCardTransferAnchors({ fromPid: 0, toPid: 0, dest: 'player', sourceAnchor: 'drawReveal' });
+  expect(giftFlight.to).toEqual({ x: 500, y: 350, width: 200 });
+  expect(incomeFlight.from).toEqual(giftFlight.to);
+  expect(incomeFlight.to).toEqual({ x: 100, y: 800, width: 120 });
+});
 
 describe('resolveCardTransferFaceUp', () => {
   const card = { id: 'zone-card', isZone: true };

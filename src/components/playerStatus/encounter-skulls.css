@@ -28,3 +28,16 @@
 .toe-player-panel:has(> .toe-encounter-skulls) {
   margin-bottom: calc(var(--toe-encounter-skull-rows) * 20px - 9px);
 }
+.toe-encounter-skulls[data-skull-layout='portrait-arc'] {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}
+.toe-encounter-skulls[data-skull-layout='portrait-arc'] img {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  filter: brightness(.8) drop-shadow(0 1px 1px #000b);
+}

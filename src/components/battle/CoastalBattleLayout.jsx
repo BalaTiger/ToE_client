@@ -24,24 +24,24 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
   const rolesRef = useRef(null);
   const handRef = useRef(null);
   const effectsRef = useRef(null);
-  const [measured, setMeasured] = useState({ width, rolesBottom: 190, controlsHeight: 0, controlsBottom: 24, effectsHeight: 0 });
+  const countsRef = useRef(null);
+  const [measured, setMeasured] = useState({ width, rolesBottom: 190, controlsHeight: 0, controlsBottom: 24, effectsHeight: 0, countsHeight: 103 });
   useLayoutEffect(() => {
     if (compact || !boardRef.current || !rolesRef.current) return;
     const board = boardRef.current, roles = rolesRef.current;
     const controls = handRef.current?.querySelector('.toe-hand-heading');
     const measure = () => {
-      const boardRect = board.getBoundingClientRect(), rolesRect = roles.getBoundingClientRect();
-      const zoom = boardRect.width / board.clientWidth || 1;
+      const zoom = board.getBoundingClientRect().width / board.clientWidth || 1;
       const next = { width: board.clientWidth, rolesBottom: roles.offsetTop + roles.offsetHeight,
-        centerX: (rolesRect.left + rolesRect.width / 2 - boardRect.left) / zoom,
         controlsHeight: controls?.offsetHeight || 0,
         controlsBottom: controls ? parseFloat(getComputedStyle(controls).marginBottom) || 0 : 24,
-        effectsHeight: effectsRef.current?.offsetHeight || 0 };
+        effectsHeight: effectsRef.current?.offsetHeight || 0,
+        countsHeight: countsRef.current ? Math.ceil(countsRef.current.getBoundingClientRect().height / zoom) : 103 };
       setMeasured(previous => Object.keys(next).every(key => Math.abs(previous[key] - next[key]) < .5) ? previous : next);
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-    [board, roles, controls, effectsRef.current].filter(Boolean).forEach(element => observer?.observe(element));
+    [board, roles, controls, effectsRef.current, countsRef.current].filter(Boolean).forEach(element => observer?.observe(element));
     return () => observer?.disconnect();
   }, [compact, width, height]);
   const geometry = compact ? null : getCoastalGeometry({ ...measured, height, handCount: hand.props.visualMe?.hand.length ?? 5 });
@@ -52,6 +52,10 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
       '--toe-coastal-corner-right': `${COASTAL_CORNER.right}px`,
       ...(geometry ? {
       '--toe-coastal-height': `${geometry.height}px`,
+      '--toe-coastal-self-left': `${geometry.self.left}px`,
+      '--toe-coastal-self-top': `${geometry.self.top}px`,
+      '--toe-coastal-self-width': `${geometry.self.width}px`,
+      '--toe-coastal-self-height': `${geometry.self.height}px`,
       '--toe-coastal-hand-start': `${geometry.hand.left}px`,
       '--toe-coastal-hand-gap': `${geometry.actions.gap}px`,
       '--toe-coastal-actions-width': `${geometry.actions.width}px`,
@@ -76,7 +80,6 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
       '--toe-coastal-log-pad-right': `${geometry.log.width * .118}px`,
     } : {}) }}>
     <div className="toe-coastal-drapery" aria-hidden="true">
-      <img className="toe-coastal-faith-drape" src={buildPublicUrl('/img/ui/coastal/faith-banner.webp')} alt="" />
       <img className="toe-coastal-log-book" src={buildPublicUrl('/img/ui/coastal/corner-b-journal.webp')} alt="" />
     </div>
     <img className="toe-coastal-foreground" src={buildPublicUrl('/img/ui/coastal/foreground-torch.webp')} alt="" aria-hidden="true" />
@@ -90,7 +93,7 @@ export function CoastalBattleLayout({ opponents, middle, prompt, hand, effects, 
     <div className="toe-coastal-log">{cloneElement(log, { coastalBook: true })}</div>
     <div className="toe-coastal-piles">{geometry ? cloneElement(piles, { baseHeight: geometry.piles.height, cardWidth: geometry.piles.cardWidth }) : piles}</div>
     <div ref={effectsRef} className="toe-coastal-effects">{effects}</div>
-    <div className="toe-coastal-counts" aria-label="牌堆计数" style={{ '--toe-coastal-counter-image': `url('${buildPublicUrl('/img/ui/coastal/counter.webp')}')` }}>
+    <div ref={countsRef} className="toe-coastal-counts" aria-label="牌堆计数" style={{ '--toe-coastal-counter-image': `url('${buildPublicUrl('/img/ui/coastal/counter.webp')}')` }}>
       <div><span aria-hidden="true">✧</span><span>检定</span><strong>{counts.inspection}</strong></div>
       <div><span aria-hidden="true">▱</span><span>牌堆</span><strong>{counts.deck}</strong></div>
       <div><span aria-hidden="true">♜</span><span>弃牌</span><strong>{counts.discard}</strong></div>

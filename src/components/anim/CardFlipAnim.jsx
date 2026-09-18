@@ -131,8 +131,9 @@ export function CardDrawFlight({card,targetPid,from,to,expansionKey='地神的�
   </div>;
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled,settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,children}){
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled,settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,earlyActions=false,children}){
   const [traveled,setTraveled]=React.useState(skipTravel||settled);
+  const [earlyActionsReady,setEarlyActionsReady]=React.useState(false);
   const viewport=useWindowSize();
   const settledRef=React.useRef(false);
   const settleDelay=card?.isGod?2650:1250;
@@ -150,9 +151,15 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
     },settleDelay);
     return()=>clearTimeout(t);
   },[traveled,onSettled,settleDelay,settled]);
+  React.useEffect(()=>{
+    if(!earlyActions||settled||!traveled||travelOnly)return undefined;
+    const t=setTimeout(()=>setEarlyActionsReady(true),850);
+    return()=>clearTimeout(t);
+  },[earlyActions,settled,traveled,travelOnly]);
+  const actionsVisible=!!children&&(!earlyActions||settled||earlyActionsReady);
   React.useLayoutEffect(()=>{
-    if(settled&&decisionKind)captureDecisionCardAnchors();
-  },[settled,decisionKind,viewport.w,viewport.h]);
+    if((settled||actionsVisible)&&decisionKind)captureDecisionCardAnchors();
+  },[settled,actionsVisible,decisionKind,viewport.w,viewport.h]);
 
   const isInspection=!!card?.effect;
   if(!card) return null;
@@ -271,6 +278,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
 
   return renderGameLayer(
     <div data-ui-dialog={decisionKind} data-card-reveal-settled={settled?'true':undefined}
+      data-card-reveal-actions-ready={actionsVisible?'true':undefined}
       role={decisionKind?'dialog':undefined} aria-modal={decisionKind?true:undefined}
       aria-label={decisionKind==='god-choice'?'邪神牌决策':decisionKind?'区域牌决策':undefined}
       onPointerDownCapture={decisionKind?captureDecisionCardAnchors:undefined}
@@ -399,7 +407,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
           />
         )}
       </div>
-      {children&&<div data-card-reveal-options style={{
+      {actionsVisible&&<div data-card-reveal-options style={{
         position:'absolute',left:centerX,top:centerY+flipH/2+14,
         transform:'translateX(-50%)',width:Math.min(viewport.w-32,Math.max(flipW+160,360)),
         zIndex:5,

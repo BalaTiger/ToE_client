@@ -5,12 +5,14 @@ import { HealCrossEffect, StatBar, CoastalPortrait } from '../board';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
 import { LocalGodPowerTag } from './LocalGodPowerTag';
+import { FaithScrollRegion } from './FaithScrollRegion';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
 import { EncounterSkulls } from '../playerStatus/EncounterSkulls';
 import { PanelFrame } from './PanelFrame';
 import { useUiAppearance } from '../../ui/UiAppearance';
 import { buildPublicUrl } from '../../utils/url';
 import './coastal-panels.css';
+import './coastal-self-sidebar.css';
 
 export function SelfPlayerPanel({
   selfPanelRef,
@@ -47,6 +49,11 @@ export function SelfPlayerPanel({
 }) {
   const coastal = useUiAppearance().appearance.battleLayout === 'coastal';
   const isShortDesktop = !isMobile && !isMobileLandscape && middleRowHeight < 150;
+  const presentationStyle = {
+    opacity: isSelfDeadPanelDimmed ? 0.32 : 1,
+    filter: isSelfDeadPanelDimmed ? 'grayscale(0.85) brightness(0.6)' : 'none',
+    transition: 'all .2s',
+  };
   const borderColor = hitIndices.includes(0)
     ? '#cc2222'
     : sanHitIndices.includes(0)
@@ -56,6 +63,63 @@ export function SelfPlayerPanel({
     : suppressAnim && tutorialStep >= 2 && tutorialStep <= 4
     ? 'var(--toe-strong,#c8a96e)'
     : 'var(--toe-line,#3a2510)';
+
+  const godPower = player.godName && (
+    <LocalGodPowerTag def={GOD_DEFS[player.godName]} godLevel={player.godLevel}>
+      <div
+        className="toe-faith-god-name"
+        style={{
+          fontSize: fontSizes.small,
+          color: GOD_DEFS[player.godName]?.col,
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+          letterSpacing: 0.5,
+          fontWeight: 700,
+          textShadow: `0 0 6px ${GOD_DEFS[player.godName]?.col}66`,
+        }}
+      >
+        {GOD_DEFS[player.godName]?.name}
+      </div>
+      <div className="toe-faith-power-name" style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal' }}>
+        {GOD_DEFS[player.godName]?.power} Lv.{player.godLevel}
+      </div>
+      <div className="toe-faith-power-description" style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'normal', marginTop: 1, lineHeight: 1.4 }}>
+        {GOD_DEFS[player.godName]?.levels[(player.godLevel || 1) - 1]?.desc}
+      </div>
+    </LocalGodPowerTag>
+  );
+  const statusTags = <>
+    {player.isResting && (
+      <div
+        data-resting-marker="0"
+        title="翻面中 — 下回合跳过"
+        style={{
+          marginTop: 4,
+          fontSize: fontSizes.small,
+          color: '#4ade80',
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+          letterSpacing: 1,
+          filter: 'drop-shadow(0 0 4px #4ade80)',
+        }}
+      >
+        {coastal ? '翻面中' : '♥ 翻面中 — 下回合跳过'}
+      </div>
+    )}
+    <PlayerStatusTags
+      player={player}
+      playerIndex={0}
+      variant="stack"
+      fontSizes={fontSizes}
+      renderGodPower={coastal ? undefined : () => godPower}
+    />
+    {!!player.zoneCards?.length && (
+      <div className="toe-self-zone-tags" style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {player.zoneCards.map((c, ci) => (
+          <DDCard key={c.id || `self-zone-${ci}`} card={c} small holderId={0} />
+        ))}
+      </div>
+    )}
+  </>;
+  const hasSideTags = player.isResting || player.etherealizeStacks > 0 || player.poisonStacks > 0 || !!player.zoneCards?.length;
   return (
     <div
       ref={selfPanelRef}
@@ -70,6 +134,7 @@ export function SelfPlayerPanel({
         '--toe-coastal-self-frame': `url('${buildPublicUrl('/img/ui/coastal/self-frame.webp')}')`,
         '--toe-coastal-faith-banner': `url('${buildPublicUrl('/img/ui/coastal/faith-banner.webp')}')`,
         '--toe-coastal-body-font': `${Math.max(12, fontSizes.body)}px`,
+        '--toe-sidebar-divider': `url('${buildPublicUrl('/img/ui/coastal/self-sidebar-divider.webp')}')`,
         '--toe-encounter-skull-rows': Math.ceil((player.godEncounters || 0) / 8),
         borderRadius: 3,
         padding: isMobile
@@ -98,6 +163,14 @@ export function SelfPlayerPanel({
         cursor: phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? 'pointer' : 'default',
       }}
     >
+      {coastal && <div className="toe-self-sidebar-skin" aria-hidden="true" style={presentationStyle}>
+        <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-top.webp')} alt="" />
+        <div style={{ backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-rail.webp')}')` }} />
+        <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-bottom.webp')} alt="" />
+      </div>}
+      {coastal && <div className="toe-self-sidebar-skin toe-self-sidebar-firelight" aria-hidden="true" style={{ ...presentationStyle, opacity: presentationStyle.opacity * .78 }}>
+        <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-warm-light.webp')} alt="" />
+      </div>}
       <PanelFrame closed />
       <ThemeCornerOrnament
         expansionKey={expansionKey}
@@ -133,14 +206,10 @@ export function SelfPlayerPanel({
       )}
       <div
         className="toe-self-content"
-        style={{
-          opacity: isSelfDeadPanelDimmed ? 0.32 : 1,
-          filter: isSelfDeadPanelDimmed ? 'grayscale(0.85) brightness(0.6)' : 'none',
-          transition: 'all .2s',
-        }}
+        style={presentationStyle}
       >
-        {coastal && <CoastalPortrait />}
-        {coastal && player.godEncounters > 0 && <div className="toe-self-skull-anchor">
+        {coastal && <CoastalPortrait framed />}
+        {coastal && <div className="toe-self-skull-anchor">
           <EncounterSkulls count={player.godEncounters} playerIndex={0} />
         </div>}
         <div className="toe-self-details">
@@ -192,61 +261,10 @@ export function SelfPlayerPanel({
             {ri.goal}
           </div>
           <div className="toe-self-faith">
-          {coastal && <div className="toe-faith-heading">当前信仰</div>}
-          {coastal && !player.godName && <div className="toe-faith-empty">尚未信仰邪神</div>}
-          <div className="toe-faith-status" role={coastal ? 'region' : undefined} aria-label={coastal ? '当前信仰与状态' : undefined} tabIndex={coastal ? 0 : undefined}>
-          {player.isResting && (
-            <div
-              data-resting-marker="0"
-              style={{
-                marginTop: 4,
-                fontSize: fontSizes.small,
-                color: '#4ade80',
-                fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                letterSpacing: 1,
-                filter: 'drop-shadow(0 0 4px #4ade80)',
-              }}
-            >
-              ♥ 翻面中 — 下回合跳过
-            </div>
-          )}
-          <PlayerStatusTags
-            player={player}
-            playerIndex={0}
-            variant="stack"
-            fontSizes={fontSizes}
-            renderGodPower={presentationPlayer => (
-              <LocalGodPowerTag def={GOD_DEFS[presentationPlayer.godName]} godLevel={presentationPlayer.godLevel}>
-                <div
-                  className="toe-faith-god-name"
-                  style={{
-                    fontSize: fontSizes.small,
-                    color: GOD_DEFS[presentationPlayer.godName]?.col,
-                    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-                    letterSpacing: 0.5,
-                    fontWeight: 700,
-                    textShadow: `0 0 6px ${GOD_DEFS[presentationPlayer.godName]?.col}66`,
-                  }}
-                >
-                  {GOD_DEFS[presentationPlayer.godName]?.name}
-                </div>
-                <div className="toe-faith-power-name" style={{ fontSize: fontSizes.small, color: '#d4b0b0', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontStyle: 'normal' }}>
-                  {GOD_DEFS[presentationPlayer.godName]?.power} Lv.{presentationPlayer.godLevel}
-                </div>
-                <div className="toe-faith-power-description" style={{ fontSize: fontSizes.tiny, color: '#a07878', fontStyle: 'normal', marginTop: 1, lineHeight: 1.4 }}>
-                  {GOD_DEFS[presentationPlayer.godName]?.levels[(presentationPlayer.godLevel || 1) - 1]?.desc}
-                </div>
-              </LocalGodPowerTag>
-            )}
-          />
-          {!!player.zoneCards?.length && (
-            <div style={{ marginTop: 6, display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-              {player.zoneCards.map((c, ci) => (
-                <DDCard key={c.id || `self-zone-${ci}`} card={c} small holderId={0} />
-              ))}
-            </div>
-          )}
-          </div>
+            <FaithScrollRegion enabled={coastal} resetKey={`${player.godName}:${player.godLevel}`}>
+              {coastal && !player.godName && <div className="toe-faith-empty">尚未信仰邪神</div>}
+              {coastal ? godPower : statusTags}
+            </FaithScrollRegion>
           </div>
         </div>
         <div className="toe-self-stats" style={{ borderTop: '1px solid var(--toe-line-dim,#2a1a08)', paddingTop: isShortDesktop ? 4 : 8 }}>
@@ -273,6 +291,7 @@ export function SelfPlayerPanel({
             lineColor="var(--toe-line-dim,#2a1a08)"
           />
         </div>
+        {coastal && hasSideTags && <div className="toe-self-side-tags" aria-label="角色状态">{statusTags}</div>}
       </div>
 
       {!coastal && <EncounterSkulls count={player.godEncounters} playerIndex={0} dimmed={isSelfDeadPanelDimmed} />}

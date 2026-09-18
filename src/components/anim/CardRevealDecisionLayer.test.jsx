@@ -5,15 +5,21 @@ import { getRevealDecision, matchesRevealDecision } from './revealDecision';
 import { DrawRevealActions, GodChoiceActions } from '../battle/RevealDecisionActions';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
 
-const hook = vi.hoisted(() => ({ value: null, changed: false }));
+const hook = vi.hoisted(() => ({ values: [], refs: [], cursor: 0, refCursor: 0, effects: [], changed: false }));
 vi.mock('react', async importOriginal => ({
   ...await importOriginal(),
   // Exercise the host across queue renders without mounting DOM animations.
-  useState: initial => [hook.value ?? initial, next => {
-    const value = typeof next === 'function' ? next(hook.value) : next;
-    hook.changed = value !== hook.value;
-    hook.value = value;
-  }],
+  useState: initial => {
+    const index = hook.cursor++;
+    if (!(index in hook.values)) hook.values[index] = initial;
+    return [hook.values[index], next => {
+      const value = typeof next === 'function' ? next(hook.values[index]) : next;
+      hook.changed ||= value !== hook.values[index];
+      hook.values[index] = value;
+    }];
+  },
+  useRef: initial => hook.refs[hook.refCursor++] ||= { current: initial },
+  useEffect: effect => { hook.effects.push(effect); },
 }));
 
 const zone = { id: 'zone-a', key: 'B1', name: '幽闭恐惧', type: 'adjacentSanLoss', isZone: true };
@@ -39,6 +45,9 @@ function renderLayer(props) {
   let renders = 0;
   do {
     hook.changed = false;
+    hook.cursor = 0;
+    hook.refCursor = 0;
+    hook.effects = [];
     result = CardRevealDecisionLayer(props);
     if (++renders > 5) throw new Error('Reveal host did not settle its render-state update');
   } while (hook.changed);
@@ -46,11 +55,103 @@ function renderLayer(props) {
 }
 
 beforeEach(() => {
-  hook.value = null;
+  hook.values = [];
+  hook.refs = [];
+  hook.effects = [];
   hook.changed = false;
 });
 
 describe('reveal decision presentation lifecycle', () => {
+  it('accepts one early choice, keeps mandatory tails, then invokes the fresh committed handler once', () => {
+    const gs = drawState(), finish = vi.fn(() => true), staleKeep = vi.fn(), keep = vi.fn();
+    const props = { anim: draw(), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: finish,
+      decisionProps: decisionProps(actionState, { handleDrawKeepFromModal: staleKeep }) };
+    const running = renderLayer(props);
+    expect(running.props.earlyActions).toBe(true);
+    expect(running.props.children.props.drawReveal).toBe(gs.drawReveal);
+    expect(running.props.children.props.canChoose).toBe(true);
+    running.props.children.props.onKeep();
+    running.props.children.props.onKeep();
+    expect(finish).toHaveBeenCalledExactlyOnceWith(props.anim._playbackId);
+    expect(staleKeep).not.toHaveBeenCalled();
+    const tail = renderLayer({ ...props, anim: { type: 'SAN_DAMAGE' }, canFinishRevealEarly: false });
+    hook.effects.forEach(effect => effect());
+    expect(tail.props.children).toBeNull();
+    expect(keep).not.toHaveBeenCalled();
+    const committed = { decisionProps: decisionProps(gs, { canShowTurnDecisionModal: true, handleDrawKeepFromModal: keep }) };
+    renderLayer(committed);
+    hook.effects.forEach(effect => effect());
+    renderLayer(committed);
+    hook.effects.forEach(effect => effect());
+    expect(keep).toHaveBeenCalledOnce();
+    expect(staleKeep).not.toHaveBeenCalled();
+  });
+
+  it.each(['onWorship', 'onKeepHand', 'onDiscard'])('routes early god %s through the committed transaction', name => {
+    const gs = godState(), finish = vi.fn(() => true), resolve = vi.fn(), run = vi.fn((_, action) => action());
+    const running = renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: finish,
+      decisionProps: decisionProps(actionState) });
+    running.props.children.props[name]();
+    expect(resolve).not.toHaveBeenCalled();
+    renderLayer({ decisionProps: decisionProps(gs, { canShowTurnDecisionModal: true, runDecision: run, godResolvePlayer: resolve }) });
+    hook.effects.forEach(effect => effect());
+    const action = { onWorship: 'worship', onKeepHand: 'keepHand', onDiscard: 'discard' }[name];
+    expect(run).toHaveBeenCalledOnce();
+    expect(resolve).toHaveBeenCalledExactlyOnceWith(action);
+  });
+
+  it('drops a saved choice when another card supersedes the pending decision', () => {
+    const keep = vi.fn(), gs = drawState();
+    const running = renderLayer({ anim: draw(), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: () => true,
+      decisionProps: decisionProps(actionState) });
+    running.props.children.props.onKeep();
+    const replacement = drawState({ drawReveal: { ...gs.drawReveal, card: { ...zone, id: 'replacement' } } });
+    const props = { decisionProps: decisionProps(replacement, { canShowTurnDecisionModal: true, handleDrawKeepFromModal: keep }) };
+    renderLayer(props);
+    hook.effects.forEach(effect => effect());
+    expect(renderLayer(props).props.children).not.toBeNull();
+    expect(keep).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['onKeepHand', 'forced conversion'],
+    ['onKeepHand', 'already worshipped'],
+    ['onKeepHand', 'changed role'],
+    ['onDiscard', 'forced conversion'],
+  ])('cancels saved god %s when its button becomes hidden by %s', (name, condition) => {
+    const gs = godState(), resolve = vi.fn(), run = vi.fn((_, action) => action());
+    const running = renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: () => true,
+      decisionProps: decisionProps(actionState) });
+    running.props.children.props[name]();
+    const changed = godState(condition === 'forced conversion'
+      ? { abilityData: { ...gs.abilityData, forcedConvert: true } }
+      : { players: [{ ...players[0], ...(condition === 'changed role' ? { role: '寻宝者' } : { godName: god.godKey }) }, players[1]] });
+    const props = { decisionProps: decisionProps(changed, { canShowTurnDecisionModal: true, runDecision: run, godResolvePlayer: resolve }) };
+    renderLayer(props);
+    hook.effects.forEach(effect => effect());
+    expect(run).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    const choices = renderLayer(props).props.children;
+    expect(choices).not.toBeNull();
+    expect(choices.props[name === 'onKeepHand' ? 'allowKeepHand' : 'allowDiscard']).toBe(false);
+  });
+
+  it.each(['remote', 'spectator', 'zhu', 'rejected finish'])('does not submit an ineligible early choice: %s', condition => {
+    const gs = drawState(condition === 'zhu' ? { zhuLight: { cardIds: [zone.id] } }
+      : condition === 'remote' ? { drawReveal: { card: zone, needsDecision: true, drawerIdx: 1 } } : {});
+    const keep = vi.fn(), finish = vi.fn(() => false);
+    const props = { anim: draw(zone, { targetPid: condition === 'remote' ? 1 : 0 }), pendingState: gs,
+      canFinishRevealEarly: true, finishRevealEarly: finish,
+      decisionProps: decisionProps(actionState, { isSpectating: condition === 'spectator', handleDrawKeepFromModal: keep }) };
+    const running = renderLayer(props);
+    if (condition === 'rejected finish') {
+      running.props.children.props.onKeep();
+      expect(renderLayer(props).props.children).not.toBeNull();
+      expect(finish).toHaveBeenCalledOnce();
+    } else expect(running.props.children).toBeNull();
+    expect(keep).not.toHaveBeenCalled();
+  });
+
   it('keeps the playback key and card through the pending queue, then exposes options only after commit', () => {
     const gs = drawState();
     const running = renderLayer({ anim: draw(), pendingState: gs, decisionProps: decisionProps(actionState) });
