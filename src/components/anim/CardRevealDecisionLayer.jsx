@@ -66,7 +66,8 @@ export function CardRevealDecisionLayer({ anim, exiting, expansionKey, decisionP
     && !(earlyDecision.kind === 'god-choice' ? earlyState.abilityData?.zhuResolved : earlyState.drawReveal?.zhuResolved);
   const early = !!activeDraw && canFinishRevealEarly && !p.decisionSubmitting && !p.isSpectating
     && !p.suppressAnim && !zhuBlocked && !earlyZhuBlocked && !queuedChoice
-    && earlyDecision?.actorIdx === 0 && matchesRevealDecision(activeDraw, earlyDecision);
+    && earlyDecision?.kind === 'draw-reveal' && earlyDecision.actorIdx === 0
+    && matchesRevealDecision(activeDraw, earlyDecision);
   const earlyProps = early ? {
     ...p, gs: earlyState, me: earlyState.players[0],
     decisionContext: getDecisionContext(earlyState),

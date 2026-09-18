@@ -397,10 +397,12 @@ export function useAnimationQueue({
   }
 
   function isCurrentRevealSkippable() {
-    return !paused && !animCallbackRef.current
+    const decision = getRevealDecision(pendingGsRef.current || gs);
+    // God choices open only after the reveal and all encounter effects commit.
+    return decision?.kind === 'draw-reveal' && !paused && !animCallbackRef.current
       && anim?.inspectionSeq == null && !anim?.onSettled
       && !Number.isFinite(anim?.impactAtMs) && !anim?.visualTimeline?.length
-      && matchesRevealDecision(anim, getRevealDecision(pendingGsRef.current || gs));
+      && matchesRevealDecision(anim, decision);
   }
   const canFinishRevealEarly = isCurrentRevealSkippable();
 

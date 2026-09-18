@@ -343,19 +343,22 @@ existing turn-flow manager. Their UI now lives in `CardRevealDecisionLayer`
 under `GlobalAnimLayer`, outside board zoom. `BattleDecisionModals` no longer
 renders separate area-exploration or god-choice panels.
 
-- `DRAW_CARD` completes normally without input. Eligible local decision buttons
-  appear 850 ms after the central rise/spin starts, before the card settles.
+- `DRAW_CARD` completes normally without input. Eligible local region-card decision
+  buttons appear 850 ms after the central rise/spin starts, before the card settles.
   A click can finish only that active reveal step through `useAnimationQueue`;
   encounter inspection/stat tails still run and commit normally. Never leave an
   active animation step waiting for a click: this would block decision transactions
   and multiplayer replay. Paused playback, inspection draws, custom cues/callbacks,
   hidden/travel-only draws and scripted tutorials keep their existing timing.
+- God-card decisions do not accept early choices or shorten the reveal. Their
+  buttons appear only after the reveal, encounter SAN loss and any resulting
+  inspections/reactions finish and the pending decision state commits.
 - The reveal host preserves the playback key and `CardFlipAnim` final frame.
   `settled` stops one-shot effects without replaying the rise/spin. During
   subsequent stat effects only the card remains, so its backdrop cannot hide
   the affected player panels. Restored snapshots can render a settled card
   without replay history.
-- Early `RevealDecisionActions` uses the pending decision for its button preview.
+- Early region-card `RevealDecisionActions` uses the pending decision for its button preview.
   `CardRevealDecisionLayer` saves only the selected action name and reveal identity;
   it invokes the latest existing handler after pending state commits and submission
   unlocks. Revalidate ownership, card identity and button permissions before dispatch;

@@ -87,14 +87,25 @@ describe('reveal decision presentation lifecycle', () => {
     expect(staleKeep).not.toHaveBeenCalled();
   });
 
-  it.each(['onWorship', 'onKeepHand', 'onDiscard'])('routes early god %s through the committed transaction', name => {
+  it.each(['onWorship', 'onKeepHand', 'onDiscard'])('offers god %s only after encounter effects commit', name => {
     const gs = godState(), finish = vi.fn(() => true), resolve = vi.fn(), run = vi.fn((_, action) => action());
-    const running = renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: finish,
-      decisionProps: decisionProps(actionState) });
-    running.props.children.props[name]();
-    expect(resolve).not.toHaveBeenCalled();
-    renderLayer({ decisionProps: decisionProps(gs, { canShowTurnDecisionModal: true, runDecision: run, godResolvePlayer: resolve }) });
+    const props = { anim: draw(god), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: finish,
+      decisionProps: decisionProps(actionState, { runDecision: run, godResolvePlayer: resolve }) };
+    const running = renderLayer(props);
+    expect(running.props.earlyActions).toBe(false);
+    expect(running.props.children).toBeNull();
+    const tail = renderLayer({ ...props, anim: { type: 'SAN_DAMAGE' } });
     hook.effects.forEach(effect => effect());
+    expect(tail.key).toBe(running.key);
+    expect(tail.props.children).toBeNull();
+    expect(tail.props.showBackdrop).toBe(false);
+    expect(finish).not.toHaveBeenCalled();
+    expect(resolve).not.toHaveBeenCalled();
+    const ready = renderLayer({ decisionProps: decisionProps(gs, { canShowTurnDecisionModal: true, runDecision: run, godResolvePlayer: resolve }) });
+    hook.effects.forEach(effect => effect());
+    expect(ready.key).toBe(running.key);
+    expect(resolve).not.toHaveBeenCalled();
+    ready.props.children.props[name]();
     const action = { onWorship: 'worship', onKeepHand: 'keepHand', onDiscard: 'discard' }[name];
     expect(run).toHaveBeenCalledOnce();
     expect(resolve).toHaveBeenCalledExactlyOnceWith(action);
@@ -118,11 +129,11 @@ describe('reveal decision presentation lifecycle', () => {
     ['onKeepHand', 'already worshipped'],
     ['onKeepHand', 'changed role'],
     ['onDiscard', 'forced conversion'],
-  ])('cancels saved god %s when its button becomes hidden by %s', (name, condition) => {
+  ])('uses updated god %s permissions after encounter causes %s', (name, condition) => {
     const gs = godState(), resolve = vi.fn(), run = vi.fn((_, action) => action());
     const running = renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: () => true,
       decisionProps: decisionProps(actionState) });
-    running.props.children.props[name]();
+    expect(running.props.children).toBeNull();
     const changed = godState(condition === 'forced conversion'
       ? { abilityData: { ...gs.abilityData, forcedConvert: true } }
       : { players: [{ ...players[0], ...(condition === 'changed role' ? { role: '寻宝者' } : { godName: god.godKey }) }, players[1]] });
@@ -176,7 +187,8 @@ describe('reveal decision presentation lifecycle', () => {
 
   it('does not unlock god choices during encounter inspection or status animations', () => {
     const gs = godState();
-    const running = renderLayer({ anim: draw(god), pendingState: gs, decisionProps: decisionProps(actionState) });
+    const running = renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, decisionProps: decisionProps(actionState) });
+    expect(running.props.children).toBeNull();
     const inspection = { id: 'inspection-a', effect: 'sanLoss', name: '理智检定' };
     const inspecting = renderLayer({ anim: draw(inspection), pendingState: gs, decisionProps: decisionProps(actionState) });
     expect(inspecting.props.card).toBe(inspection);
@@ -193,6 +205,17 @@ describe('reveal decision presentation lifecycle', () => {
     expect(ready.key).toBe(running.key);
     expect(ready.props.showBackdrop).toBe(true);
     expect(ready.props.children.type).toBe(GodChoiceActions);
+  });
+
+  it.each([
+    { phase: 'TSG_SLIME_BALANCE' },
+    { gameOver: { winner: '邪祀者' } },
+  ])('does not expose a god decision superseded by encounter resolution: %j', patch => {
+    const gs = godState();
+    renderLayer({ anim: draw(god), pendingState: gs, canFinishRevealEarly: true, decisionProps: decisionProps(actionState) });
+    const resolved = { ...gs, ...patch };
+    expect(renderLayer({ pendingState: resolved, decisionProps: decisionProps(gs) })).toBeNull();
+    expect(renderLayer({ decisionProps: decisionProps(resolved, { canShowTurnDecisionModal: true }) })).toBeNull();
   });
 
   it.each([['draw-reveal', drawState()], ['god-choice', godState()]])(

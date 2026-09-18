@@ -59,7 +59,7 @@ function renderQueue(args) {
 }
 
 const card = { id: 'revealed-card', key: 'A4', name: '活埋', type: 'buryAlive' };
-const godCard = { id: 'revealed-god', godKey: 'CTH', name: '拉莱耶之主' };
+const godCard = { id: 'revealed-god', godKey: 'CTH', name: '拉莱耶之主', isGod: true };
 let renderer;
 afterEach(() => { renderer?.unmount(); vi.useRealTimers(); });
 
@@ -92,11 +92,8 @@ function setup({ tail = [], step = {}, state = {}, callback, currentOnly = false
 }
 
 describe('early reveal completion', () => {
-  it.each(['draw', 'god'])('commits %s exactly once and invalidates already-scheduled timers before React cleanup', kind => {
-    const options = kind === 'god'
-      ? { step: { card: godCard }, state: { phase: 'GOD_CHOICE', abilityData: { godCard, drawerIdx: 0 } } }
-      : {};
-    const { args, decision, id } = setup(options);
+  it('commits a draw exactly once and invalidates already-scheduled timers before React cleanup', () => {
+    const { args, decision, id } = setup();
     expect(renderer.current.canFinishRevealEarly).toBe(true);
     const finish = renderer.current.finishRevealEarly;
     expect(finish(id)).toBe(true);
@@ -112,6 +109,40 @@ describe('early reveal completion', () => {
     expect(renderer.current.anim).toBeNull();
     expect(renderer.current.pendingGsRef.current).toBeNull();
     expect(renderer.current.canFinishRevealEarly).toBe(false);
+  });
+
+  it.each([false, true])('waits for the god reveal and encounter before committing its decision (SAN loss: %s)', losesSan => {
+    const { args, decision, id } = setup({
+      step: { card: godCard },
+      state: { phase: 'GOD_CHOICE', abilityData: { godCard, drawerIdx: 0 },
+        players: [{ id: 0, name: '你', hp: 10, san: losesSan ? 9 : 10, hand: [] }] },
+      tail: losesSan ? [{ type: 'SAN_DAMAGE', durationMs: 300, impactAtMs: 150,
+        targetStats: [{ hp: 10, san: 9 }], targetPid: 0, msgs: ['遭遇失去理智'] }] : [],
+    });
+    args.setDisplayStats.mockClear();
+    expect(renderer.current.canFinishRevealEarly).toBe(false);
+    expect(renderer.current.finishRevealEarly(id)).toBe(false);
+    vi.advanceTimersByTime(1009);
+    expect(args.setGs).not.toHaveBeenCalled();
+    expect(args.setDisplayStats).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    renderer.flush();
+    if (losesSan) {
+      expect(renderer.current.anim.type).toBe('SAN_DAMAGE');
+      expect(args.setGs).not.toHaveBeenCalled();
+      expect(args.consumedVisualEventIdsRef.current.size).toBe(0);
+      vi.advanceTimersByTime(150);
+      expect(args.setDisplayStats).toHaveBeenCalledOnce();
+      expect(args.setGs).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(160);
+      renderer.flush();
+    }
+    expect(args.gs).toBe(decision);
+    expect(args.gs.players[0].san).toBe(losesSan ? 9 : 10);
+    expect(args.setGs).toHaveBeenCalledOnce();
+    expect(renderer.current.anim).toBeNull();
+    expect(renderer.current.pendingGsRef.current).toBeNull();
+    expect(args.consumedVisualEventIdsRef.current.has('reveal:1')).toBe(true);
   });
 
   it('plays remaining effects and consumes their transaction only at the normal final commit', () => {

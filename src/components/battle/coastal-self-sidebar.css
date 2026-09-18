@@ -19,7 +19,15 @@
   z-index: -1;
 }
 .toe-self-sidebar-skin > img { display: block; width: 100%; height: auto; flex: none; }
-.toe-self-sidebar-skin > div { flex: 1; min-height: 0; background-size: 100% auto; background-repeat: repeat-y; }
+.toe-self-sidebar-skin > div { position: relative; flex: 1; min-height: 0; background-size: 100% auto; background-repeat: repeat-y; }
+/* Match the end cap's darker lining gradually without shading the bronze rails. */
+.toe-self-sidebar-skin > div::after {
+  content: '';
+  position: absolute;
+  inset: auto 11% 0;
+  height: 20px;
+  background: linear-gradient(transparent, #0005);
+}
 /* The light's fade is baked into a single RGBA image so death snapshots retain
    it. It keeps its native ratio and belongs to the scene's Gamma. */
 [data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content {
