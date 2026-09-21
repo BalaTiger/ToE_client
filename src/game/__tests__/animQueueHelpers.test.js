@@ -16,6 +16,7 @@ import {
   consumeRetainedRandomTargetEvents,
   discardStep,
   deriveHandTransferSnapshot,
+  dropSwapTakenTransferStep,
   prepareWorshipHighlight,
   resolveTurnHighlightForStep,
   swapCardsSteps,
@@ -932,6 +933,23 @@ describe('animQueueHelpers', () => {
       { type: 'VISUAL_LOCK', players, zhuLight: null },
       { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, cards: [takenCard] },
       { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [givenCard], msgs: ['艾伦（寻宝者）对 你 【掉包】'] },
+    ]);
+  });
+
+  it('本地掉包归还队列只保留归还牌的飞行，暗抽飞牌已在归还阶段前播过', () => {
+    const queue = [
+      { type: 'VISUAL_LOCK', players: [] },
+      { type: 'SKILL_SWAP', msgs: ['你（寻宝者）对 艾伦 【掉包】'] },
+      { type: 'CARD_TRANSFER', fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [{ id: 'taken' }] },
+      { type: 'CARD_TRANSFER', fromPid: 0, dest: 'player', toPid: 1, count: 1, cards: [{ id: 'given' }], msgs: ['拿走 暗抽牌，还给 艾伦 [C3] 新牌'] },
+    ];
+
+    expect(dropSwapTakenTransferStep(queue, { sourceIdx: 0, targetIdx: 1 })).toEqual([
+      queue[0], queue[1], queue[3],
+    ]);
+    // 视角互换时过滤的是目标→发起者的那一段
+    expect(dropSwapTakenTransferStep(queue, { sourceIdx: 1, targetIdx: 0 })).toEqual([
+      queue[0], queue[1], queue[2],
     ]);
   });
 

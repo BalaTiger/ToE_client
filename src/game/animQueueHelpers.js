@@ -579,6 +579,15 @@ export function swapCardsSteps({sourceIdx,targetIdx,sourceCount=1,targetCount=1,
   ];
 }
 
+// 掉包发起者的本地视角：暗抽牌的飞行动画在进入归还阶段前已由暗抽浮层播过，
+// 归还结算只播归还那张牌的飞行。远端观众没看过暗抽飞牌，广播队列保持完整，
+// 因此只在本地播放队列上过滤目标→发起者的那一段 CARD_TRANSFER。
+export function dropSwapTakenTransferStep(queue,{sourceIdx=0,targetIdx}={}){
+  return (Array.isArray(queue)?queue:[]).filter(step=>!(
+    step?.type==="CARD_TRANSFER"&&step.dest==="player"&&step.fromPid===targetIdx&&step.toPid===sourceIdx
+  ));
+}
+
 export function buildFullHandSwapStepsFromLogs(logs,players,options={}){
   const fullHandSwapMsg=(Array.isArray(logs)?logs:[]).find(
     line=>typeof line==="string"&&line.includes("交换了全部手牌")

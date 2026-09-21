@@ -5,7 +5,7 @@ import { HoundsTimerBadge, StatBar, DiscardPile, HealCrossEffect, DeckPile, Insp
 import { RoomModal, LobbyModal, PrivacyToggleModal, TutorialOverlay, ConnectionErrorModal, DebugControls } from './components/lobby';
 import { BattleLogPanel } from './components/log/BattleLogPanel';
 import { useTutorialHighlightMeasurements } from './hooks/useTutorialHighlightMeasurements';
-import { normalizeLogForViewer } from './game/logPerspective';
+import { normalizeLogForViewer, revealLocalSwapTakenCards } from './game/logPerspective';
 import { createLogOnlyVisualEvent } from './game/visualEvents';
 import { shouldPlayGodResurrection } from './game/gameOverPresentation';
 import { resolveSameAbyssState, resumeSameAbyssContinuation } from './game/sameAbyssResolution';
@@ -353,6 +353,7 @@ import {
   buildGraveDigTransferStep,
   buildSphinxResultQueue,
   fullHandSwapSteps,
+  dropSwapTakenTransferStep,
 } from "./game/animQueueHelpers";
 import {
   createCthRestDrawReplayEvent,
@@ -3780,7 +3781,7 @@ export default function Game(){
   if(gs.gameOver&&!terminalPresentationPending){
     const{winner,winnerIdx}=gs.gameOver;
     const gameOverFullLog=normalizeLogForViewer(
-      buildCompleteGameOverLog(gs,visibleLogRef.current),
+      revealLocalSwapTakenCards(buildCompleteGameOverLog(gs,visibleLogRef.current),gs),
       {isMultiplayer:!!gs._isMP,myName:gs.players?.[0]?.name},
     );
     const myRole=gs.players[0].role;
@@ -4454,7 +4455,10 @@ export default function Game(){
     const rawQueue=Array.isArray(steps)?steps.filter(Boolean):[];
     const queue=state?mergeApophisTargetQueue(rawQueue,gs,state):rawQueue;
     if(state?._isMP&&queue.length)broadcastAnimTransaction(state,queue,options);
-    triggerAnimQueue(queue,state,callback,{...AUTHORITATIVE_QUEUE_META,preserveQueueOrder:true});
+    // options.playSteps：仅本地播放使用的队列（如掉包发起者跳过已播过的暗抽飞牌），
+    // 远端重播仍按上面的完整 queue 执行。
+    const playQueue=Array.isArray(options.playSteps)?options.playSteps:queue;
+    triggerAnimQueue(playQueue,state,callback,{...AUTHORITATIVE_QUEUE_META,preserveQueueOrder:true});
   }
 
   function beginEndTurnReplay(baseGs,P,D,Disc,L,preQueue=[]){
@@ -7612,7 +7616,8 @@ export default function Game(){
           gameOver:{winner:'寻宝者',reason,winnerIdx:orderedLocalWinnerSeats[0],winnerIdx2:orderedLocalWinnerSeats[1]}};
         let queue;
         ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
-        triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
+        triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard,
+          playSteps:dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi})});
         return;
       }
       let pendingWinGs={...gs,players:P,drawReveal:null,log:[...L,`${_wname}集齐了全部编号！`],abilityData:{winReason:`${_wname}通过掉包集齐了全部编号！`},
@@ -7620,7 +7625,7 @@ export default function Game(){
       let queue;
       ({state:pendingWinGs,queue}=buildResolvedLocalSwapTransaction(pendingWinGs));
       broadcastAnimTransaction(pendingWinGs,queue,{context:'swapCards',barrier:'decision',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
-      finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,queue);
+      finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}));
       return;
     }
     // 检查目标（非自身）是否为寻宝者且掉包后获胜
@@ -7633,7 +7638,8 @@ export default function Game(){
         gameOver:{winner:'寻宝者',reason,winnerIdx:swapTi},phase:'ACTION',skillUsed:true};
       let queue;
       ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
-      triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
+      triggerSyncedAnimTransaction(queue,newGs,{context:'swapCards',barrier:'gameOver',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard,
+        playSteps:dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi})});
       return;
     }
     const win=checkWin(P,gs._isMP);
@@ -7641,7 +7647,7 @@ export default function Game(){
     let queue;
     ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
     broadcastAnimTransaction(newGs,queue,{context:'swapCards',barrier:'continuation',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
-    finishTutorialActionWithState(newGs,tutorialNext,queue);
+    finishTutorialActionWithState(newGs,tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}));
   }
 
   function huntSelectTarget(ti){

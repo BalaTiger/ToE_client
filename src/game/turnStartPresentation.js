@@ -1,6 +1,7 @@
 import { bindAnimLogChunks, subtractLogOccurrences } from './animLogs';
 import { statePatchStep } from './animQueueHelpers';
 import { cardLogText, copyPlayers } from './coreUtils';
+import { revealLocalSwapTakenCards } from './logPerspective';
 import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 import { buildTurnStartStepFromVisualEvents, getTurnBannerVisualEventId } from './visualEvents';
 import {
@@ -152,7 +153,7 @@ export function buildCompleteGameOverLog(state, visibleLog = []) {
 }
 
 export function buildVisibleLogForLocalViewer(log, state) {
-  const base = Array.isArray(log) ? log : [];
+  const base = revealLocalSwapTakenCards(Array.isArray(log) ? log : [], state);
   const swapEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
     .filter(event => event?.type === 'swapCards' && event.targetIdx === 0 && event.takenCard && event.givenCard);
   if (!swapEvents.length) return base;

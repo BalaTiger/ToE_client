@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeLogForViewer } from '../logPerspective';
+import { normalizeLogForViewer, revealLocalSwapTakenCards, revealSwapTakenCardLine } from '../logPerspective';
 
 describe('multiplayer log perspective', () => {
   it('uses 你 only for the local player in both turn headings and actions', () => {
@@ -65,5 +65,44 @@ describe('multiplayer log perspective', () => {
       '你的手牌[B2] 旧牌被暗抽',
       '艾伦的邪神之力被触发',
     ]);
+  });
+});
+
+describe('swap taken-card reveal for the local swap initiator', () => {
+  const zoneCard = (letter, number, name) => ({ isZone: true, letter, number, name });
+
+  it('reveals the taken card only in placeholder lines', () => {
+    const taken = zoneCard('B', 2, '旧牌');
+    expect(revealSwapTakenCardLine('拿走 暗抽牌，还给 贝拉 [C3] 新牌', taken))
+      .toBe('拿走 [B2] 旧牌，还给 贝拉 [C3] 新牌');
+    // 目标手牌公开时日志本来就带牌面，不改动
+    expect(revealSwapTakenCardLine('拿走 [A1] 明牌，还给 贝拉 [C3] 新牌', taken))
+      .toBe('拿走 [A1] 明牌，还给 贝拉 [C3] 新牌');
+    expect(revealSwapTakenCardLine('你暗抽了1张牌', taken)).toBe('你暗抽了1张牌');
+  });
+
+  it('enriches only the lines authored by the local swap source', () => {
+    const state = {
+      players: [{ name: '你' }, { name: '艾伦' }, { name: '贝拉' }],
+      _visualEvents: [
+        // 远端玩家发起的掉包：日志行保持“暗抽牌”占位
+        { type: 'swapCards', sourceIdx: 1, targetIdx: 2, takenCard: zoneCard('D', 1, '远方'), givenCard: zoneCard('A', 1, '甲') },
+        // 本地玩家（座位 0）发起的掉包：日志行显示拿走的暗抽牌
+        { type: 'swapCards', sourceIdx: 0, targetIdx: 1, takenCard: zoneCard('B', 2, '旧牌'), givenCard: zoneCard('C', 3, '新牌') },
+      ],
+    };
+    const log = [
+      '拿走 暗抽牌，还给 贝拉 [A1] 甲',
+      '拿走 暗抽牌，还给 艾伦 [C3] 新牌',
+    ];
+    expect(revealLocalSwapTakenCards(log, state)).toEqual([
+      '拿走 暗抽牌，还给 贝拉 [A1] 甲',
+      '拿走 [B2] 旧牌，还给 艾伦 [C3] 新牌',
+    ]);
+  });
+
+  it('returns the log unchanged without swap events', () => {
+    const log = ['拿走 暗抽牌，还给 艾伦 [C3] 新牌'];
+    expect(revealLocalSwapTakenCards(log, { players: [{ name: '你' }] })).toEqual(log);
   });
 });

@@ -1,5 +1,5 @@
 import { createVisualLogEntries } from './visualEventLogs';
-import { normalizeLogLineForViewer } from './logPerspective';
+import { normalizeLogLineForViewer, revealSwapTakenCardLine } from './logPerspective';
 
 export function isTurnStartLog(line){
   return new RegExp("^── .+ 的回合开始 ──$").test(line||"");
@@ -145,11 +145,20 @@ export function prepareAnimQueueLogs(queue,state=null){
       :createVisualLogEntries(ownerId,Array.isArray(item._logChunk)?item._logChunk:item.msgs);
     const turnOwner=item.turnOwner??eventsById.get(item.visualEventId)?.turnOwner;
     const ownerName=state?.players?.[turnOwner]?.name;
+    // 掉包发起者（旋转后座位 0）的本地视角可以看到自己暗抽到的牌，
+    // 其他视角的日志保持“暗抽牌”占位不变。
+    const ownerEvent=item.visualEventId?eventsById.get(item.visualEventId):null;
+    const localSwapTakenCard=ownerEvent?.type==='swapCards'&&ownerEvent.sourceIdx===0
+      ?ownerEvent.takenCard
+      :null;
     // Resolve actor-relative wording from immutable event ownership. The panel
     // may still render the local name as “你”, but no later banner owns this line.
-    const entries=rawEntries.map(entry=>({...entry,text:normalizeLogLineForViewer(entry.text,{
-      isMultiplayer:!!state?._isMP,turnOwner:ownerName,
-    })}));
+    const entries=rawEntries.map(entry=>{
+      const text=normalizeLogLineForViewer(entry.text,{
+        isMultiplayer:!!state?._isMP,turnOwner:ownerName,
+      });
+      return {...entry,text:localSwapTakenCard?revealSwapTakenCardLine(text,localSwapTakenCard):text};
+    });
     return {...item,_logOwnerId:ownerId,_logSource:'visualEvent',logEntries:entries,_logChunk:entries.map(entry=>entry.text)};
   });
 }
