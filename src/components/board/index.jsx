@@ -9,6 +9,7 @@ import { AnimatedCardBack, AreaTooltip, CardFaceImage, DDCard, DDCardBack, GodTo
 import { CARD_FACE_RATIO, CARD_FACE_WIDTH, CARD_FACE_HEIGHT } from '../cards/CardFaceAssets';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { TargetMarker } from '../ui/TargetMarker';
 import { DiceFace } from '../anim/DiceFace';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { PlayerStatusTags } from '../playerStatus/PlayerStatusTags';
@@ -545,7 +546,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
-  const selectableColor='#4ade80';
+  const selectableColor='#a4d7ba';
   const borderColor=isBeingHit?'#cc2222':isSanHit?'#8840cc':isSelectable?selectableColor:isCurrentTurn?theme.glow:theme.line;
   const handCards=showFaceUp?player.hand:player.hand.map((c,ci)=>isBlackGoatYoung(c)||isTsathogguaSlime(c)?c:{id:`back-${playerIndex}-${ci}`,_back:true});
   const HAND_CARD_WIDTH=showFaceUp?44:36;
@@ -621,15 +622,14 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
     {(player.zoneCards||[]).map((c,ci)=><DDCard key={c.id||`zone-${playerIndex}-${ci}`} card={c} small holderId={playerIndex}/>)}
   </div>;
   return(
-    <div className="toe-battle-panel toe-player-panel toe-opponent-panel" data-current-turn={isCurrentTurn} data-opponent-simplified={simplified} data-death-panel={playerIndex} aria-label={simplified?player.name:undefined} onClick={isSelectable?onSelect:undefined} style={{
+    <div className="toe-battle-panel toe-player-panel toe-opponent-panel" data-current-turn={isCurrentTurn} data-target-selectable={isSelectable} data-opponent-simplified={simplified} data-death-panel={playerIndex} aria-label={simplified?player.name:undefined} onClick={isSelectable?onSelect:undefined} style={{
       width:'100%',
       '--toe-panel-frame-color':isBeingHit?'#cc2222':isSanHit?'#8840cc':isSelectable?selectableColor:isCurrentTurn?'#d6ae51':'#8e7446',
       '--toe-coastal-opponent-frame':`url('${buildPublicUrl('/img/ui/coastal/opponent-frame.webp')}')`,
       '--toe-encounter-skull-rows':Math.ceil((player.godEncounters||0)/8),
       backgroundColor:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
-      boxShadow:isSelectable?`0 0 14px ${selectableColor}88,inset 0 0 12px ${selectableColor}22`:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:'none',
-      animation:isSelectable?'toeTargetPulse 1.4s ease-in-out infinite':undefined,
+      boxShadow:isSelectable?undefined:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:'none',
       borderRadius:3,padding:'8px 9px',
       cursor:isSelectable?'pointer':'default',
       opacity: isBeingGuillotined ? 0 : (player.isDead ? 0.32 : 1),
@@ -638,6 +638,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       position:'relative',
       overflow:'visible',
     }}>
+      {isSelectable && <TargetMarker />}
       {!simplified && <ThemeCornerOrnament
         expansionKey={expansionKey}
         corner="tr"

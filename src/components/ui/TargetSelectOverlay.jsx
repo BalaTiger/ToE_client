@@ -90,7 +90,7 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
             fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 18,
             color: '#e8cc88', letterSpacing: 2, textTransform: 'uppercase',
           }}>{phaseHint}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#c8a055', fontSize: 13.5, letterSpacing: 1, marginTop: 6 }}>↑ 点击上方高亮角色</div>
+          <div style={{ fontFamily: "'Cinzel',serif", color: '#c8a055', fontSize: 13.5, letterSpacing: 1, marginTop: 6 }}>点击高亮角色选择目标</div>
         </div>
       </div>
     </>

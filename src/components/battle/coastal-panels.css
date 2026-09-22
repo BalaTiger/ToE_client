@@ -2,6 +2,37 @@
 .toe-coastal-portrait { display: none; }
 .toe-opponent-core { display: contents; }
 
+/* Keep the halo static; only the small marker moves. */
+[data-ui-layout='coastal'] .toe-player-panel[data-target-selectable='true'] {
+  outline: 1px solid #a4d7ba;
+  outline-offset: -1px;
+  box-shadow: 0 0 10px #80cda58c;
+}
+.toe-target-marker {
+  position: absolute;
+  bottom: -29px;
+  left: 50%;
+  width: 24px;
+  height: 27px;
+  transform: translateX(-50%);
+  animation: toeTargetMarkerHop 1.2s ease-in-out infinite;
+  pointer-events: none;
+  z-index: 5;
+}
+.toe-target-marker[data-direction='down'] {
+  --toe-target-hop: 4px;
+  top: -29px;
+  bottom: auto;
+  transform: translateX(-50%) rotate(180deg);
+}
+@keyframes toeTargetMarkerHop {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 var(--toe-target-hop, -4px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .toe-target-marker { animation: none; }
+}
+
 [data-ui-layout='coastal'] {
   --toe-coastal-panel-font: 'Roboto Serif', var(--font-serif-sc, 'SimSun', serif);
   --toe-coastal-ink: #d0c4aa;
@@ -111,7 +142,7 @@
 [data-ui-layout='coastal'] .toe-opponent-pendants [data-god-power-badge] { padding: 0 !important; border: 0 !important; background: transparent !important; font-size: 6.5cqw !important; white-space: normal; overflow-wrap: anywhere; letter-spacing: 0 !important; }
 [data-ui-layout='coastal'] .toe-opponent-pendants .toe-opponent-zones { width: 100%; margin-top: 1px !important; }
 [data-ui-layout='coastal'] .toe-opponent-pendants .toe-opponent-zones:empty { display: none; }
-[data-ui-layout='coastal'] .toe-opponent-panel[data-current-turn='true']::after { filter: drop-shadow(0 0 5px #c9a853); }
+[data-ui-layout='coastal'] .toe-opponent-panel[data-current-turn='true']:not([data-target-selectable='true'])::after { filter: drop-shadow(0 0 5px #c9a853); }
 [data-ui-layout='coastal'] .toe-opponent-panel .toe-turn-marker { position: absolute; top: -6px; bottom: auto; right: 8px; z-index: 2; padding: 0 4px; border: 1px solid #9f8250; color: var(--toe-coastal-ink) !important; background: #15201b; font-family: var(--toe-coastal-panel-font); font-stretch: 50%; font-synthesis: none; font-size: 6cqw !important; font-weight: 350; white-space: nowrap; }
 
 [data-ui-layout='coastal'] .toe-pile-display { min-height: 220px !important; height: 100%; display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-around !important; gap: 14px; }

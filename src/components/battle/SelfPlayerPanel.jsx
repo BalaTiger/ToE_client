@@ -4,6 +4,7 @@ import { DDCard } from '../cards';
 import { HealCrossEffect, StatBar, CoastalPortrait } from '../board';
 import { GodHighlightBurst } from '../anim/GodHighlightBurst';
 import { ThemeCornerOrnament } from '../theme/ThemeOrnaments';
+import { TargetMarker } from '../ui/TargetMarker';
 import { LocalGodPowerTag } from './LocalGodPowerTag';
 import { FaithScrollRegion } from './FaithScrollRegion';
 import { SailingWetSurface } from '../effects/SailingWetSurface';
@@ -58,7 +59,7 @@ export function SelfPlayerPanel({
     : sanHitIndices.includes(0)
     ? '#8840cc'
     : phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
-    ? '#4ade80'
+    ? '#a4d7ba'
     : 'var(--toe-line,#3a2510)';
 
   const godPower = player.godName && (
@@ -122,6 +123,7 @@ export function SelfPlayerPanel({
       className="toe-battle-panel toe-player-panel toe-closed-panel toe-self-player-panel"
       data-pid={0}
       data-death-panel={0}
+      data-target-selectable={phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect}
       onClick={phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? () => handleAIClick(0) : undefined}
       style={{
         backgroundColor: 'var(--toe-panel-active,#180f07)',
@@ -149,18 +151,11 @@ export function SelfPlayerPanel({
         minHeight: middleRowHeight,
         position: 'relative',
         overflow: 'visible',
-        boxShadow:
-          phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
-            ? '0 0 14px #4ade8088,inset 0 0 12px #4ade8022'
-            : undefined,
-        animation:
-          phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect
-            ? 'toeTargetPulse 1.4s ease-in-out infinite'
-            : undefined,
         opacity: guillotinedPids.has(0) ? 0 : 1,
         cursor: phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? 'pointer' : 'default',
       }}
     >
+      {phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect && <TargetMarker down />}
       <div className="toe-self-sidebar-skin" aria-hidden="true" style={presentationStyle}>
         <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-top.webp')} alt="" />
         <div style={{ backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-rail.webp')}')` }} />
