@@ -3,7 +3,7 @@ import { CS, GOD_CS, GOD_DEFS } from '../../constants/card';
 import { AreaTooltip, DDCard, GodTooltip, MiniCardFace } from '../cards';
 import { useCardHoverTooltip } from '../cards/useCardHoverTooltip';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
-import { getCardElementAnchor, getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandCardAnchor } from '../../utils/dom';
+import { _getZoomCompensatedRect, getCardElementAnchor, getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandCardAnchor } from '../../utils/dom';
 import { buildPublicUrl } from '../../utils/url';
 import { getCardFlightStyle, getStandardFlyingCardSize } from './cardSizing';
 
@@ -596,9 +596,18 @@ function useHuntRevealCardPosition(targetPid, card) {
     function measure() {
       const size = getHuntRevealCardSize();
       const start = getPlayerHandCardAnchor(targetPid ?? 0, card);
-      const holdX = Math.max(size.width / 2 + 8, Math.min(window.innerWidth - size.width / 2 - 8, start.x));
-      const holdY = targetPid === 0 ? Math.max(size.height / 2 + 8, start.y - start.height * .48)
-        : Math.min(window.innerHeight - size.height / 2 - 8, start.y + start.height / 2 + size.height * .55);
+      const clampX = (x) => Math.max(size.width / 2 + 8, Math.min(window.innerWidth - size.width / 2 - 8, x));
+      const clampY = (y) => Math.max(size.height / 2 + 8, Math.min(window.innerHeight - size.height / 2 - 8, y));
+      let holdX = clampX(start.x);
+      let holdY = targetPid === 0 ? clampY(start.y - start.height * .48)
+        : clampY(start.y + start.height / 2 + size.height * .55);
+      if (targetPid !== 0) {
+        const panelRect = _getZoomCompensatedRect(document.querySelector(`[data-pid="${targetPid}"]`));
+        if (panelRect && panelRect.width > 0 && panelRect.height > 0) {
+          holdX = clampX(panelRect.left + panelRect.width / 2);
+          holdY = clampY(panelRect.top + panelRect.height / 2);
+        }
+      }
       const end = { x: holdX, y: holdY, ...size, rotation: 3 };
       setPos({
         startX: start.x,

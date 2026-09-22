@@ -273,14 +273,14 @@ describe('visualEventTransactionCompiler', () => {
     expect(queue[discardIndex + 1]).toMatchObject({ type: 'STATE_PATCH', players: after, discard: [card] });
   });
 
-  it('compiles a resolved god-gift keep as one owned transfer and landing patch', () => {
+  it.each([0, 1])('compiles player %i god-gift income from the god-choice reveal and preserves its landing patch', drawerIdx => {
     const godCard = { id: 'gift-god', name: '伏行之混沌', isGod: true, godKey: 'NYA' };
     const beforePlayers = [player('你'), player('艾伦')];
-    const afterPlayers = [beforePlayers[0], player('艾伦', { hand: [godCard] })];
+    const afterPlayers = beforePlayers.map((owner, index) => index === drawerIdx ? { ...owner, hand: [godCard] } : owner);
     const event = createGodGiftKeepEvent({
       card: godCard,
-      drawerIdx: 1,
-      drawerName: '艾伦',
+      drawerIdx,
+      drawerName: beforePlayers[drawerIdx].name,
       drawEventId: 'draw:gift-god',
       playersBefore: beforePlayers,
       playersAfter: afterPlayers,
@@ -295,10 +295,10 @@ describe('visualEventTransactionCompiler', () => {
     expect(steps.map(step => step.type)).toEqual(['CARD_TRANSFER', 'STATE_PATCH']);
     expect(steps[0]).toMatchObject({
       visualEventId: event.id,
-      fromPid: 1,
-      toPid: 1,
+      fromPid: drawerIdx,
+      toPid: drawerIdx,
       dest: 'player',
-      sourceAnchor: 'playerArea',
+      sourceAnchor: 'godChoice',
       effect: 'draw',
       cards: [godCard],
       visualSetupPatch: { players: beforePlayers },

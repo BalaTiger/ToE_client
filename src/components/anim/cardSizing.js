@@ -37,7 +37,9 @@ export function getCardFlightStyle(from, to, minimumWidth = 0, pitch = 'arc') {
     aspectRatio: '392 / 590', boxSizing: 'border-box',
     '--tx': `${to.x - from.x}px`, '--ty': `${to.y - from.y}px`,
     '--from-scale': fromWidth / width, '--to-scale': toWidth / width,
-    '--from-plane': pitch === 'camera' ? undefined : endpointPlane(from, fromWidth / width),
+    '--from-plane': from.revealTransform
+      ? `perspective(${(from.revealPerspective || 700) * width / fromWidth}px) ${from.revealTransform}`
+      : pitch === 'camera' ? undefined : endpointPlane(from, fromWidth / width),
     '--to-plane': pitch === 'camera' ? undefined : endpointPlane(to, toWidth / width),
     '--mid-scale': (fromWidth + (toWidth - fromWidth) * .55) / width,
     '--from-rotation': `${from.rotation || 0}deg`, '--to-rotation': `${to.rotation || 0}deg`,

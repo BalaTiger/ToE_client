@@ -2,6 +2,19 @@ import { useCallback, useEffect, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
 import { useTimerSet } from './useTimerSet';
 
+export function getSkillTargetCenter(targetIdx) {
+  const panel = document.querySelector(`[data-pid="${targetIdx}"]`);
+  // Coastal self panels include the entire tall faith sidebar. Aim at the
+  // visible portrait instead of its empty middle; classic portraits are hidden.
+  const portraitRect = _getZoomCompensatedRect(panel?.querySelector('.toe-coastal-portrait'));
+  const rect = portraitRect?.width > 0 && portraitRect?.height > 0
+    ? portraitRect
+    : _getZoomCompensatedRect(panel);
+  return rect?.width > 0 && rect?.height > 0
+    ? { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 }
+    : { cx: window.innerWidth / 2, cy: window.innerHeight * 0.25 };
+}
+
 export function useSkillAnimationEffects({ anim }) {
   const [swapAnim, setSwapAnim] = useState(false);
   const [huntAnim, setHuntAnim] = useState(null);
@@ -49,13 +62,7 @@ export function useSkillAnimationEffects({ anim }) {
     if (anim.type === 'SKILL_HUNT') {
       const ti = anim.targetIdx ?? 1;
       schedule(() => {
-        const el = document.querySelector(`[data-pid="${ti}"]`);
-        if (el) {
-          const r = _getZoomCompensatedRect(el);
-          setHuntAnim({ cx: r.left + r.width / 2, cy: r.top + r.height / 2 });
-        } else {
-          setHuntAnim({ cx: window.innerWidth / 2, cy: window.innerHeight * 0.25 });
-        }
+        setHuntAnim(getSkillTargetCenter(ti));
         addTimer(() => setHuntAnim(null), 1300);
       });
       return cleanupRaf;
@@ -64,13 +71,7 @@ export function useSkillAnimationEffects({ anim }) {
     if (anim.type === 'SKILL_BEWITCH') {
       const bti = anim.targetIdx ?? 1;
       schedule(() => {
-        const bel = document.querySelector(`[data-pid="${bti}"]`);
-        if (bel) {
-          const br = _getZoomCompensatedRect(bel);
-          setBewitchAnim({ cx: br.left + br.width / 2, cy: br.top + br.height / 2 });
-        } else {
-          setBewitchAnim({ cx: window.innerWidth / 2, cy: window.innerHeight * 0.25 });
-        }
+        setBewitchAnim(getSkillTargetCenter(bti));
         addTimer(() => setBewitchAnim(null), 1200);
       });
       return cleanupRaf;

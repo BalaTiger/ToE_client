@@ -296,7 +296,7 @@ export function buildGodGiftKeepSteps(event) {
       dest: 'player',
       toPid: event.drawerIdx,
       count: 1,
-      sourceAnchor: 'playerArea',
+      sourceAnchor: 'godChoice',
       effect: 'draw',
       cards: [event.card],
       msgs: event.msgs || [],

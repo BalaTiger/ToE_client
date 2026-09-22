@@ -608,6 +608,11 @@ export const GLOBAL_STYLES = `
     0%,100% {opacity:0.6; transform:scale(1)}
     50%     {opacity:1;   transform:scale(1.1)}
   }
+  /* 目标选择高亮：呼吸脉冲光晕 */
+  @keyframes toeTargetPulse {
+    0%,100% {box-shadow:0 0 10px rgba(74,222,128,.35),inset 0 0 8px rgba(74,222,128,.12)}
+    50%     {box-shadow:0 0 30px rgba(74,222,128,.95),0 0 60px rgba(74,222,128,.45),inset 0 0 18px rgba(74,222,128,.35)}
+  }
 
   /* Turn indicator */
   @keyframes turnIndicatorFade {

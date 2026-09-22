@@ -373,6 +373,12 @@ renders separate area-exploration or god-choice panels.
   decisions, including restored snapshots and resize. Blind-zone concealment
   persists while waiting. Hidden draws, forced keeps and other decisions keep
   their existing behavior.
+- `CardFlipAnim` captures each revealed card's viewport frame and spin in layout
+  cleanup before its DOM is removed, including AI reveals without decision UI.
+  Income flights consume that local card-identity snapshot in a layout effect,
+  so no empty paint separates reveal and transfer. Intervening inspections do
+  not replace the source card's snapshot; game/animation reset clears the cache.
+  These screen coordinates never enter synchronized rule events.
 
 ## Maintenance Rule
 

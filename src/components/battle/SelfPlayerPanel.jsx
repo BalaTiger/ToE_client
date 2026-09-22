@@ -153,6 +153,10 @@ export function SelfPlayerPanel({
           phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
             ? '0 0 14px #4ade8088,inset 0 0 12px #4ade8022'
             : undefined,
+        animation:
+          phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect
+            ? 'toeTargetPulse 1.4s ease-in-out infinite'
+            : undefined,
         opacity: guillotinedPids.has(0) ? 0 : 1,
         cursor: phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? 'pointer' : 'default',
       }}

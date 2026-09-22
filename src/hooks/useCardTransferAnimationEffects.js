@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
-import { getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerGodPowerAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from '../utils/dom';
+import { clearRevealCardAnchors, getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerGodPowerAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from '../utils/dom';
 
 export function resolveCardTransferFaceUp(transfer = {}, card = transfer.cards?.[0]) {
   if (transfer.faceUp != null) return transfer.faceUp;
@@ -12,7 +12,7 @@ export function resolveCardTransferFaceUp(transfer = {}, card = transfer.cards?.
 
 export function resolveCardTransferAnchors(transfer, card) {
   const hand = getPlayerHandCardAnchor(transfer.fromPid ?? 0, card);
-  const source = ['reveal', 'drawReveal'].includes(transfer.sourceAnchor) ? getRevealCardAnchor()
+  const source = ['reveal', 'drawReveal'].includes(transfer.sourceAnchor) ? getRevealCardAnchor(card)
     : transfer.sourceAnchor === 'discard' ? getPileCardAnchor('[data-discard-pile]')
     : transfer.sourceAnchor === 'deck' ? getPileCardAnchor('[data-deck-pile]')
     : transfer.sourceAnchor === 'godPower' ? { ...hand, ...getPlayerGodPowerAnchorCenter(transfer.fromPid) }
@@ -38,6 +38,7 @@ export function useCardTransferAnimationEffects({ anim }) {
   const damageLinkEstablishTimersRef = useRef(new Map());
 
   const clearCardTransferAnimations = useCallback(() => {
+    clearRevealCardAnchors();
     cardTransferTimersRef.current.forEach(timer => clearTimeout(timer));
     cardTransferTimersRef.current.clear();
     damageLinkEstablishTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -48,7 +49,7 @@ export function useCardTransferAnimationEffects({ anim }) {
 
   useEffect(() => clearCardTransferAnimations, [clearCardTransferAnimations]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!anim || anim.type !== 'CARD_TRANSFER') return;
 
     const buildTransfer = (transfer, idx = 0) => {
@@ -105,7 +106,9 @@ export function useCardTransferAnimationEffects({ anim }) {
       };
     }
 
-    schedule(() => {
+    // Layout effects run after the reveal's unmount snapshot and before paint.
+    // Starting here avoids two blank frames between the flip and income flight.
+    {
       const transfers = Array.isArray(anim.transfers) && anim.transfers.length
         ? anim.transfers.map((transfer, idx) => buildTransfer({
           ...anim,
@@ -115,6 +118,7 @@ export function useCardTransferAnimationEffects({ anim }) {
       const cleanupMs = Number.isFinite(anim.durationMs)
         ? anim.durationMs + ANIM_STEP_GAP + 100
         : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- measured DOM handoff must finish before paint
       setCardTransfers(prev => [...prev, ...transfers]);
       const timer = setTimeout(() => {
         const transferKeys = new Set(transfers.map(t => t.key));
@@ -122,7 +126,7 @@ export function useCardTransferAnimationEffects({ anim }) {
         cardTransferTimersRef.current.delete(timer);
       }, cleanupMs);
       cardTransferTimersRef.current.add(timer);
-    });
+    }
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf1);

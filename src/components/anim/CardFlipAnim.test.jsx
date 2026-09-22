@@ -5,6 +5,7 @@ import { CardFlipAnim } from './CardFlipAnim';
 vi.mock('../../hooks/useWindowSize', () => ({ useWindowSize: () => ({ w: 1280, h: 720 }) }));
 vi.mock('../../utils/dom', () => ({
   captureDecisionCardAnchors: vi.fn(),
+  captureRevealCardAnchor: vi.fn(),
   getCardRevealMetrics: () => ({ x: 640, y: 360, width: 225, height: 339, scale: 1 }),
   getPileCardAnchor: () => ({ x: 400, y: 300, width: 100 }),
   getPlayerHandCardAnchor: () => ({ x: 600, y: 650, width: 160 }),

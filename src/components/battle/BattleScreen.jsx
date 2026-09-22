@@ -501,7 +501,7 @@ export function BattleScreen(props) {
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       <GameLayerPortal>
       {pendingRoleSelection&&(
-        <div style={{position:'fixed',inset:0,zIndex:9998,background:'rgba(8,5,3,0.94)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div style={{position:'fixed',inset:0,zIndex:9998,background:'#080503',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
           <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
             <h2 className="toe-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
             <p className="toe-subtitle" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'normal'}}>命运尚未落笔，由你决定扮演何人</p>

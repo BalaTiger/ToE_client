@@ -235,9 +235,44 @@ export function getCardRevealMetrics(viewportWidth = window.innerWidth, viewport
   };
 }
 
-export function getRevealCardAnchor() {
-  const anchor = getCardElementAnchor(document.querySelector('[data-card-reveal]'));
+const revealCardAnchors = new Map();
+
+function getRevealElementAnchor(element) {
+  if (!element) return null;
+  const rect = _getZoomCompensatedRect(element);
+  if (!(rect?.width > 0 && rect?.height > 0)) return null;
+  const spin = element.firstElementChild && getComputedStyle(element.firstElementChild);
+  return {
+    x: rect.left + rect.width / 2, y: rect.top + rect.height / 2,
+    width: rect.width, height: rect.height, rotation: 0,
+    // The face's projected bounding box loses its size and orientation during
+    // an early choice. Preserve the unprojected frame and the actual spin.
+    ...(spin?.transform && spin.transform !== 'none' ? {
+      revealTransform: spin.transform,
+      revealPerspective: parseFloat(getComputedStyle(element).perspective) || 700,
+    } : {}),
+  };
+}
+
+export function captureRevealCardAnchor(element, card) {
+  if (card?.id == null || card.effect || card.hiddenDraw || card._back) return;
+  const anchor = getRevealElementAnchor(element);
+  if (anchor) revealCardAnchors.set(String(card.id), anchor);
+}
+
+export function clearRevealCardAnchors() {
+  revealCardAnchors.clear();
+  decisionCardAnchors.clear();
+}
+
+export function getRevealCardAnchor(card) {
+  const reveal = document.querySelector('[data-card-reveal]');
+  const face = reveal?.querySelector('[data-card-face]');
+  const anchor = (!card || String(card.id) === face?.dataset.cardFaceId)
+    ? getRevealElementAnchor(reveal) : null;
   if (anchor) return anchor;
+  const captured = card?.id != null && revealCardAnchors.get(String(card.id));
+  if (captured) return captured;
   const { x, y, width, height } = getCardRevealMetrics();
   return { x, y, width, height, rotation: 0 };
 }
@@ -246,19 +281,22 @@ const decisionCardAnchors = new Map();
 export function captureDecisionCardAnchors() {
   for (const kind of ['draw-reveal', 'god-choice']) {
     const face = document.querySelector(`[data-ui-dialog="${kind}"] [data-card-face]`);
-    const anchor = getCardElementAnchor(face);
+    const anchor = getRevealElementAnchor(face?.closest?.('[data-card-reveal]')) || getCardElementAnchor(face);
     if (anchor) decisionCardAnchors.set(kind, { cardId: face.dataset.cardFaceId, anchor });
   }
 }
 
 function getDecisionCardAnchor(kind, card) {
-  const current = getCardElementAnchor(document.querySelector(`[data-ui-dialog="${kind}"] [data-card-face]`));
+  const face = document.querySelector(`[data-ui-dialog="${kind}"] [data-card-face]`);
+  const current = card?.id != null && face?.dataset.cardFaceId === String(card.id)
+    ? getRevealElementAnchor(face.closest?.('[data-card-reveal]')) || getCardElementAnchor(face) : null;
   const cached = decisionCardAnchors.get(kind);
-  return current || (card?.id != null && cached?.cardId === String(card.id) ? cached.anchor : null);
+  return current || (card?.id != null && revealCardAnchors.get(String(card.id)))
+    || (card?.id != null && cached?.cardId === String(card.id) ? cached.anchor : null);
 }
 
 export function getGodChoiceCardAnchor(card) {
-  return getDecisionCardAnchor('god-choice', card) || getRevealCardAnchor();
+  return getDecisionCardAnchor('god-choice', card) || getRevealCardAnchor(card);
 }
 
 export function getPlayerAreaCardAnchor(pid = 0, card, fromReveal = false) {
@@ -266,7 +304,7 @@ export function getPlayerAreaCardAnchor(pid = 0, card, fromReveal = false) {
   // instead have a measured modal card. Other effects retain their area.
   const modal = getDecisionCardAnchor('draw-reveal', card);
   if (modal) return modal;
-  if (pid === 0 || fromReveal) return getRevealCardAnchor();
+  if (pid === 0 || fromReveal) return getRevealCardAnchor(card);
   return {
     ...getPlayerHandCardAnchor(pid), ...getPlayerAreaAnchorCenter(pid),
   };

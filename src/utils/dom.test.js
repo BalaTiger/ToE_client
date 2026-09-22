@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { _getZoomCompensatedRect, getCardElementAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from './dom';
+import { _getZoomCompensatedRect, captureRevealCardAnchor, clearRevealCardAnchors, getCardElementAnchor, getCardRevealMetrics, getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerHandAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from './dom';
 import { getCardFlightStyle } from '../components/anim/cardSizing';
 import { projectTableCard } from './cardPlane';
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { clearRevealCardAnchors(); vi.unstubAllGlobals(); });
 
 function zoomedCard({ scale = .5, legacy = false, left = 320, top = 180 } = {}) {
   const container = {
@@ -67,6 +67,49 @@ describe('zoomed board viewport anchors', () => {
 });
 
 describe('card flight perspective', () => {
+  it.each([0, 2])('continues seat %s income from its measured reveal after unmount and another inspection', pid => {
+    const card = { id: 'kept-card' };
+    const face = {
+      dataset: { cardFaceId: card.id }, matches: () => true,
+      getBoundingClientRect: () => ({ left: 430, top: 185, width: 260, height: 260 * 590 / 392 }),
+    };
+    const reveal = { querySelector: () => face, getBoundingClientRect: face.getBoundingClientRect };
+    const doc = { querySelector: () => null };
+    vi.stubGlobal('document', doc);
+    vi.stubGlobal('window', { innerWidth: 1600, innerHeight: 1000 });
+    vi.stubGlobal('getComputedStyle', () => ({ rotate: 'none', transform: 'none' }));
+    captureRevealCardAnchor(reveal, card);
+    const expected = { x: 560, y: 185 + 130 * 590 / 392, width: 260, rotation: 0 };
+    // An unrelated live decision/inspection must not replace this card's origin.
+    face.dataset.cardFaceId = 'inspection';
+    face.getBoundingClientRect = () => ({ left: 0, top: 0, width: 100, height: 150 });
+    doc.querySelector = selector => selector === '[data-card-reveal]' ? reveal : face;
+    captureRevealCardAnchor(reveal, { id: 'inspection', effect: 'damage' });
+    expect(getPlayerAreaCardAnchor(pid, card, true)).toMatchObject(expected);
+    expect(getGodChoiceCardAnchor(card)).toMatchObject(expected);
+    expect(getRevealCardAnchor(card)).toMatchObject(expected);
+    clearRevealCardAnchors();
+    doc.querySelector = () => null;
+    expect(getRevealCardAnchor(card)).toMatchObject({ x: 800, y: 500 });
+  });
+
+  it('preserves the unprojected frame and spin for income chosen before the flip settles', () => {
+    const spin = {};
+    const reveal = { firstElementChild: spin,
+      getBoundingClientRect: () => ({ left: 400, top: 190, width: 220, height: 220 * 590 / 392 }) };
+    vi.stubGlobal('document', { querySelector: () => null });
+    vi.stubGlobal('getComputedStyle', element => element === spin
+      ? { transform: 'matrix3d(0.5,0,-0.866,0,0,1,0,0,0.866,0,0.5,0,0,0,0,1)' }
+      : { perspective: '700px' });
+    const card = { id: 'early-choice' };
+    captureRevealCardAnchor(reveal, card);
+    const anchor = getRevealCardAnchor(card);
+    expect(anchor).toMatchObject({ x: 510, width: 220, rotation: 0, revealPerspective: 700 });
+    const flight = getCardFlightStyle(anchor, { x: 800, y: 600, width: 440 }, 0, 'camera');
+    expect(flight['--from-plane']).toBe(`perspective(1400px) ${anchor.revealTransform}`);
+    expect(flight.width * flight['--from-scale']).toBe(220);
+  });
+
   it('lands on a collapsed opponent hand badge at its actual zoomed icon size', () => {
     const badge = {
       dataset: { handCardWidth: '24' },

@@ -112,7 +112,7 @@
 [data-ui-layout='coastal'] .toe-opponent-pendants .toe-opponent-zones { width: 100%; margin-top: 1px !important; }
 [data-ui-layout='coastal'] .toe-opponent-pendants .toe-opponent-zones:empty { display: none; }
 [data-ui-layout='coastal'] .toe-opponent-panel[data-current-turn='true']::after { filter: drop-shadow(0 0 5px #c9a853); }
-[data-ui-layout='coastal'] .toe-opponent-panel .toe-turn-marker { position: absolute; top: auto; bottom: -2px; right: 8px; z-index: 2; padding: 0 4px; border: 1px solid #9f8250; color: var(--toe-coastal-ink) !important; background: #15201b; font-family: var(--toe-coastal-panel-font); font-stretch: 50%; font-synthesis: none; font-size: 6cqw !important; font-weight: 350; white-space: nowrap; }
+[data-ui-layout='coastal'] .toe-opponent-panel .toe-turn-marker { position: absolute; top: -6px; bottom: auto; right: 8px; z-index: 2; padding: 0 4px; border: 1px solid #9f8250; color: var(--toe-coastal-ink) !important; background: #15201b; font-family: var(--toe-coastal-panel-font); font-stretch: 50%; font-synthesis: none; font-size: 6cqw !important; font-weight: 350; white-space: nowrap; }
 
 [data-ui-layout='coastal'] .toe-pile-display { min-height: 220px !important; height: 100%; display: flex !important; flex-direction: row !important; align-items: center !important; justify-content: space-around !important; gap: 14px; }
 [data-ui-layout='coastal'] .toe-pile-display > [data-theme-ornament] { display: none; }

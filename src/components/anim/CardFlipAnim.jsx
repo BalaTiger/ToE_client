@@ -5,7 +5,7 @@ import { CardBackLayer } from '../cards/AnimatedCardBack';
 import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
 import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
-import { captureDecisionCardAnchors, getCardRevealMetrics, getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { captureDecisionCardAnchors, captureRevealCardAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
 import { useWindowSize } from '../../hooks/useWindowSize';
 import { getCardFlightStyle } from './cardSizing';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
@@ -135,6 +135,13 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
   const [traveled,setTraveled]=React.useState(skipTravel||settled);
   const [earlyActionsReady,setEarlyActionsReady]=React.useState(false);
   const viewport=useWindowSize();
+  const revealRef=React.useRef(null);
+  React.useLayoutEffect(()=>{
+    const element=revealRef.current;
+    // Capture before React removes the face, including automatic AI reveals.
+    // Keep each card's last frame across intervening inspections/effects.
+    return()=>captureRevealCardAnchor(element,card);
+  },[card,traveled,settled,viewport.w,viewport.h]);
   React.useEffect(()=>{
     if(settled)return undefined;
     if(skipTravel){setTraveled(true);return undefined;}
@@ -340,6 +347,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,trave
       )}
 
       <div
+        ref={revealRef}
         data-card-reveal
         data-inspection-flip-card={isInspection ? 'true' : undefined}
         style={{

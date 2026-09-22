@@ -24,12 +24,15 @@
   filter: drop-shadow(0 3px 2px #000b);
 }
 .toe-hand-area[data-hand-composition="coastal"] .toe-phase-bar {
-  padding: 10px 16px !important;
-  min-height: 42px !important;
+  padding: 2px 6px !important;
+  min-height: 48px !important;
   justify-content: center;
   gap: 4px !important;
-  border: 0 !important;
-  background: var(--toe-coastal-prompt-image) center / 100% 100% no-repeat !important;
+  /* 九宫格边框：四角/四边厚度固定，中间底板随内容拉伸，多行文本不再顶框 */
+  border: solid transparent !important;
+  border-width: 16px 44px !important;
+  border-image: var(--toe-coastal-prompt-image) 32 100 fill stretch !important;
+  background: none !important;
   box-shadow: none;
   text-align: center;
   line-height: 1.45;

@@ -629,6 +629,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
       backgroundColor:isCurrentTurn?theme.panelActive:theme.panel,
       border:`1.5px solid ${borderColor}`,
       boxShadow:isSelectable?`0 0 14px ${selectableColor}88,inset 0 0 12px ${selectableColor}22`:isCurrentTurn?`0 0 20px ${theme.glow}28,inset 0 0 16px ${theme.glow}10`:'none',
+      animation:isSelectable?'toeTargetPulse 1.4s ease-in-out infinite':undefined,
       borderRadius:3,padding:'8px 9px',
       cursor:isSelectable?'pointer':'default',
       opacity: isBeingGuillotined ? 0 : (player.isDead ? 0.32 : 1),

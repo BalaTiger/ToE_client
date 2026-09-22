@@ -209,7 +209,7 @@ describe('animQueueHelpers', () => {
       fromPid: 1,
       toPid: 1,
       dest: 'player',
-      sourceAnchor: 'playerArea',
+      sourceAnchor: 'godChoice',
       cards: [expect.objectContaining({ id: godCard.id })],
     });
     expect(ownedSteps[1].players[1].hand).toContainEqual(expect.objectContaining({ id: godCard.id }));
