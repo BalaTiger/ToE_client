@@ -221,7 +221,7 @@ export function buildPhaseUiState({
         return decisionPrompt('请选择“穴居人战争”的目标');
       case 'CAVE_DUEL_SELECT_CARD':
         return local.caveDuel
-          ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`
+          ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！亮出一张牌，数字大者胜；无编号卡牌可赢4但会输给1~3；胜者收下两张牌`
           : '等待穴居人战争双方亮牌…';
       case 'CAVE_DUEL_WAIT_REVEAL':
         return local.caveDuel

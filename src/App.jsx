@@ -7625,7 +7625,9 @@ export default function Game(){
       let queue;
       ({state:pendingWinGs,queue}=buildResolvedLocalSwapTransaction(pendingWinGs));
       broadcastAnimTransaction(pendingWinGs,queue,{context:'swapCards',barrier:'decision',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
-      finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}));
+      // 本地播放队列跳过了已播过的暗抽飞牌，覆盖率校验必须基于完整 queue
+      finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}),
+        strictActionQueueMeta(pendingWinGs,queue,consumedVisualEventIdsRef.current,'resolved action queue'));
       return;
     }
     // 检查目标（非自身）是否为寻宝者且掉包后获胜
@@ -7647,7 +7649,9 @@ export default function Game(){
     let queue;
     ({state:newGs,queue}=buildResolvedLocalSwapTransaction(newGs));
     broadcastAnimTransaction(newGs,queue,{context:'swapCards',barrier:'continuation',msgs:resolvedSwapMsgs,beforePlayers:gs.players,beforeDiscard:gs.discard});
-    finishTutorialActionWithState(newGs,tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}));
+    // 同上行分支：覆盖率校验基于完整 queue，播放队列才跳过暗抽飞牌
+    finishTutorialActionWithState(newGs,tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}),
+      strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'resolved action queue'));
   }
 
   function huntSelectTarget(ti){
