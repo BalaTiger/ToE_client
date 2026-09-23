@@ -748,11 +748,13 @@ export const AREA_CARD_ANIMATION_STYLES = `
     100% { opacity: 0; transform: translate(var(--gm-restore-tx, -220px), var(--gm-restore-ty, -120px)) scale(1.25); }
   }
   @keyframes caveDuelCardPath {
-    0% { transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; opacity: 0; }
-    12% { opacity: 1; }
-    18% { transform: translate(calc(var(--midX) * .55), calc(var(--midY) * .55 - 18px)) ${duelIncomingPose}; opacity: 1; }
-    38%, 68% { transform: translate(var(--midX), var(--midY)) ${duelRevealPose}; opacity: 1; }
-    82% { transform: translate(calc(var(--midX) + (var(--tx) - var(--midX)) * .55), calc(var(--midY) + (var(--ty) - var(--midY)) * .55 - 18px)) ${duelOutgoingPose}; opacity: 1; }
+    /* Per-segment easing: glide out of the hand, decelerate into the reveal, hold, then accelerate away and land softly. */
+    0% { transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; opacity: 0; animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+    12% { opacity: 1; animation-timing-function: cubic-bezier(.22,.61,.36,1); }
+    18% { transform: translate(calc(var(--midX) * .55), calc(var(--midY) * .55 - 18px)) ${duelIncomingPose}; opacity: 1; animation-timing-function: cubic-bezier(.16,.84,.3,1); }
+    38% { transform: translate(var(--midX), var(--midY)) ${duelRevealPose}; opacity: 1; animation-timing-function: linear; }
+    68% { transform: translate(var(--midX), var(--midY)) ${duelRevealPose}; opacity: 1; animation-timing-function: cubic-bezier(.55,.06,.68,.19); }
+    82% { transform: translate(calc(var(--midX) + (var(--tx) - var(--midX)) * .55), calc(var(--midY) + (var(--ty) - var(--midY)) * .55 - 18px)) ${duelOutgoingPose}; opacity: 1; animation-timing-function: cubic-bezier(.22,.61,.36,1); }
     100% { transform: translate(var(--tx), var(--ty)) ${CARD_FLIGHT_POSE.to}; opacity: 1; }
   }
   @keyframes caveDuelScorePop {
