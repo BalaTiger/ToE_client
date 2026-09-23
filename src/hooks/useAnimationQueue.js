@@ -3,6 +3,7 @@ import { getRevealDecision, matchesRevealDecision } from '../components/anim/rev
 import { markConsumedVisualEvents } from '../game/visualEvents';
 import { consumeVisualLogEntries } from '../game/visualEventLogs';
 import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
+import { attachIncomePresentation } from '../game/incomePresentation';
 import { assertPreparedAnimationTransaction } from '../game/animationTransaction';
 import {
   applyStatAnimationImpact,
@@ -592,7 +593,10 @@ export function useAnimationQueue({
       cardRevealDuration: CARD_REVEAL_DURATION,
     }));
     reportSchemaIssues('timed queue validation failed', validateAnimationQueueSteps(timedQueue));
-    const preparedQueue = prepareAnimQueueLogs(timedQueue, nextGs, visibleLogRef.current)
+    const presentationQueue = attachIncomePresentation(timedQueue, {
+      decision: getRevealDecision(gs), nextState: nextGs, stepGapMs: ANIM_STEP_GAP,
+    });
+    const preparedQueue = prepareAnimQueueLogs(presentationQueue, nextGs, visibleLogRef.current)
       .map(step => ({ ...step, _playbackId: ++playbackIdRef.current }));
     pendingVisualEventIdsRef.current = [...new Set(eventIds)];
     const continuityIssues = validateStatAnimationContinuity(preparedQueue);

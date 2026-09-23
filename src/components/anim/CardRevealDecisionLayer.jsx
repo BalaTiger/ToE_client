@@ -107,28 +107,29 @@ export function CardRevealDecisionLayer({ anim, exiting, expansionKey, decisionP
   const target = pendingState ? pendingDecision : ready || early ? decision : null;
   const draw = activeDraw || lastDraw;
   const retain = !p.decisionSubmitting && !zhuBlocked && matchesRevealDecision(draw, target);
-  if (!activeDraw && !retain && !ready) return null;
+  const held = anim?.incomeReveal;
+  if (!activeDraw && !retain && !ready && !held) return null;
 
-  const replay = activeDraw || (matchesRevealDecision(lastDraw, target || decision) ? lastDraw : null);
-  const card = activeDraw?.card || (retain ? target.card : decision.card);
+  const replay = activeDraw || (matchesRevealDecision(lastDraw, held ? { card: held.card, actorIdx: held.targetPid } : target || decision) ? lastDraw : null);
+  const card = activeDraw?.card || held?.card || (retain ? target.card : decision.card);
   const key = replay?._playbackId ?? replay ?? `${p.gs?._turnKey || ''}:${decision?.kind}:${card.id ?? card.uid ?? card.name}`;
   // This factory only attaches chooseEarly to button callbacks; the click lock
   // is read on a user event, never while building the returned element.
   // eslint-disable-next-line react-hooks/refs
   const actions = early ? decisionActions(earlyDecision, earlyProps, chooseEarly)
-    : ready && !activeDraw && !queuedChoice ? decisionActions(decision, p) : null;
+    : ready && !activeDraw && !queuedChoice && !held ? decisionActions(decision, p) : null;
   return <CardFlipAnim
     key={typeof key === 'object' ? `${key.inspectionSeq ?? ''}:${key.card?.id ?? key.card?.name}:${key.targetPid ?? 0}` : key}
     card={card}
     triggerName={activeDraw?.triggerName}
-    targetPid={activeDraw?.targetPid ?? target?.actorIdx ?? decision?.actorIdx ?? 0}
+    targetPid={activeDraw?.targetPid ?? held?.targetPid ?? target?.actorIdx ?? decision?.actorIdx ?? 0}
     exiting={exiting}
     skipTravel={activeDraw ? !!activeDraw.skipTravel : true}
     travelOnly={!!activeDraw?.travelOnly}
     sourcePile={activeDraw?.sourcePile}
     guessCorrect={activeDraw?.guessCorrect}
     expansionKey={expansionKey}
-    preserveOnExit={retain}
+    preserveOnExit={retain || !!held}
     settled={!activeDraw}
     showBackdrop={!anim || !!activeDraw}
     decisionKind={retain ? target.kind : ready ? decision.kind : undefined}

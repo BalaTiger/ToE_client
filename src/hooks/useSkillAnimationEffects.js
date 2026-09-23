@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { _getZoomCompensatedRect } from '../utils/dom';
 import { useTimerSet } from './useTimerSet';
 
@@ -10,16 +10,28 @@ export function getSkillTargetCenter(targetIdx) {
   const rect = portraitRect?.width > 0 && portraitRect?.height > 0
     ? portraitRect
     : _getZoomCompensatedRect(panel);
+  // size lets overlays scale to the target: opponent portraits are ~56px while
+  // the self portrait grows with the container, so a fixed pixel scope reads
+  // large on opponents and small on the player.
   return rect?.width > 0 && rect?.height > 0
-    ? { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2 }
-    : { cx: window.innerWidth / 2, cy: window.innerHeight * 0.25 };
+    ? { cx: rect.left + rect.width / 2, cy: rect.top + rect.height / 2, size: Math.max(rect.width, rect.height) }
+    : { cx: window.innerWidth / 2, cy: window.innerHeight * 0.25, size: 0 };
 }
 
-export function useSkillAnimationEffects({ anim }) {
+export function useSkillAnimationEffects({ anim, huntVignetteHold = false }) {
   const [swapAnim, setSwapAnim] = useState(false);
   const [huntAnim, setHuntAnim] = useState(null);
   const [bewitchAnim, setBewitchAnim] = useState(null);
   const { addTimer, clearTimers } = useTimerSet();
+  const huntVignetteHoldRef = useRef(huntVignetteHold);
+
+  // The lingering red frame survives the scope animation only while the local
+  // player still owes a reveal. Confirming (or the phase moving on, e.g. the
+  // 20s timeout) drops the hold; the consumer gates the scopeDone overlay on
+  // huntVignetteHold, so no state cleanup is needed here.
+  useEffect(() => {
+    huntVignetteHoldRef.current = huntVignetteHold;
+  }, [huntVignetteHold]);
 
   const clearSkillAnimations = useCallback(() => {
     clearTimers();
@@ -63,7 +75,17 @@ export function useSkillAnimationEffects({ anim }) {
       const ti = anim.targetIdx ?? 1;
       schedule(() => {
         setHuntAnim(getSkillTargetCenter(ti));
-        addTimer(() => setHuntAnim(null), 1300);
+        if (ti === 0) {
+          // Local player is the prey: once the scope locks, keep only the red
+          // edge frame until the reveal is confirmed (hold flag clears it).
+          // Fires at 1.05s so the persistent frame crossfades with the animated
+          // vignette's 0.96–1.2s fade-out instead of blinking after it.
+          addTimer(() => setHuntAnim(prev => (
+            prev && huntVignetteHoldRef.current ? { ...prev, scopeDone: true } : null
+          )), 1050);
+        } else {
+          addTimer(() => setHuntAnim(null), 1300);
+        }
       });
       return cleanupRaf;
     }

@@ -36,9 +36,11 @@ export function useCardTransferAnimationEffects({ anim }) {
   const [damageLinkEstablishAnims, setDamageLinkEstablishAnims] = useState([]);
   const cardTransferTimersRef = useRef(new Set());
   const damageLinkEstablishTimersRef = useRef(new Map());
+  const incomeFlightRef = useRef(null);
 
   const clearCardTransferAnimations = useCallback(() => {
     clearRevealCardAnchors();
+    incomeFlightRef.current = null;
     cardTransferTimersRef.current.forEach(timer => clearTimeout(timer));
     cardTransferTimersRef.current.clear();
     damageLinkEstablishTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -50,7 +52,14 @@ export function useCardTransferAnimationEffects({ anim }) {
   useEffect(() => clearCardTransferAnimations, [clearCardTransferAnimations]);
 
   useLayoutEffect(() => {
-    if (!anim || anim.type !== 'CARD_TRANSFER') return;
+    const incomeFlight = anim?.incomeFlight;
+    if (incomeFlightRef.current && incomeFlightRef.current !== incomeFlight) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- remove the completed queue-owned flight before paint
+      setCardTransfers(prev => prev.filter(transfer => !transfer.incomeFlight));
+      incomeFlightRef.current = null;
+    }
+    if (incomeFlight && incomeFlightRef.current === incomeFlight) return;
+    if (!incomeFlight && (!anim || anim.type !== 'CARD_TRANSFER')) return;
 
     const buildTransfer = (transfer, idx = 0) => {
       const paths = Array.from({ length: Math.max(1, transfer.count ?? 1) }, (_, cardIndex) => resolveCardTransferAnchors(transfer, transfer.cards?.[cardIndex]));
@@ -66,6 +75,7 @@ export function useCardTransferAnimationEffects({ anim }) {
         srcTilt: srcPos.tilt, destTilt: destPos.tilt,
         srcProjection: srcPos.projection, destProjection: destPos.projection,
         paths,
+        flightDurationMs: transfer.flightDurationMs,
         count: transfer?.count ?? 1,
         key,
         effect: transfer?.effect,
@@ -76,6 +86,12 @@ export function useCardTransferAnimationEffects({ anim }) {
         faceUp: resolveCardTransferFaceUp(transfer),
       };
     };
+
+    if (incomeFlight) {
+      incomeFlightRef.current = incomeFlight;
+      setCardTransfers(prev => [...prev, { ...buildTransfer(incomeFlight), incomeFlight: true }]);
+      return;
+    }
 
     const { fromPid, toPid, effect } = anim;
     let cancelled = false;
@@ -118,7 +134,6 @@ export function useCardTransferAnimationEffects({ anim }) {
       const cleanupMs = Number.isFinite(anim.durationMs)
         ? anim.durationMs + ANIM_STEP_GAP + 100
         : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- measured DOM handoff must finish before paint
       setCardTransfers(prev => [...prev, ...transfers]);
       const timer = setTimeout(() => {
         const transferKeys = new Set(transfers.map(t => t.key));

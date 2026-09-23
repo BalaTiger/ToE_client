@@ -62,6 +62,19 @@ beforeEach(() => {
 });
 
 describe('reveal decision presentation lifecycle', () => {
+  it('holds a resolving income card without actions and releases it on flight', () => {
+    const props = { decisionProps: decisionProps(drawState(), { decisionSubmitting: true }), pendingState: actionState };
+    const first = renderLayer({ ...props, anim: draw() });
+    const held = renderLayer({ ...props, exiting: true, anim: { type: 'DICE_ROLL', incomeReveal: { card: zone, targetPid: 0 } } });
+    expect(held.key).toBe(first.key);
+    expect(held.props.card).toBe(zone);
+    expect(held.props.children).toBeNull();
+    expect(held.props.showBackdrop).toBe(false);
+    expect(held.props.preserveOnExit).toBe(true);
+    const inspection = renderLayer({ ...props, anim: { ...draw({ effect: 'inspection' }), incomeReveal: { card: zone, targetPid: 0 } } });
+    expect(inspection.props.card.effect).toBe('inspection');
+    expect(renderLayer({ ...props, anim: { type: 'CARD_TRANSFER' } })).toBeNull();
+  });
   it('accepts one early choice, keeps mandatory tails, then invokes the fresh committed handler once', () => {
     const gs = drawState(), finish = vi.fn(() => true), staleKeep = vi.fn(), keep = vi.fn();
     const props = { anim: draw(), pendingState: gs, canFinishRevealEarly: true, finishRevealEarly: finish,

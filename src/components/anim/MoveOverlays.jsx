@@ -314,11 +314,11 @@ export function BuryToDeckOverlay({ anim, exiting, expansionKey = '地神的潜�
 
 // ── Card Transfer Overlay (hand cards flying to dest) ───────────
 // Receives pre-measured positions from parent useEffect([anim])
-export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影' }) {
+export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影', paused = false }) {
   if (!transfers || !transfers.length) return null;
   return (
     <div style={{ position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 480, overflow: 'hidden' }}>
-      {transfers.flatMap(({ srcX, srcY, destX, destY, srcWidth, destWidth, srcRotation, destRotation, srcTilt, destTilt, srcProjection, destProjection, paths, count, key, effect, cards, faceUp, cardFaceUp, keepFacing }) =>
+      {transfers.flatMap(({ srcX, srcY, destX, destY, srcWidth, destWidth, srcRotation, destRotation, srcTilt, destTilt, srcProjection, destProjection, paths, count, key, effect, cards, faceUp, cardFaceUp, keepFacing, flightDurationMs }) =>
         Array.from({ length: count }).map((_, idx) => {
           const card = Array.isArray(cards) ? cards[idx] : null;
           const showFace = cardFaceUp?.[idx] ?? faceUp ?? !!card;
@@ -333,7 +333,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
           const isDrawKeep = effect === 'draw' && card;
           const isSphinxResult = effect === 'sphinxResult' && card;
           const transferCardSize = getCardFlightStyle(from, to, 0, keepFacing ? 'camera' : 'endpoints');
-          const duration = effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isSphinxResult ? 0.78 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
+          const duration = Number.isFinite(flightDurationMs) ? flightDurationMs / 1000 : effect === 'blackGoat' ? 1.28 : effect === 'tsgSlime' ? 0.82 : isDrawKeep ? 0.74 : isSphinxResult ? 0.78 : isGodKeepHand ? 0.78 : isDecipherStone ? 0.78 : 0.62;
           const cardW = transferCardSize.width;
           const cardH = transferCardSize.height;
           return (
@@ -356,6 +356,7 @@ export function CardTransferOverlay({ transfers, expansionKey = '地神的潜影
                       : '0 2px 8px rgba(0,0,0,0.6)',
                 '--tx': `${txPx}px`, '--ty': `${tyPx}px`,
                 animation: `cardTransferFly ${duration}s cubic-bezier(0.25,0,0.35,1) ${delay}s both`,
+                animationPlayState: Number.isFinite(flightDurationMs) && paused ? 'paused' : 'running',
                 zIndex: 481 + idx,
                 overflow: 'hidden',
               }}>

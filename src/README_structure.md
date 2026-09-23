@@ -271,6 +271,15 @@ immortality reveals, deaths, or loot before settlement.
 Hand areas render from the animation-locked `visualPlayers` snapshot during queued playback, so a hand-affecting `CARD_TRANSFER`/`DISCARD` step must commit its after snapshot itself: pass `playersBefore`/`playersAfter` (and discard pairs) to `cardTransferStep`/`swapCardsSteps`/`fullHandSwapSteps`, which attach a stepStart `visualSetupPatch` plus a mid-flight `visualTimeline` commit. The after snapshot must be transfer-scoped (`deriveHandTransferSnapshot`), never the event-level `playersAfter`, which already contains later settlements (SAN loss, deaths) whose animations have not played yet. `validateHandTransferCommits` in `animationStepSchema.js` reports (DEV) any hand transfer with no mid-flight commit and no immediately following `STATE_PATCH`/`VISUAL_LOCK`; steps with a legitimate late commit (e.g. hunt loot) opt out explicitly via `deferHandCommit`.
 
 ## HP/SAN Presentation Boundary
+`game/incomePresentation.js` adds local playback metadata after timing normalization.
+For a revealed card followed only by ordinary, nonfatal HP/SAN events on its recipient,
+the income flight starts with the first stat effect and spans the unchanged stat cues
+through the original hand-commit cue. `incomeFlight` is shared across those steps;
+the transfer hook creates one flight, retains it through queue pauses, and removes it
+when the queue leaves that span. It does not move events, hand snapshots, logs, or
+authoritative state. Inspection/reaction tails instead retain `incomeReveal` until
+the transfer, while inspection draws still take visual priority.
+
 Damage submitted through `effectEngine.submitLossEvents` returns one rule-owned
 result: `logs`, the original `statEvents`/`statEventSeq`, and `phase`/`abilityData`
 for any pending decision. `statEventLogs` is a copied input containing authored

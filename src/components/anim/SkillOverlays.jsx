@@ -68,26 +68,41 @@ function SwapCupOverlay({active,casterName,targetName}){
 
 // ── Hunt Scope Overlay ────────────────────────────────────────
 // Receives exact pixel coords measured from actual DOM panel position.
-function HuntScopeOverlay({active,cx,cy}){
+function HuntScopeOverlay({active,cx,cy,size,scopeDone}){
   if(!active)return null;
   // cx, cy are the exact viewport pixel centre of the target panel
   // Vignette centre tracks the target so the darkening focus matches the reticle
   const vx=cx!=null?(cx/window.innerWidth*100).toFixed(1)+'%':'50%';
   const vy=cy!=null?(cy/window.innerHeight*100).toFixed(1)+'%':'50%';
+  // Scope scales with the measured avatar (~2x), so it reads the same on the
+  // player's large self portrait as on small opponent portraits.
+  const scope=size>0?Math.min(280,Math.max(110,Math.round(size*2))):110;
+  const half=scope/2;
+  const corner=Math.round(scope*0.2);
+  const vignette=`radial-gradient(ellipse at ${vx} ${vy}, transparent 28%, rgba(60,0,0,0.55) 62%, rgba(15,0,0,0.88) 100%)`;
   return(
     <div style={{position:'fixed',inset:0,pointerEvents:'none',zIndex:600}}>
       {/* Crimson vignette — centred on target, not screen centre */}
       <div style={{
         position:'absolute',inset:0,
-        background:`radial-gradient(ellipse at ${vx} ${vy}, transparent 28%, rgba(60,0,0,0.55) 62%, rgba(15,0,0,0.88) 100%)`,
+        background:vignette,
         animation:'huntVigFade 1.2s ease both',
       }}/>
+      {/* Lingering red edge frame — stays after the scope locks until the hunted player confirms their reveal */}
+      {scopeDone&&(
+        <div style={{
+          position:'absolute',inset:0,
+          background:vignette,
+          animation:'huntVigPersist 0.3s ease both',
+        }}/>
+      )}
       {/* Scope frame — starts offset from centre, wobbles, then locks dead-centre */}
+      {!scopeDone&&(
       <div style={{
         position:'absolute',
         left:cx,top:cy,
-        width:110,height:110,
-        marginLeft:-55,marginTop:-55,
+        width:scope,height:scope,
+        marginLeft:-half,marginTop:-half,
         animation:'huntScopeMove 1.2s ease-out both',
       }}>
         {[[-1,-1],[1,-1],[-1,1],[1,1]].map(([sx,sy],ci)=>(
@@ -95,7 +110,7 @@ function HuntScopeOverlay({active,cx,cy}){
             position:'absolute',
             left:sx===-1?0:'auto',right:sx===1?0:'auto',
             top:sy===-1?0:'auto',bottom:sy===1?0:'auto',
-            width:22,height:22,
+            width:corner,height:corner,
             borderTop:sy===-1?'1.5px solid rgba(195,114,90,0.92)':'none',
             borderLeft:sx===-1?'1.5px solid rgba(195,114,90,0.92)':'none',
             borderBottom:sy===1?'1.5px solid rgba(195,114,90,0.92)':'none',
@@ -114,6 +129,7 @@ function HuntScopeOverlay({active,cx,cy}){
         <div style={{position:'absolute',top:'50%',left:0,right:0,height:1,marginTop:-0.5,background:'rgba(195,114,90,0.50)'}}/>
         <div style={{position:'absolute',left:'50%',top:0,bottom:0,width:1,marginLeft:-0.5,background:'rgba(195,114,90,0.50)'}}/>
       </div>
+      )}
     </div>
   );
 }

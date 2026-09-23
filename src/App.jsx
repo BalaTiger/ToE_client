@@ -1467,12 +1467,17 @@ export default function Game(){
     damageLinkEstablishAnims,
     clearCardTransferAnimations,
   } = useCardTransferAnimationEffects({ anim });
+  // 本地玩家仍是未亮牌的被捕猎目标时，追捕红框在瞄准镜动画结束后继续保留，
+  // 直到玩家确认亮牌（或超时/阶段推进）才消失。
+  const huntVignetteHold=!!gs&&!!getHuntRevealPromptId(gs)
+    &&getHuntRevealPromptId(gs)!==dismissedHuntRevealPromptId
+    &&(gs.phase==='PLAYER_REVEAL_FOR_HUNT'||isLocalHuntTargetSeat(gs));
   const {
     swapAnim,
     huntAnim,
     bewitchAnim,
     clearSkillAnimations,
-  } = useSkillAnimationEffects({ anim });
+  } = useSkillAnimationEffects({ anim, huntVignetteHold });
   const damageLinkGhosts = useDamageLinkGhosts({ players: gs?.players, log: gs?.log });
   const {
     hitIndices,
@@ -10204,7 +10209,7 @@ export default function Game(){
     {huntRevealBadge&&<HuntRevealedCardBadge card={huntRevealBadge.card} targetPid={huntRevealBadge.targetPid} suppressShadow={huntRevealBadgeShadowSuppressed}/>}
     <GameLayerPortal>
       <SwapCupOverlay active={!!swapAnim} casterName={swapAnim?.casterName||''} targetName={swapAnim?.targetName||''}/>
-      <HuntScopeOverlay active={!!huntAnim} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0}/>
+      <HuntScopeOverlay active={!!huntAnim&&(!huntAnim.scopeDone||huntVignetteHold)} cx={huntAnim?.cx??0} cy={huntAnim?.cy??0} size={huntAnim?.size??0} scopeDone={!!huntAnim?.scopeDone}/>
       <BewitchEyeOverlay active={!!bewitchAnim} cx={bewitchAnim?.cx??0} cy={bewitchAnim?.cy??0}/>
     </GameLayerPortal>
     {flyingEmojis.map(fe=>(
@@ -10214,7 +10219,7 @@ export default function Game(){
     {guillotineTargets.length>0&&<GuillotineAnim targets={guillotineTargets}/>}
     <KnifeEffect targets={knifeTargets}/>
     <SanMistOverlay targets={sanTargets}/>
-    <CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey}/>
+    <CardTransferOverlay transfers={cardTransfers} expansionKey={gs.expansionKey} paused={isSoloPaused}/>
     <GameLayerPortal>
     {phase==='TREASURE_WIN'&&!showTutorial&&<TreasureMapAnim hand={me.hand} confirmCountdownSec={gs._isMP?3:null} onConfirm={revealWin}/>}
     {phase==='GOD_RESURRECTION'&&(!showTutorial||isTutorialGodResurrection)&&(

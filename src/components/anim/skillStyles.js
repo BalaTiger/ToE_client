@@ -24,6 +24,9 @@ export const SKILL_ANIMATION_STYLES = `
   @keyframes huntVigFade {
     0% {opacity:0} 18% {opacity:1} 80% {opacity:1} 100% {opacity:0}
   }
+  @keyframes huntVigPersist {
+    0% {opacity:0} 100% {opacity:1}
+  }
   @keyframes huntScopeMove {
     0%   {transform:translate(calc(var(--wobX,18px)),calc(var(--wobY,-22px)))}
     15%  {transform:translate(-16px, 20px)}
