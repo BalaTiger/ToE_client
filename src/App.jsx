@@ -241,6 +241,7 @@ import {
   createRuleResolutionTransaction,
   buildHuntRevealStepFromVisualEvent,
   pruneConsumedVisualEvents,
+  markConsumedVisualEvents,
   chooseAiEtherealizeRedirectTarget,
   shouldAiUseEtherealize,
   appendConfirmedChainLoss,
@@ -7633,6 +7634,10 @@ export default function Game(){
       // 本地播放队列跳过了已播过的暗抽飞牌，覆盖率校验必须基于完整 queue
       finishTutorialActionWithState(pendingWinGs,showTutorial?TUTORIAL_FLOW.TREASURE_MAP_ANIM:tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}),
         strictActionQueueMeta(pendingWinGs,queue,consumedVisualEventIdsRef.current,'resolved action queue'));
+      // 播放队列缺失暗抽飞牌段时，提交边界按播放队列过滤可消费事件会漏掉 swapEvent，
+      // 使其永远不被消费、残留在 _visualEvents 日志里，在后续严格校验（如回合结束黄液发放）中误报。
+      // 该段动画在暗抽浮层已播过，完整 queue 校验也已通过，这里显式补记消费。
+      markConsumedVisualEvents(consumedVisualEventIdsRef.current,[swapEvent]);
       return;
     }
     // 检查目标（非自身）是否为寻宝者且掉包后获胜
@@ -7657,6 +7662,8 @@ export default function Game(){
     // 同上行分支：覆盖率校验基于完整 queue，播放队列才跳过暗抽飞牌
     finishTutorialActionWithState(newGs,tutorialNext,dropSwapTakenTransferStep(queue,{sourceIdx:0,targetIdx:swapTi}),
       strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'resolved action queue'));
+    // 同上行分支：暗抽飞牌段已在暗抽浮层播过，播放队列缺失该段会让提交边界漏记 swapEvent 消费，补记。
+    markConsumedVisualEvents(consumedVisualEventIdsRef.current,[swapEvent]);
   }
 
   function huntSelectTarget(ti){
