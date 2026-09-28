@@ -31,9 +31,20 @@ async function fetchManifest() {
   return response.json();
 }
 
+async function fetchAsset(request) {
+  const response = await fetch(request);
+  if (isValidAssetResponse(request, response)) return response;
+  const originalRequest = typeof request === 'string'
+    ? new Request(new URL(request, self.location.origin)) : request;
+  const retryUrl = new URL(originalRequest.url);
+  // A CDN can cache an HTML fallback at an asset URL; bypass that cache key once.
+  retryUrl.searchParams.set('toe-retry', Date.now());
+  return fetch(new Request(retryUrl, originalRequest), { cache: 'reload' });
+}
+
 async function putIfOk(cache, request) {
   try {
-    const response = await fetch(request);
+    const response = await fetchAsset(request);
     if (isValidAssetResponse(request, response)) await cache.put(request, response);
   } catch {
     // Precache is best-effort; runtime fetch still works.
@@ -99,7 +110,7 @@ self.addEventListener('fetch', event => {
         await cache.delete(request);
       }));
     }
-    const response = await fetch(request);
+    const response = await fetchAsset(request);
     if (isValidAssetResponse(request, response)) {
       const cache = await caches.open(RUNTIME_CACHE);
       event.waitUntil(cache.put(request, response.clone()));

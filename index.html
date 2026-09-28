@@ -6,6 +6,45 @@
     <link rel="shortcut icon" type="image/png" href="%BASE_URL%favicon.png?v=20260701" />
     <link rel="apple-touch-icon" href="%BASE_URL%favicon.png?v=20260701" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- This must run outside the module graph: a failed entry cannot register its own recovery worker. -->
+    <script data-toe-module-recovery>
+      (() => {
+        let recovering = false;
+        window.addEventListener('error', async event => {
+          const script = event.target;
+          if (recovering || script?.tagName !== 'SCRIPT' || script.type !== 'module'
+            || !script.src.startsWith(location.origin + '/assets/') || !navigator.serviceWorker) return;
+          recovering = true;
+          const key = 'toe_module_recovery:' + script.src;
+          try {
+            // One automatic reload per entry version and tab, even if the deployment is incomplete.
+            if (sessionStorage.getItem(key)) return;
+            const registration = await navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' });
+            if (!registration.installing && !registration.waiting) await registration.update();
+            const worker = registration.installing || registration.waiting || registration.active;
+            if (!worker) return;
+            if (worker.state !== 'activated') await new Promise((resolve, reject) => {
+              const finish = error => {
+                clearTimeout(timer);
+                worker.removeEventListener('statechange', check);
+                if (error) reject(error); else resolve();
+              };
+              const check = () => {
+                if (worker.state === 'activated') finish();
+                else if (worker.state === 'redundant') finish(new Error('Recovery worker failed'));
+              };
+              const timer = setTimeout(() => finish(new Error('Recovery worker timed out')), 15000);
+              worker.addEventListener('statechange', check);
+              check();
+            });
+            sessionStorage.setItem(key, '1');
+            location.reload();
+          } catch (error) {
+            console.warn('Module loading recovery failed.', error);
+          }
+        }, true);
+      })();
+    </script>
     <title>《邪神的宝藏》——克苏鲁卡牌对战</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>

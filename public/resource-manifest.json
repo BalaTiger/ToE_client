@@ -1,7 +1,13 @@
 {
-  "version": "c26bfcf7923fe604",
-  "generatedAt": "2026-09-28T12:54:05.774Z",
+  "version": "1f21664eb6b4890d",
+  "generatedAt": "2026-09-28T13:11:53.000Z",
   "resources": [
+    {
+      "path": "/404.html",
+      "type": "asset",
+      "size": 275,
+      "revision": "46de647ab64b0de1"
+    },
     {
       "path": "/bg.webp",
       "type": "image",
