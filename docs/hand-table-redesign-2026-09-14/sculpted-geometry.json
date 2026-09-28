@@ -1,0 +1,569 @@
+[
+  {
+    "label": "desktop-720",
+    "buttons": [
+      {
+        "box": {
+          "bottom": 475.4375,
+          "height": 44,
+          "left": 283.984375,
+          "right": 415.984375,
+          "top": 431.4375,
+          "width": 132,
+          "x": 283.984375,
+          "y": 431.4375
+        },
+        "disabled": false,
+        "hit": true,
+        "text": "✦掉包"
+      },
+      {
+        "box": {
+          "bottom": 475.4375,
+          "height": 44,
+          "left": 423.984375,
+          "right": 555.984375,
+          "top": 431.4375,
+          "width": 132,
+          "x": 423.984375,
+          "y": 431.4375
+        },
+        "disabled": false,
+        "hit": true,
+        "text": "☕︎休息"
+      },
+      {
+        "box": {
+          "bottom": 475.4375,
+          "height": 44,
+          "left": 563.984375,
+          "right": 695.984375,
+          "top": 431.4375,
+          "width": 132,
+          "x": 563.984375,
+          "y": 431.4375
+        },
+        "disabled": false,
+        "hit": true,
+        "text": "☣︎繁衍"
+      },
+      {
+        "box": {
+          "bottom": 475.4375,
+          "height": 44,
+          "left": 703.984375,
+          "right": 835.984375,
+          "top": 431.4375,
+          "width": 132,
+          "x": 703.984375,
+          "y": 431.4375
+        },
+        "disabled": false,
+        "hit": true,
+        "text": "⌛︎结束回合"
+      }
+    ],
+    "cards": [
+      {
+        "angle": "-12deg",
+        "box": {
+          "bottom": 664.13818359375,
+          "height": 151.2052001953125,
+          "left": 333.3677062988281,
+          "right": 449.5632934570313,
+          "top": 512.9329833984375,
+          "width": 116.19558715820312,
+          "x": 333.3677062988281,
+          "y": 512.9329833984375
+        },
+        "hit": true,
+        "id": "gallery-zone-0",
+        "lift": "0px",
+        "ratio": 0.6644371110274412
+      },
+      {
+        "angle": "-7.2deg",
+        "box": {
+          "bottom": 639.7973022460938,
+          "height": 145.6650390625,
+          "left": 435.73577880859375,
+          "right": 542.0029296875,
+          "top": 494.13226318359375,
+          "width": 106.26715087890624,
+          "x": 435.73577880859375,
+          "y": 494.13226318359375
+        },
+        "hit": true,
+        "id": "gallery-zone-1",
+        "lift": "0px -21.3333px",
+        "ratio": 0.6644371110274412
+      },
+      {
+        "angle": "-2.4deg",
+        "box": {
+          "bottom": 625.7305297851562,
+          "height": 139.10311889648438,
+          "left": 538.491455078125,
+          "right": 634.084716796875,
+          "top": 486.6274108886719,
+          "width": 95.59326171875,
+          "x": 538.491455078125,
+          "y": 486.6274108886719
+        },
+        "hit": true,
+        "id": "gallery-zone-2",
+        "lift": "0px -32px",
+        "ratio": 0.6644371110274412
+      },
+      {
+        "angle": "2.4deg",
+        "box": {
+          "bottom": 625.7305297851562,
+          "height": 139.10311889648438,
+          "left": 635.915283203125,
+          "right": 731.5084838867188,
+          "top": 486.6274108886719,
+          "width": 95.59320068359376,
+          "x": 635.915283203125,
+          "y": 486.6274108886719
+        },
+        "hit": true,
+        "id": "gallery-god-CTH-0",
+        "lift": "0px -32px",
+        "ratio": 0.6644371110274412
+      },
+      {
+        "angle": "7.2deg",
+        "box": {
+          "bottom": 639.7973022460938,
+          "height": 145.6650390625,
+          "left": 727.9971313476562,
+          "right": 834.2642211914062,
+          "top": 494.13226318359375,
+          "width": 106.26708984375,
+          "x": 727.9971313476562,
+          "y": 494.13226318359375
+        },
+        "hit": true,
+        "id": "gallery-young",
+        "lift": "0px -21.3333px",
+        "ratio": 0.6644371110274412
+      },
+      {
+        "angle": "12deg",
+        "box": {
+          "bottom": 664.13818359375,
+          "height": 151.2052001953125,
+          "left": 820.4367065429688,
+          "right": 936.6322631835938,
+          "top": 512.9329833984375,
+          "width": 116.195556640625,
+          "x": 820.4367065429688,
+          "y": 512.9329833984375
+        },
+        "hit": true,
+        "id": "gallery-slime",
+        "lift": "0px",
+        "ratio": 0.6644371110274412
+      }
+    ],
+    "decor": [
+      {
+        "box": {
+          "bottom": 703.890625,
+          "height": 290.453125,
+          "left": 25,
+          "right": 325,
+          "top": 413.4375,
+          "width": 300,
+          "x": 25,
+          "y": 413.4375
+        },
+        "loaded": true,
+        "pointerEvents": "none"
+      },
+      {
+        "box": {
+          "bottom": 703.890625,
+          "height": 290.453125,
+          "left": 945,
+          "right": 1245,
+          "top": 413.4375,
+          "width": 300,
+          "x": 945,
+          "y": 413.4375
+        },
+        "loaded": true,
+        "pointerEvents": "none"
+      }
+    ],
+    "hand": {
+      "bottom": 703.890625,
+      "height": 278.453125,
+      "left": 47,
+      "right": 1223,
+      "top": 425.4375,
+      "width": 1176,
+      "x": 47,
+      "y": 425.4375
+    },
+    "page": [
+      1280,
+      720
+    ],
+    "strip": {
+      "bottom": 697.890625,
+      "clientWidth": 1150,
+      "height": 219.453125,
+      "left": 60,
+      "overflowX": "visible",
+      "right": 1210,
+      "scrollLeft": 0,
+      "scrollWidth": 1150,
+      "top": 478.4375,
+      "width": 1150,
+      "x": 60,
+      "y": 478.4375
+    },
+    "viewport": [
+      1280,
+      720
+    ]
+  },
+  {
+    "label": "desktop-900",
+    "buttons": [
+      {
+        "h": 44,
+        "hit": true,
+        "text": "✦掉包",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☕︎休息",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☣︎繁衍",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "⌛︎结束回合",
+        "w": 132
+      }
+    ],
+    "cards": [
+      {
+        "angle": "-12deg",
+        "lift": "0px",
+        "ratio": 0.6644187166752487
+      },
+      {
+        "angle": "-7.2deg",
+        "lift": "0px -21.3333px",
+        "ratio": 0.6644187166752487
+      },
+      {
+        "angle": "-2.4deg",
+        "lift": "0px -32px",
+        "ratio": 0.6644187166752487
+      },
+      {
+        "angle": "2.4deg",
+        "lift": "0px -32px",
+        "ratio": 0.6644187166752487
+      },
+      {
+        "angle": "7.2deg",
+        "lift": "0px -21.3333px",
+        "ratio": 0.6644187166752487
+      },
+      {
+        "angle": "12deg",
+        "lift": "0px",
+        "ratio": 0.6644187166752487
+      }
+    ],
+    "hand": {
+      "bottom": 881.65625,
+      "height": 323.609375,
+      "left": 127,
+      "right": 1303,
+      "top": 558.046875,
+      "width": 1176,
+      "x": 127,
+      "y": 558.046875
+    },
+    "page": [
+      1440,
+      900
+    ],
+    "strip": {
+      "clientWidth": 1150,
+      "scrollLeft": 0,
+      "scrollWidth": 1150
+    },
+    "viewport": [
+      1440,
+      900
+    ]
+  },
+  {
+    "label": "portrait",
+    "buttons": [
+      {
+        "h": 44,
+        "hit": true,
+        "text": "✦掉包",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☕︎休息",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☣︎繁衍",
+        "w": 132
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "⌛︎结束回合",
+        "w": 132
+      }
+    ],
+    "cards": [
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644733643420903
+      }
+    ],
+    "hand": {
+      "bottom": 752.859375,
+      "height": 310.390625,
+      "left": 8.796875,
+      "right": 383.203125,
+      "top": 442.46875,
+      "width": 374.40625,
+      "x": 8.796875,
+      "y": 442.46875
+    },
+    "page": [
+      390,
+      844
+    ],
+    "strip": {
+      "clientWidth": 1090,
+      "scrollLeft": 0,
+      "scrollWidth": 1640
+    },
+    "viewport": [
+      390,
+      844
+    ]
+  },
+  {
+    "label": "landscape",
+    "buttons": [
+      {
+        "h": 44,
+        "hit": true,
+        "text": "✦掉包",
+        "w": 104
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☕︎休息",
+        "w": 104
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☣︎繁衍",
+        "w": 104
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "⌛︎结束回合",
+        "w": 104
+      }
+    ],
+    "cards": [
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6644968352903976
+      }
+    ],
+    "hand": {
+      "bottom": 384.515625,
+      "height": 98,
+      "left": 110.578125,
+      "right": 745.421875,
+      "top": 286.515625,
+      "width": 634.84375,
+      "x": 110.578125,
+      "y": 286.515625
+    },
+    "page": [
+      844,
+      390
+    ],
+    "strip": {
+      "clientWidth": 641,
+      "scrollLeft": 0,
+      "scrollWidth": 641
+    },
+    "viewport": [
+      844,
+      390
+    ]
+  },
+  {
+    "label": "landscape-small",
+    "buttons": [
+      {
+        "h": 44,
+        "hit": true,
+        "text": "✦掉包",
+        "w": 103.984375
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☕︎休息",
+        "w": 103.984375
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "☣︎繁衍",
+        "w": 103.984375
+      },
+      {
+        "h": 44,
+        "hit": true,
+        "text": "⌛︎结束回合",
+        "w": 103.984375
+      }
+    ],
+    "cards": [
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      },
+      {
+        "angle": "none",
+        "lift": "none",
+        "ratio": 0.6641286898896007
+      }
+    ],
+    "hand": {
+      "bottom": 371.875,
+      "height": 97.984375,
+      "left": 34.28125,
+      "right": 644.71875,
+      "top": 273.890625,
+      "width": 610.4375,
+      "x": 34.28125,
+      "y": 273.890625
+    },
+    "page": [
+      667,
+      375
+    ],
+    "strip": {
+      "clientWidth": 620,
+      "scrollLeft": 0,
+      "scrollWidth": 620
+    },
+    "viewport": [
+      667,
+      375
+    ]
+  }
+]

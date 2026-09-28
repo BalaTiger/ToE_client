@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
+import { isLocalTestHost } from "../utils/runtime";
 import { buildPublicUrl } from "../utils/url";
 
 const RESOURCE_MANIFEST_PATH = '/resource-manifest.json';
@@ -7,6 +8,25 @@ const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 const RESOURCE_LOAD_TIMEOUT_MS = 8000;
 const BOOTSTRAP_IMAGE_CONCURRENCY = 5;
 const DEFERRED_IMAGE_CONCURRENCY = 2;
+
+// These are heard before the first battle has had time to finish idle loading.
+// Keep this set deliberately small: expansion-specific effects stay deferred.
+const BOOTSTRAP_AUDIO_PATHS = new Set([
+  '/sounds/BGM/mainTheme.mp3',
+  '/sounds/SE/common/ui/open.mp3',
+  '/sounds/SE/common/ui/close.mp3',
+  '/sounds/SE/common/turn/turn-start.mp3',
+  '/sounds/SE/common/card/one_card_shift1.mp3',
+  '/sounds/SE/common/encounter/god_highlight.mp3',
+  '/sounds/SE/common/encounter/positive-card-flip.mp3',
+  '/sounds/SE/common/encounter/neutral-card-flip.mp3',
+  '/sounds/SE/common/encounter/negative-card-flip.mp3',
+]);
+
+const EXPANSION_SOUND_DIRECTORY_BY_KEY = {
+  '地神的潜影': '/sounds/SE/earthShadow/',
+  '群星呼唤': '/sounds/SE/starsCall/',
+};
 
 const LOAD_ERROR_LABELS = {
   audio: '音频加载失败',
@@ -183,35 +203,60 @@ function isCardIllustrationResource(resource) {
   return resource.path.startsWith('/img/card/illustration/');
 }
 
+function isEffectImageResource(resource) {
+  return resource.type === 'image' && resource.path.startsWith('/img/effects/');
+}
+
 function isBootstrapImageResource(resource) {
   if (resource.type !== 'image') return false;
   if (isAnimatedCardBackResource(resource)) return false;
   if (isCardIllustrationResource(resource)) return false;
+  if (isEffectImageResource(resource)) return false;
   return true;
+}
+
+function isBootstrapAudioResource(resource) {
+  return resource.type === 'audio' && BOOTSTRAP_AUDIO_PATHS.has(resource.path);
 }
 
 function getDeferredConcurrency(networkProfile) {
   return Math.max(DEFERRED_IMAGE_CONCURRENCY, networkProfile.mediaConcurrency);
 }
 
+function getDeferredStage(loadAllThemes, activeExpansionKey) {
+  return loadAllThemes ? 'all' : `base:${activeExpansionKey}`;
+}
+
 function selectBootstrapResources(manifest) {
   return manifest.resources
-    .filter(isBootstrapImageResource)
+    .filter(resource => isBootstrapImageResource(resource) || isBootstrapAudioResource(resource))
     .sort((a, b) => a.path.localeCompare(b.path));
 }
 
-function selectDeferredResources(manifest, loadAllThemes) {
+function selectDeferredResources(manifest, loadAllThemes, activeExpansionKey) {
   const deferredImages = manifest.resources.filter(isAnimatedCardBackResource);
-  const media = manifest.resources.filter(resource => resource.type === 'audio' || resource.type === 'video');
-  if (loadAllThemes) return [...deferredImages, ...media];
+  const effectImages = manifest.resources.filter(isEffectImageResource);
+  const media = manifest.resources.filter(resource =>
+    (resource.type === 'audio' || resource.type === 'video') && !isBootstrapAudioResource(resource)
+  );
+  if (loadAllThemes) return [...effectImages, ...deferredImages, ...media];
+
+  const expansionDirectory = EXPANSION_SOUND_DIRECTORY_BY_KEY[activeExpansionKey]
+    || EXPANSION_SOUND_DIRECTORY_BY_KEY['地神的潜影'];
   const baseMedia = media.filter(resource => {
-    return !resource.path.includes('battle_stars_call') && resource.type !== 'video';
+    if (resource.type === 'video') return false;
+    if (resource.path.startsWith('/sounds/SE/common/')) return true;
+    if (resource.path.startsWith(expansionDirectory)) return true;
+    if (expansionDirectory.includes('earthShadow') && resource.path.includes('battle_earth_shadow')) return true;
+    if (expansionDirectory.includes('starsCall') && resource.path.includes('battle_stars_call')) return true;
+    return false;
   });
-  return [...deferredImages, ...baseMedia];
+  return [...effectImages, ...deferredImages, ...baseMedia];
 }
 
-export function useResourcePreload({ loadAllThemes = false } = {}) {
-  const [isLoading, setIsLoading] = useState(true);
+export function useResourcePreload({ loadAllThemes = false, activeExpansionKey = '地神的潜影' } = {}) {
+  const isLocalPreview = useMemo(() => isLocalTestHost(), []);
+  const [isLoading, setIsLoading] = useState(() => !isLocalTestHost());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingError, setLoadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
@@ -237,15 +282,18 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
       const manifest = await loadManifest();
       manifestRef.current = manifest;
       const bootstrapResources = selectBootstrapResources(manifest);
-      const deferredResources = selectDeferredResources(manifest, loadAllThemes);
+      const deferredResources = selectDeferredResources(manifest, loadAllThemes, activeExpansionKey);
 
       try {
         const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-        if (cachedVersion === manifest.version) {
+        if (isLocalPreview || cachedVersion === manifest.version) {
           setSafeIsLoading(false);
-          deferredStageRef.current = loadAllThemes ? 'all' : 'base';
+          deferredStageRef.current = getDeferredStage(loadAllThemes, activeExpansionKey);
           if (!networkProfile.deferMedia) {
-            scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
+            scheduleDeferredPreload(
+              isLocalPreview ? [...bootstrapResources, ...deferredResources] : deferredResources,
+              getDeferredConcurrency(networkProfile),
+            );
             scheduleCardIllustrationIdleDownload();
           }
           return;
@@ -279,7 +327,7 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
       }
 
       setSafeIsLoading(false);
-      deferredStageRef.current = loadAllThemes ? 'all' : 'base';
+      deferredStageRef.current = getDeferredStage(loadAllThemes, activeExpansionKey);
       if (!networkProfile.deferMedia) {
         scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
         scheduleCardIllustrationIdleDownload();
@@ -290,17 +338,17 @@ export function useResourcePreload({ loadAllThemes = false } = {}) {
     return () => {
       cancelled = true;
     };
-  }, [loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
+  }, [activeExpansionKey, isLocalPreview, loadAllThemes, networkProfile]);
 
   useEffect(() => {
     if (isLoading || !manifestRef.current) return;
-    const nextStage = loadAllThemes ? 'all' : 'base';
+    const nextStage = getDeferredStage(loadAllThemes, activeExpansionKey);
     if (deferredStageRef.current === nextStage) return;
     if (deferredStageRef.current === 'all') return;
     deferredStageRef.current = nextStage;
     if (networkProfile.deferMedia) return;
-    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes), getDeferredConcurrency(networkProfile));
-  }, [isLoading, loadAllThemes, networkProfile.deferMedia, networkProfile.mediaConcurrency]);
+    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes, activeExpansionKey), getDeferredConcurrency(networkProfile));
+  }, [activeExpansionKey, isLoading, loadAllThemes, networkProfile]);
 
   return {
     isLoading,

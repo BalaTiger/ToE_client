@@ -18,38 +18,6 @@ function useSpriteFrame(enabled, frameCount, fps) {
   return frame;
 }
 
-function useDecodedImage(path, enabled = true) {
-  const [ready, setReady] = React.useState(false);
-  React.useEffect(() => {
-    setReady(false);
-    if (!enabled || !path) return undefined;
-    if (decodedFrameCache.get(path)) {
-      setReady(true);
-      return undefined;
-    }
-    let cancelled = false;
-    const img = new Image();
-    img.onload = async () => {
-      try {
-        if (img.decode) await img.decode();
-      } catch {
-        // Loaded images are still usable if decode rejects.
-      }
-      decodedFrameCache.set(path, true);
-      if (!cancelled) setReady(true);
-    };
-    img.onerror = () => {
-      if (!cancelled) setReady(false);
-    };
-    img.src = path;
-    return () => {
-      cancelled = true;
-    };
-  }, [enabled, path]);
-
-  return ready;
-}
-
 function useDecodedImages(paths, enabled = true) {
   const [ready, setReady] = React.useState(false);
   React.useEffect(() => {
@@ -84,16 +52,24 @@ function useDecodedImages(paths, enabled = true) {
     return () => {
       cancelled = true;
     };
-  }, [enabled, paths?.join('|')]);
+  }, [enabled, paths]);
   return ready;
 }
 
-function useCardBackStyle(expansionKey, enabled = true) {
-  const anim = getAnimatedCardBack(expansionKey);
-  const fallbackImage = buildPublicUrl(getCardBackImage(expansionKey));
+function getSpecialCardBackImage(card) {
+  if (card?.isBlackGoatYoung || card?.isTsathogguaSlime) return '/img/card/cardback_token.png';
+  if (card?.effect && !card?.isGod && !card?.isZone) return '/img/card/cardback_sancheck.png';
+  return null;
+}
+
+function useCardBackStyle(expansionKey, enabled = true, card) {
+  const specialBackImage = getSpecialCardBackImage(card);
+  const anim = specialBackImage ? null : getAnimatedCardBack(expansionKey);
+  const fallbackImage = buildPublicUrl(specialBackImage || getCardBackImage(expansionKey));
   const framePaths = React.useMemo(() => {
+    if (specialBackImage) return [];
     return getAnimatedCardBackFramePaths(expansionKey, true).map(path => buildPublicUrl(path));
-  }, [expansionKey]);
+  }, [expansionKey, specialBackImage]);
   const framesReady = useDecodedImages(framePaths, enabled && framePaths.length > 0);
   const frame = useSpriteFrame(enabled && framesReady, anim?.frameCount || 0, anim?.fps || 12);
 
@@ -101,7 +77,7 @@ function useCardBackStyle(expansionKey, enabled = true) {
     return {
       mode: 'image',
       backgroundImage: `url('${fallbackImage}')`,
-      backgroundSize: '100% 100%',
+      backgroundSize: 'contain',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
     };
@@ -124,7 +100,7 @@ function CardBackFrameImage({ cardBackStyle }) {
         inset: 0,
         width: '100%',
         height: '100%',
-        objectFit: 'fill',
+        objectFit: 'contain',
         pointerEvents: 'none',
         userSelect: 'none',
       }}
@@ -135,11 +111,14 @@ function CardBackFrameImage({ cardBackStyle }) {
 function AnimatedCardBack({
   expansionKey = '地神的潜影',
   animated = true,
+  card,
   style,
   className,
   children,
+  'data-pile-card': pileCard,
+  'data-pile-card-top': pileCardTop,
 }) {
-  const cardBackStyle = useCardBackStyle(expansionKey, animated);
+  const cardBackStyle = useCardBackStyle(expansionKey, animated, card);
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,
@@ -147,16 +126,19 @@ function AnimatedCardBack({
     ...plainCardBackStyle
   } = cardBackStyle;
   const {
-    background,
-    backgroundImage,
-    backgroundSize,
-    backgroundPosition,
-    backgroundRepeat,
-    animation,
+    background: _background,
+    backgroundImage: _backgroundImage,
+    backgroundSize: _backgroundSize,
+    backgroundPosition: _backgroundPosition,
+    backgroundRepeat: _backgroundRepeat,
+    animation: _animation,
     ...safeStyle
   } = style || {};
   return (
     <div
+      data-card-back
+      data-pile-card={pileCard}
+      data-pile-card-top={pileCardTop}
       className={className}
       style={{
         position: 'relative',
@@ -175,9 +157,10 @@ function AnimatedCardBack({
 function CardBackLayer({
   expansionKey = '地神的潜影',
   animated = true,
+  card,
   style,
 }) {
-  const cardBackStyle = useCardBackStyle(expansionKey, animated);
+  const cardBackStyle = useCardBackStyle(expansionKey, animated, card);
   const isFrame = cardBackStyle.mode === 'frame';
   const {
     mode: _mode,
@@ -186,6 +169,7 @@ function CardBackLayer({
   } = cardBackStyle;
   return (
     <div
+      data-card-back
       style={{
         position: 'absolute',
         inset: 0,
@@ -201,4 +185,4 @@ function CardBackLayer({
   );
 }
 
-export { AnimatedCardBack, CardBackLayer, useCardBackStyle };
+export { AnimatedCardBack, CardBackLayer };

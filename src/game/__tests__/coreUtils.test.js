@@ -21,6 +21,7 @@ import {
   isNegativeZoneCard,
   isNeutralZoneCard,
   isDodgeableZoneCard,
+  shouldTriggerTreasureDodge,
   getZoneCardPolarity,
   getZoneCardEffectScope,
   zoneCardHasGuaranteedHpLoss,
@@ -36,7 +37,6 @@ import {
   getPrevLivingIndex,
   getNextLivingIndex,
   killPlayerState,
-  clearPendingAnimDeathFlags,
   makeInspectionMeta,
   sortInspectionTargets,
   buildEtherealizeLoss,
@@ -216,6 +216,13 @@ describe('card type predicates', () => {
     expect(isDodgeableZoneCard(makeZoneCardByName('地磁反转'))).toBe(false);
     expect(isDodgeableZoneCard(makeZoneCardByName('偷吃龙蛋'))).toBe(false);
     expect(isDodgeableZoneCard(makeZoneCardByName('投掷石块'))).toBe(false);
+  });
+
+  it('秤心仪式只在角色本局曾信仰邪神时触发规避', () => {
+    const card = makeZoneCardByName('秤心仪式');
+
+    expect(shouldTriggerTreasureDodge(card, { hasBelievedGod: false })).toBe(false);
+    expect(shouldTriggerTreasureDodge(card, { hasBelievedGod: true })).toBe(true);
   });
 
   it('getZoneCardEffectScope', () => {
@@ -432,7 +439,7 @@ describe('killPlayerState', () => {
 
     expect(p.isDead).toBe(true);
     expect(p.roleRevealed).toBe(true);
-    expect(p._pendingAnimDeath).toBe(true);
+    expect(p).not.toHaveProperty('_pendingAnimDeath');
     expect(p.hand).toHaveLength(0);
     expect(p.godZone).toHaveLength(0);
     expect(p.godName).toBe(null);
@@ -450,6 +457,20 @@ describe('killPlayerState', () => {
 
     expect(p.isDead).toBe(true);
     expect(Disc).toHaveLength(0);
+  });
+
+  it('死亡清手牌时衍生牌销毁，规则状态不携带动画清单', () => {
+    const normal = makeZoneCard('A1', 0, { id: 'death-normal' });
+    const derived = makeZoneCard('A2', 0, { id: 'death-derived', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const p = makePlayer({ hand: [normal, derived] });
+    const Disc = [];
+    const L = [];
+
+    killPlayerState([p], 0, Disc, L);
+
+    expect(Disc).toEqual([normal]);
+    expect(p).not.toHaveProperty('_pendingDeathDiscardCards');
+    expect(L.some(line => line.includes('1 张衍生牌被销毁'))).toBe(true);
   });
 
   it('索引无效时安全返回', () => {
@@ -471,44 +492,6 @@ describe('killPlayerState', () => {
   });
 });
 
-describe('clearPendingAnimDeathFlags', () => {
-  it('清除标记', () => {
-    const players = [
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: false },
-    ];
-
-    const result = clearPendingAnimDeathFlags(players);
-    expect(result[0]._pendingAnimDeath).toBe(false);
-    expect(result[1]._pendingAnimDeath).toBe(false);
-    expect(result[2]._pendingAnimDeath).toBe(false);
-  });
-
-  it('保留指定玩家', () => {
-    const players = [
-      { _pendingAnimDeath: true },
-      { _pendingAnimDeath: true },
-    ];
-
-    const result = clearPendingAnimDeathFlags(players, 1);
-    expect(result[0]._pendingAnimDeath).toBe(false);
-    expect(result[1]._pendingAnimDeath).toBe(true);
-  });
-
-  it('返回新对象不修改原数组', () => {
-    const players = [{ _pendingAnimDeath: true }];
-    const result = clearPendingAnimDeathFlags(players);
-    expect(result).not.toBe(players);
-    expect(result[0]).not.toBe(players[0]);
-  });
-
-  it('空输入安全', () => {
-    expect(clearPendingAnimDeathFlags(null)).toEqual([]);
-    expect(clearPendingAnimDeathFlags([])).toEqual([]);
-  });
-});
-
 describe('makeInspectionMeta', () => {
   it('返回默认值当 gs 为空', () => {
     const meta = makeInspectionMeta(null);
@@ -520,7 +503,7 @@ describe('makeInspectionMeta', () => {
     expect(meta.houndsOfTindalosElapsed).toBe(0);
     expect(meta._inspectionSeq).toBe(0);
     expect(meta._inspectionCard).toBe(null);
-    expect(meta._inspectionEvents).toEqual([]);
+    expect(meta._inspectionEvents).toBeUndefined();
   });
 
   it('复制 gs 中的值', () => {
@@ -536,13 +519,14 @@ describe('makeInspectionMeta', () => {
       _inspectionTarget: 2,
       _inspectionPrevLogLen: 10,
       _inspectionBeforePlayers: [],
-      _inspectionEvents: [{ type: 'test' }],
+      _visualEvents: [{ id: 'inspection:test', type: 'inspection' }],
     };
     const meta = makeInspectionMeta(gs);
     expect(meta.inspectionDeck).toEqual([1, 2]);
     expect(meta.sealLooseningCount).toBe(2);
     expect(meta.houndsOfTindalosActive).toBe(true);
     expect(meta._inspectionSeq).toBe(3);
+    expect(meta._visualEvents).toEqual(gs._visualEvents);
   });
 });
 

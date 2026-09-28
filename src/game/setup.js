@@ -6,12 +6,15 @@ import {
   EXPANSIONS,
   INSPECTION_DECK,
 } from '../constants/card';
-import { shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { isWinHand, shuffle, ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST } from './coreUtils';
+import { resolveBalancePatches } from './balancePatches';
 
 export const EXPANSION_RANDOM_KEY = 'random_battle_expansion';
 export const DEFAULT_EXPANSION_KEY = '地神的潜影';
 export const STARS_CALL_KEY = '群星呼唤';
+export const TEMPORARY_STARS_CALL_KEY = 'temporary_stars_call';
 const STARS_CALL_TEMP_REPLACEMENT_CHANCE = 0.5;
+const ROLE_KEYS = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
 
 function createGodCards(godKey, count, startId = 0) {
   const def = GOD_DEFS[godKey];
@@ -53,6 +56,13 @@ export function resolveBattleExpansionPlan(expansionKey = EXPANSION_RANDOM_KEY) 
       expansionKey: DEFAULT_EXPANSION_KEY,
       deckExpansionKey: DEFAULT_EXPANSION_KEY,
       temporaryStarsCall: false,
+    };
+  }
+  if (expansionKey === TEMPORARY_STARS_CALL_KEY) {
+    return {
+      expansionKey: STARS_CALL_KEY,
+      deckExpansionKey: DEFAULT_EXPANSION_KEY,
+      temporaryStarsCall: true,
     };
   }
   const resolvedExpansionKey = EXPANSIONS[expansionKey] ? expansionKey : DEFAULT_EXPANSION_KEY;
@@ -128,90 +138,75 @@ export function applyTemporaryStarsCallDeckReplacement(deck = [], replacedGodKey
   };
 }
 
-export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null) {
+export function normalizeRoleCounts(roleCounts, N = 5) {
+  if (!roleCounts || typeof roleCounts !== 'object') return null;
+  const normalized = Object.fromEntries(ROLE_KEYS.map(role => [role, Number(roleCounts[role] || 0)]));
+  if (ROLE_KEYS.some(role => !Number.isInteger(normalized[role]) || normalized[role] < 0)) return null;
+  if (ROLE_KEYS.reduce((sum, role) => sum + normalized[role], 0) !== N) return null;
+  const baseCount = Math.floor(N / 3);
+  if (normalized[ROLE_CULTIST] !== baseCount) return null;
+  if (normalized[ROLE_TREASURE] < baseCount || normalized[ROLE_HUNTER] < baseCount) return null;
+  if (Math.abs(normalized[ROLE_TREASURE] - normalized[ROLE_HUNTER]) > 1) return null;
+  return normalized;
+}
+
+export function applySelectedLocalRole(state, selectedRole) {
+  if (!state || !Array.isArray(state.players) || state.players.length === 0) return state;
+  const rolePool = state.players.map(player => player?.role);
+  const playerRole = selectedRole === 'random' ? rolePool[0] : selectedRole;
+  if (!ROLE_KEYS.includes(playerRole) || rolePool.some(role => !ROLE_KEYS.includes(role))) return state;
+
+  const remainingRoles = [...rolePool];
+  const selectedPoolIndex = remainingRoles.indexOf(playerRole);
+  if (selectedPoolIndex < 0) return state;
+  remainingRoles.splice(selectedPoolIndex, 1);
+  const assignedRoles = [playerRole, ...shuffle(remainingRoles)];
+
+  const applyRole = players => Array.isArray(players)
+    ? players.map((player, index) => {
+      const role = assignedRoles[index];
+      return ROLE_KEYS.includes(role) ? { ...player, role } : player;
+    })
+    : players;
+  return {
+    ...state,
+    players: applyRole(state.players),
+    _playersBeforeThisDraw: applyRole(state._playersBeforeThisDraw),
+    _preTurnPlayers: applyRole(state._preTurnPlayers),
+    _playersBeforeCthDraws: applyRole(state._playersBeforeCthDraws),
+  };
+}
+
+export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null, forcedRoleCounts = null) {
   if (N < 2) throw new Error('游戏人数不能少于2人');
 
-  if (N === 2) {
-    const baseRoles = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
-    if (isSinglePlayer && forcedPlayerRole && baseRoles.includes(forcedPlayerRole)) {
-      const remaining = shuffle(baseRoles.filter(role => role !== forcedPlayerRole));
-      return [forcedPlayerRole, remaining[0]];
-    }
-    return shuffle(baseRoles).slice(0, 2);
+  const normalizedForcedCounts = normalizeRoleCounts(forcedRoleCounts, N);
+  if (normalizedForcedCounts) {
+    return shuffle(ROLE_KEYS.flatMap(role => Array(normalizedForcedCounts[role]).fill(role)));
   }
 
-  const roles = [ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST];
-  const counts = { [ROLE_TREASURE]: 1, [ROLE_HUNTER]: 1, [ROLE_CULTIST]: 1 };
-  const limit = Math.floor(N / 2);
-
-  let playerRoleProbabilities = { [ROLE_TREASURE]: 1, [ROLE_HUNTER]: 1, [ROLE_CULTIST]: 1 };
-  let playerRole = null;
-
-  if (isSinglePlayer) {
-    try {
-      const storedData = localStorage.getItem('cthulhu_role_streaks');
-      if (storedData) {
-        const streaks = JSON.parse(storedData);
-        Object.keys(streaks).forEach(role => {
-          playerRoleProbabilities[role] = Math.max(0, 1 - (streaks[role] * 0.1));
-        });
-      }
-    } catch {
-      // Ignore localStorage issues and fall back to default weights.
+  const baseCount = Math.floor(N / 3);
+  const remainder = N % 3;
+  const counts = {
+    [ROLE_TREASURE]: baseCount,
+    [ROLE_HUNTER]: baseCount,
+    [ROLE_CULTIST]: baseCount,
+  };
+  if (remainder === 1) {
+    const bonusRole = Math.random() < 0.5 ? ROLE_TREASURE : ROLE_HUNTER;
+    counts[bonusRole]++;
+  } else if (remainder === 2) {
+    counts[ROLE_TREASURE]++;
+    counts[ROLE_HUNTER]++;
+  }
+  const shuffledRoles = shuffle(ROLE_KEYS.flatMap(role => Array(counts[role]).fill(role)));
+  if (isSinglePlayer && forcedPlayerRole && ROLE_KEYS.includes(forcedPlayerRole)) {
+    const forcedIndex = shuffledRoles.indexOf(forcedPlayerRole);
+    if (forcedIndex > 0) {
+      [shuffledRoles[0], shuffledRoles[forcedIndex]] = [shuffledRoles[forcedIndex], shuffledRoles[0]];
     }
   }
-
-  for (let i = 3; i < N; i++) {
-    const available = [ROLE_TREASURE];
-    if (counts[ROLE_HUNTER] < limit) available.push(ROLE_HUNTER);
-    if (counts[ROLE_CULTIST] < limit) available.push(ROLE_CULTIST);
-
-    let pick;
-    if (isSinglePlayer && i === 3) {
-      const weights = available.map(role => playerRoleProbabilities[role]);
-      const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-      if (totalWeight > 0) {
-        let random = Math.random() * totalWeight;
-        for (let j = 0; j < available.length; j++) {
-          random -= weights[j];
-          if (random <= 0) {
-            pick = available[j];
-            break;
-          }
-        }
-      } else {
-        pick = available[Math.floor(Math.random() * available.length)];
-      }
-
-      playerRole = pick;
-    } else {
-      pick = available[Math.floor(Math.random() * available.length)];
-    }
-
-    roles.push(pick);
-    counts[pick]++;
-  }
-
-  if (isSinglePlayer && playerRole) {
-    try {
-      const storedData = localStorage.getItem('cthulhu_role_streaks');
-      const streaks = storedData
-        ? JSON.parse(storedData)
-        : { [ROLE_TREASURE]: 0, [ROLE_HUNTER]: 0, [ROLE_CULTIST]: 0 };
-
-      Object.keys(streaks).forEach(role => {
-        streaks[role] = 0;
-      });
-      streaks[playerRole] = (streaks[playerRole] || 0) + 1;
-
-      localStorage.setItem('cthulhu_role_streaks', JSON.stringify(streaks));
-    } catch {
-      // Ignore localStorage issues.
-    }
-  }
-
-  return shuffle(roles);
+  return shuffledRoles;
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -228,6 +223,25 @@ const RINFO = {
 export { AI_NAMES, RINFO };
 
 export const INITIAL_HAND_SIZE = 4;
+
+export function getInitialTreasureWin(players) {
+  const winnerIndices = (players || [])
+    .map((player, index) => ({ player, index }))
+    .filter(({ player }) => !player?.isDead && player?.role === ROLE_TREASURE && isWinHand(player.hand))
+    .map(({ index }) => index);
+  if (!winnerIndices.length) return null;
+
+  const winnerNames = winnerIndices.map(index => players[index].name);
+  const reason = winnerIndices.length > 1
+    ? `${winnerNames.join(' 与 ')} 的初始手牌均集齐全部编号，寻宝者共同获胜！`
+    : `${winnerNames[0]} 的初始手牌已集齐全部编号，寻宝者获胜！`;
+  return {
+    winner: ROLE_TREASURE,
+    reason,
+    winnerIdx: winnerIndices[0],
+    ...(winnerIndices[1] != null ? { winnerIdx2: winnerIndices[1] } : {}),
+  };
+}
 
 const zhCount = (count) => ({
   1: '一',
@@ -298,7 +312,8 @@ export function initGame(
   debugForceZoneCardName,
   debugForceGodCardKey,
   startNextTurn,
-  expansionKey = EXPANSION_RANDOM_KEY
+  expansionKey = EXPANSION_RANDOM_KEY,
+  options = {}
 ) {
   const names = playerNames || ['你', ...AI_NAMES];
   const N = names.length;
@@ -342,7 +357,8 @@ export function initGame(
     }
   }
 
-  const roles = mkRoles(N, isSinglePlayer);
+  const debugFixedRoleCounts = normalizeRoleCounts(options.roleCounts, N);
+  const roles = mkRoles(N, isSinglePlayer, null, debugFixedRoleCounts);
   const players = names.map((name, i) => ({
     id: i,
     name,
@@ -355,9 +371,11 @@ export function initGame(
     isDead: false,
     isResting: false,
     godEncounters: 0,
+    godEncounterCount: 0,
     godZone: [],
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     peekMemories: {},
     disableRest: false,
     disableSkill: false,
@@ -372,8 +390,21 @@ export function initGame(
 
   const inspectionDeck = shuffle([...INSPECTION_DECK]);
   const base = {
-    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
+    players, deck, discard: [], inspectionDeck, inspectionDiscard: [], currentTurn: -1, phase: 'DRAW_REVEAL', drawReveal: null, selectedCard: null, abilityData: {}, log: [`游戏开始。每人获得${zhCount(INITIAL_HAND_SIZE)}张初始手牌。`], gameOver: null, skillUsed: false, restUsed: false, multiplyUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner: null, geomagneticReversalActive: false, apophisNight: null, expansionKey: expansionPlan.expansionKey, deckExpansionKey: expansionPlan.deckExpansionKey, temporaryStarsCallReplacement, debugFixedRoleCounts, balancePatches: resolveBalancePatches(options.balancePatches), _turnKey: 0, _isMP: !!playerNames, turn: 0, turnDirection: 1, sealLooseningCount: 0, houndsOfTindalosActive: false, houndsOfTindalosTarget: null, houndsOfTindalosElapsed: 0, debugForceCard: targetCard, debugForceCardTarget
   };
   base.debugForceCardKeep = playerNames ? 'auto' : debugForceCardKeep;
-  return startNextTurn(base);
+  base._initialLog = [...base.log];
+  const initialTreasureWin = getInitialTreasureWin(players);
+  if (initialTreasureWin) {
+    for (const winnerIdx of [initialTreasureWin.winnerIdx, initialTreasureWin.winnerIdx2]) {
+      if (winnerIdx != null) players[winnerIdx].roleRevealed = true;
+    }
+    return {
+      ...base,
+      players,
+      log: [...base.log, initialTreasureWin.reason],
+      gameOver: initialTreasureWin,
+    };
+  }
+  return startNextTurn(base, options.turnOptions || {});
 }

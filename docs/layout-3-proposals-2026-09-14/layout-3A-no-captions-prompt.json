@@ -1,0 +1,9 @@
+{
+  "mode": "built-in image_gen",
+  "references": [
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-proposals-2026-09-14/layout-3A-piles-controls.png",
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-proposals-2026-09-14/layout-3A-menu-open.png"
+  ],
+  "execution": "One independent edit per screenshot with the same localized removal prompt.",
+  "prompt": "Precise localized text removal from this game screenshot. Preserve the entire image exactly except FIVE small external captions:\n1. Remove \"检定\" directly BELOW the central-left purple card pile, near x=585,y=505.\n2. Remove \"弃牌堆\" directly BELOW the center face-up discard pile, near x=835,y=540.\n3. Remove \"牌堆\" directly BELOW the central-right green card pile, near x=1075,y=505.\n4. Remove the small \"暂停\" caption BELOW the round pause icon on the upper-right star dial, near x=1570,y=198.\n5. Remove the small \"菜单\" caption BELOW the gear icon, near x=1635,y=198.\nCoordinates refer to the 1672×941 source, approximate only. Inpaint the five text-sized areas naturally using the immediately surrounding scene/background. Keep the actual THREE PILE IMAGES and both circular ICON BUTTONS completely intact and in exactly the same positions.\nIMPORTANT: Keep the lower-left count rows \"检定30\", \"牌堆41\", \"弃牌5\" unchanged. Keep all text INSIDE the card faces, hand cards, log, player stats, prompt and action buttons. If a menu popup is visible, preserve it and all text inside it, including its \"对局菜单\" heading and \"返回主界面\" button. Do not delete any other instance of the words in other locations.\nNo other editing: no layout changes, redraw, color grading, brightness adjustment, new ornament, card proportion change, object movement, blur, crop or resizing. Output the same complete landscape screenshot."
+}

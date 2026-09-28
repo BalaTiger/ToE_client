@@ -1,17 +1,22 @@
+import { chooseAiTortoiseKey, getTortoiseSelectableKeys, matchesTortoiseKey } from './aiPublicChoices';
+import { chooseAiStoneCardIndex } from './aiStoneChoice';
+import { resolveSameAbyssState } from './sameAbyssResolution';
+import { deriveEffectDecisionState } from './effectStatePatch';
+import { appendDecisionContinuation, createDecisionContinuation } from './decisionContinuations';
+import { buildTargetContinuationAbilityData } from './targetContinuation';
 import {
   clamp,
   killPlayerState,
-  getPrevLivingIndex,
-  getNextLivingIndex,
+  getAdjacentTargets,
+  getLivingAdjacentIndices,
   copyPlayers,
   shuffle,
   getLivingPlayerOrder,
   cardLogText,
   isZoneCard,
-  isPositiveZoneCard,
-  isNegativeZoneCard,
-  isBlackGoatYoung,
   isTsathogguaSlime,
+  isVanishingDerivedCard,
+  splitHandDiscardCards,
   makeInspectionMeta,
   sortInspectionTargets,
   tryVritraImmortal,
@@ -19,28 +24,27 @@ import {
   buildEtherealizeLoss,
   buildEtherealizeRedirectDecision,
   buildTsathogguaSlimeBalanceDecision,
+  cardContainsFireText,
 } from './coreUtils';
-import { buildStatEvents } from './statEvents';
+import { buildStatEvents, createPlayerDefeatedStatEvent } from './statEvents';
+import { ensureStatEventId, statEventIdentity } from './statEventIdentity';
+import { submitRecoveryEvents } from './statChangeEngine';
 import { applyBalanceDiscardSideEffects } from './balanceCards';
 import { makeProliferatingZState } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createCardEffectEvent, createEarthquakeEvent } from './visualEvents';
+import { VISUAL_EVENT, createLogOnlyVisualEvent, createCardMoveVisualEvent, createCardEffectEvent, createDiceResultVisualEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createVritraImmortalRevealEvent } from './visualEvents';
 import { createGeomagneticRestoreCard } from '../constants/card';
 import {
   addTurnScopedDamageBonus,
   getCurrentExecutionTurnOwner,
   grantTurnScopedGodPowerImmunity,
 } from './turnScopedEffects';
-
-export function cardContainsFireText(card) {
-  if (!card) return false;
-  const text = [
-    card.name || '',
-    card.subtitle || '',
-    card.desc || '',
-  ].join('').toLowerCase();
-  return text.includes('火');
-}
+import { TURN_FLOW_STAGE } from './turnFlowStages';
+import {
+  getActiveDamageLinksForPlayer,
+  getAllDamageLinks,
+  setDamageLinkActive,
+} from './damageLinks';
 
 export function markSkipNextDraw(player, reason = '效果') {
   if (!player || player.isDead) return false;
@@ -49,47 +53,285 @@ export function markSkipNextDraw(player, reason = '效果') {
   return true;
 }
 
+function settleLethalHpDamage(P, i, Disc, L, currentTurn, D) {
+  if (i == null || !P[i] || P[i].isDead || P[i].hp > 0) return false;
+  if (currentTurn != null && D != null && tryVritraImmortal(P, i, currentTurn, D, Disc, L)) return false;
+  killPlayerState(P, i, Disc, L);
+  return true;
+}
+
+function takeVritraImmortalRevealEvents(players = []) {
+  return (players || []).flatMap(player => {
+    const payload = player?._vritraImmortalReveal;
+    if (!payload) return [];
+    delete player._vritraImmortalReveal;
+    const event = createVritraImmortalRevealEvent(payload);
+    return event ? [event] : [];
+  });
+}
+
+function attachVritraRevealsToStatEvents(statEvents = [], revealEvents = []) {
+  const pendingByTarget = new Map((revealEvents || []).map(event => [event?.targetIdx, event]));
+  return (statEvents || []).map(event => {
+    const reveal = pendingByTarget.get(event?.target);
+    if (!reveal || event?.type !== 'HP_LOSS') return event;
+    pendingByTarget.delete(event.target);
+    return { ...event, vritraImmortalReveal: reveal };
+  });
+}
+
 export function applyHpDamageWithLink(P, i, amount, Disc, L, currentTurn, D) {
   if (i == null || !P[i] || P[i].isDead || !(amount > 0)) return;
   P[i].hp = clamp(P[i].hp - amount);
-  if (P[i].damageLink?.active) {
-    const partnerIdx = P[i].damageLink.partner;
-    if (partnerIdx != null && P[partnerIdx] && !P[partnerIdx].isDead) {
-      P[i].damageLink.active = false;
-      if (P[partnerIdx].damageLink) P[partnerIdx].damageLink.active = false;
-      const linkDamage = 3;
-      P[i].hp = clamp(P[i].hp - linkDamage);
-      P[partnerIdx].hp = clamp(P[partnerIdx].hp - linkDamage);
-      L.push(`【两人一绳】绳索断裂！${P[i].name} 和 ${P[partnerIdx].name} 各失去 ${linkDamage} HP`);
-      if (P[i].hp <= 0) {
-        if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
-          killPlayerState(P, i, Disc, L);
-        }
-      }
-      if (P[partnerIdx].hp <= 0) {
-        if (currentTurn == null || D == null || !tryVritraImmortal(P, partnerIdx, currentTurn, D, Disc, L)) {
-          killPlayerState(P, partnerIdx, Disc, L);
-        }
-      }
-    }
+  const triggeredLinks = getActiveDamageLinksForPlayer(P, i);
+  let sourceDead = false;
+  if (P[i].hp <= 0) sourceDead = settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
+  if (triggeredLinks.length) {
+    const queue = triggeredLinks.map(link => ({
+      id: link.id,
+      a: link.a,
+      b: link.b,
+      createdSeq: link.createdSeq ?? 0,
+      triggerIdx: i,
+      ...(sourceDead ? { sourceDeadIdx: i } : {}),
+    }));
+    const first = queue[0];
+    P[i]._pendingDamageLinkBreak = {
+      sourceIdx: i,
+      partnerIdx: first.a === i ? first.b : first.a,
+      sourceDead,
+      queue,
+    };
+    const connectedLinks = getAllDamageLinks(P, { activeOnly: true });
+    const shouldPause = connectedLinks.some(link => [link.a, link.b].some(idx => (
+      (P[idx]?.hand || []).some(isTsathogguaSlime)
+      || buildEtherealizeLoss({ players: P, targetIdx: idx, currentTurn, lostHp: 3, source: '两人一绳' })
+    )));
+    if (!shouldPause) resolvePendingDamageLinkBreak(P, i, Disc, L, currentTurn, D);
   }
-  if (P[i].hp <= 0) {
-    if (currentTurn == null || D == null || !tryVritraImmortal(P, i, currentTurn, D, Disc, L)) {
-      killPlayerState(P, i, Disc, L);
-    }
-  }
+  settleLethalHpDamage(P, i, Disc, L, currentTurn, D);
 }
 
-export function getAdjacentTargets(players, ci) {
-  const prev = getPrevLivingIndex(players, ci);
-  const next = getNextLivingIndex(players, ci);
-  return [ci, ...[prev, next].filter((idx, pos, arr) => idx != null && arr.indexOf(idx) === pos)];
+export function resolvePendingDamageLinkBreak(P, targetIdx, Disc, L, currentTurn, D, continuation = {}) {
+  const pending = P?.[targetIdx]?._pendingDamageLinkBreak;
+  if (!pending) return { applied: false, beforePlayers: copyPlayers(P || []), affected: [] };
+  delete P[targetIdx]._pendingDamageLinkBreak;
+  const legacyLink = !Array.isArray(pending.queue)
+    ? getActiveDamageLinksForPlayer(P, pending.sourceIdx ?? targetIdx)
+      .find(link => link.a === pending.partnerIdx || link.b === pending.partnerIdx)
+    : null;
+  const queue = (pending.queue || (legacyLink ? [{
+    id: legacyLink.id, a: legacyLink.a, b: legacyLink.b, createdSeq: legacyLink.createdSeq ?? 0,
+    ...(pending.sourceDead ? { sourceDeadIdx: pending.sourceIdx ?? targetIdx } : {}),
+  }] : [])).map(link => ({ ...link }));
+  const scheduled = new Set(queue.map(link => link.id));
+  const affected = [];
+  let beforePlayers = copyPlayers(P);
+  let applied = false;
+  const appendTriggeredLinks = indices => {
+    const discovered = indices.flatMap(idx => getActiveDamageLinksForPlayer(P, idx).map(link => ({ link, triggerIdx: idx })));
+    discovered.forEach(({ link, triggerIdx }) => {
+      if (scheduled.has(link.id)) return;
+      scheduled.add(link.id);
+      queue.push({ id: link.id, a: link.a, b: link.b, createdSeq: link.createdSeq ?? 0, triggerIdx });
+    });
+  };
+  const saveRemaining = holderIdx => {
+    if (!queue.length || holderIdx == null || !P[holderIdx]) return;
+    const first = queue[0];
+    P[holderIdx]._pendingDamageLinkBreak = {
+      sourceIdx: holderIdx,
+      partnerIdx: first.a === holderIdx ? first.b : first.a,
+      queue: queue.map(link => ({ ...link })),
+    };
+  };
+
+  while (queue.length) {
+    const link = queue.shift();
+    const active = getAllDamageLinks(P, { activeOnly: true }).find(item => item.id === link.id);
+    if (!active) continue;
+    beforePlayers = copyPlayers(P);
+    setDamageLinkActive(P, link.id, false);
+    const breakPlayers = copyPlayers(P);
+    const sourceDeadIdx = link.sourceDeadIdx;
+    const triggerIdx = [active.a, active.b].includes(link.triggerIdx) ? link.triggerIdx : active.a;
+    const otherIdx = triggerIdx === active.a ? active.b : active.a;
+    const lossTargets = [triggerIdx, otherIdx].filter(idx => idx !== sourceDeadIdx && P[idx] && !P[idx].isDead);
+    const orderedLosses = lossTargets.map((idx, order) => ({
+      targetIdx: idx, lostHp: 3, lostSan: 0, source: '两人一绳', order,
+    }));
+    const pendingLosses = orderedLosses.map(loss => {
+      const eligible = buildEtherealizeLoss({
+        players: P, targetIdx: loss.targetIdx, currentTurn, lostHp: 3, source: loss.source,
+      });
+      return eligible ? { ...eligible, order: loss.order } : null;
+    }).filter(Boolean);
+    if (pendingLosses.length) {
+      const eligibleTargets = new Set(pendingLosses.map(loss => loss.targetIdx));
+      const deferredDirectLosses = orderedLosses.filter(loss => !eligibleTargets.has(loss.targetIdx));
+      saveRemaining(lossTargets[0] ?? targetIdx);
+      const breakLine = lossTargets.length === 1
+        ? `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 即将失去 3 HP`
+        : `【两人一绳】绳索断裂！${P[active.a].name} 和 ${P[active.b].name} 即将各失去 3 HP`;
+      L.push(breakLine);
+      if (!Array.isArray(P._damageLinkBreakTimeline)) P._damageLinkBreakTimeline = [];
+      P._damageLinkBreakTimeline.push({linkId:active.id,pair:[active.a,active.b],beforePlayers,breakPlayers,afterPlayers:copyPlayers(P),breakLine});
+      return {
+        applied,
+        deferred: true,
+        beforePlayers,
+        affected: [...affected, ...lossTargets],
+        etherealizeDecision: buildEtherealizeRedirectDecision(pendingLosses, {
+          ...continuation,
+          _turnOwner: currentTurn,
+          ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
+        }),
+      };
+    }
+    orderedLosses.forEach(loss => {
+      P[loss.targetIdx].hp = clamp(P[loss.targetIdx].hp - 3);
+    });
+    const breakLine = lossTargets.length === 1
+      ? `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 失去 3 HP`
+      : `【两人一绳】绳索断裂！${P[lossTargets[0]].name} 和 ${P[lossTargets[1]].name} 各失去 3 HP`;
+    L.push(breakLine);
+    lossTargets.forEach(idx => settleLethalHpDamage(P, idx, Disc, L, currentTurn, D));
+    if (!Array.isArray(P._damageLinkBreakTimeline)) P._damageLinkBreakTimeline = [];
+    P._damageLinkBreakTimeline.push({
+      linkId: active.id,
+      pair: [active.a, active.b],
+      beforePlayers,
+      breakPlayers,
+      afterPlayers: copyPlayers(P),
+      breakLine,
+    });
+    affected.push(...lossTargets);
+    applied = true;
+    appendTriggeredLinks(lossTargets);
+    const slimeTarget = lossTargets.find(idx => (P[idx]?.hand || []).some(isTsathogguaSlime));
+    if (slimeTarget != null) {
+      saveRemaining(slimeTarget);
+      return { applied, beforePlayers, affected };
+    }
+  }
+  return { applied, beforePlayers, affected };
 }
+
+// Damage owns its complete reaction transaction. `log` is the settlement sink;
+// `statEventLogs` contains only this batch's authored damage messages. Never
+// require those arrays to alias: return `logs` and the original `statEvents`
+// together, including reactions produced before a decision interrupts damage.
+export function submitLossEvents({
+  players,
+  deck = [],
+  discard = [],
+  log = [],
+  currentTurn = null,
+  events = [],
+  continuation = {},
+  skipEtherealize = false,
+  deferPostDamageDecisions = false,
+  statEventSeq = null,
+  statEventReason = null,
+  statEventLogs = [],
+  statEventIdPrefix = null,
+  defeatSettlementOwner = null,
+} = {}) {
+  const P = players;
+  const D = deck;
+  const Disc = discard;
+  const L = [];
+  const authoredLogs = Array.isArray(statEventLogs) ? [...statEventLogs] : [];
+  const beforeDiscard = [...(Disc || [])];
+  const normalized = (events || [])
+    .map((event, order) => ({
+      ...event,
+      order: event?.order ?? order,
+      lostHp: Math.max(0, event?.lostHp || 0),
+      lostSan: Math.max(0, event?.lostSan || 0),
+    }))
+    .filter(event => event.targetIdx != null && P?.[event.targetIdx] && !P[event.targetIdx].isDead && (event.lostHp || event.lostSan));
+  const beforePlayers = copyPlayers(P || []);
+  const finish = (phase = null, abilityData = null) => {
+    const logs = [...(authoredLogs.length ? authoredLogs : normalized.map(event => event.logHint).filter(Boolean)), ...L];
+    const sourceNames = [...new Set(normalized.map(event => event.source).filter(Boolean))];
+    let statEvents = normalized.length ? buildStatEvents(beforePlayers, P, logs, {
+      reason: statEventReason || sourceNames.join(' / ') || '属性扣减',
+      ...(statEventSeq != null ? { seq: statEventSeq } : {}),
+      ...(statEventIdPrefix ? { eventIdPrefix: statEventIdPrefix } : {}),
+      defeatSettlementOwner,
+      discardBefore: beforeDiscard,
+      discardAfter: Disc,
+    }) : [];
+    if (normalized.length) statEvents = attachVritraRevealsToStatEvents(statEvents, takeVritraImmortalRevealEvents(P));
+    log.push(...L);
+    return {
+      players: P, deck: D, discard: Disc, log, logs, beforePlayers,
+      statEvents, statEventSeq: statEvents.length ? statEventSeq : null, phase, abilityData,
+    };
+  };
+  if (!normalized.length) return finish();
+
+  if (!skipEtherealize) {
+    const pendingLosses = normalized.map(event => {
+      const loss = buildEtherealizeLoss({
+        players: P,
+        targetIdx: event.targetIdx,
+        currentTurn,
+        lostHp: event.lostHp,
+        lostSan: event.lostSan,
+        source: event.source || '伤害',
+      });
+      return loss ? { ...loss, order: event.order } : null;
+    }).filter(Boolean);
+    if (pendingLosses.length) {
+      const pendingOrders = new Set(pendingLosses.map(loss => loss.order));
+      const deferredDirectLosses = normalized.filter(event => !pendingOrders.has(event.order));
+      const abilityData = buildEtherealizeRedirectDecision(pendingLosses, {
+        ...continuation,
+        _turnOwner: currentTurn,
+        ...(deferredDirectLosses.length ? { deferredDirectLosses } : {}),
+      });
+      return finish('ETHEREALIZE_DECISION', abilityData);
+    }
+  }
+
+  normalized.forEach(event => {
+    // Combined damage has a fixed visible and rules order: HP first, then SAN.
+    // If HP settlement kills the target, the later SAN loss no longer applies.
+    if ((event.lostHp || 0) > 0) {
+      applyHpDamageWithLink(P, event.targetIdx, event.lostHp, Disc, L, currentTurn, D);
+    }
+    if ((event.lostSan || 0) > 0 && P[event.targetIdx] && !P[event.targetIdx].isDead) {
+      P[event.targetIdx].san = clamp(P[event.targetIdx].san - event.lostSan);
+    }
+  });
+
+  // Confirmed redirect chains settle their ordered losses and SAN inspections
+  // before offering the next rope/slime decision. Preserve each batch now.
+  if (deferPostDamageDecisions) return finish();
+
+  const pendingLinkTarget = P.findIndex(player => (
+    player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
+  ));
+  if (pendingLinkTarget >= 0) {
+    const reaction = resolvePendingDamageLinkBreak(P, pendingLinkTarget, Disc, L, currentTurn, D, continuation);
+    if (reaction.etherealizeDecision) {
+      return finish('ETHEREALIZE_DECISION', reaction.etherealizeDecision);
+    }
+  }
+
+  const abilityData = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, {
+    ...continuation,
+    _turnOwner: currentTurn,
+  });
+  return finish(abilityData ? 'TSG_SLIME_BALANCE' : null, abilityData);
+}
+
+export { getAdjacentTargets };
 
 export function getLivingAdjacentTargets(players, ci) {
-  return getAdjacentTargets(players, ci).filter(
-    (idx, pos, arr) => idx !== ci && idx != null && players[idx] && !players[idx].isDead && arr.indexOf(idx) === pos
-  );
+  return getLivingAdjacentIndices(players, ci);
 }
 
 function getLivingCircularDistance(players, fromIdx, toIdx) {
@@ -101,15 +343,23 @@ function getLivingCircularDistance(players, fromIdx, toIdx) {
   return Math.min(diff, order.length - diff);
 }
 
-function appendRandomTargetEvent(statePatch, gs, event) {
-  const seq = (gs?._randomTargetSeq || 0) + 1 + (statePatch?._randomTargetEvents?.length || 0);
+function appendRandomTargetEvent(statePatch, gs, event, { createPhaseGroup = false } = {}) {
+  const pendingRandomTargetSeq = (statePatch?._visualEvents || [])
+    .filter(candidate => candidate?.type === VISUAL_EVENT.RANDOM_TARGET || candidate?.type === VISUAL_EVENT.THROW_STONE)
+    .reduce((max, candidate) => Math.max(max, candidate?.legacySeq || 0), 0);
+  const seq = Math.max(gs?._randomTargetSeq || 0, pendingRandomTargetSeq) + 1;
+  let legacyEvent = { ...event, seq };
+  let visualEvent = event?.label === '投掷石块'
+    ? null
+    : createRandomTargetVisualEvent(legacyEvent);
+  if (createPhaseGroup && visualEvent?.id) {
+    legacyEvent = { ...legacyEvent, phaseGroupId: visualEvent.id };
+    visualEvent = { ...visualEvent, phaseGroupId: visualEvent.id };
+  }
   return {
     ...statePatch,
     _randomTargetSeq: seq,
-    _randomTargetEvents: [
-      ...(statePatch?._randomTargetEvents || []),
-      { ...event, seq },
-    ],
+    ...(visualEvent ? { _visualEvents: [...(statePatch?._visualEvents || []), visualEvent] } : {}),
   };
 }
 
@@ -131,15 +381,31 @@ function appendPetrifyEvent(statePatch, gs, event) {
 // ══════════════════════════════════════════════════════════════
 
 function handleInspection(playerIndex, gs) {
-  let newGs = { ...gs };
+  let newGs = {
+    ...gs,
+    players: copyPlayers(gs.players || []),
+    deck: [...(Array.isArray(gs.deck) ? gs.deck : [])],
+    discard: [...(Array.isArray(gs.discard) ? gs.discard : [])],
+    log: [...(Array.isArray(gs.log) ? gs.log : [])],
+    inspectionDeck: [...(Array.isArray(gs.inspectionDeck) ? gs.inspectionDeck : [])],
+    inspectionDiscard: [...(Array.isArray(gs.inspectionDiscard) ? gs.inspectionDiscard : [])],
+  };
   const beforePlayers = copyPlayers(gs.players || []);
   const beforeLog = [...(Array.isArray(gs.log) ? gs.log : [])];
   const beforeDiscard = [...(Array.isArray(gs.discard) ? gs.discard : [])];
   const beforeLogLen = Array.isArray(gs.log) ? gs.log.length : 0;
+  let gainedCard = null;
+  let gainedCardLog = null;
+  const inspectionDiscardEvents = [];
+  let inspectionDamageDecision = null;
+  const statEventSeq = (gs?._statEventSeq || 0) + 1;
   // 检查检定牌堆是否为空，如果为空则洗牌
   if (newGs.inspectionDeck.length === 0) {
     newGs.inspectionDeck = shuffle([...newGs.inspectionDiscard]);
     newGs.inspectionDiscard = [];
+  }
+  if (newGs.inspectionDeck.length === 0) {
+    return newGs;
   }
   // 翻开检定牌
   const drawnCard = newGs.inspectionDeck.shift();
@@ -152,36 +418,50 @@ function handleInspection(playerIndex, gs) {
     if (newGs.currentTurn != null && newGs.deck != null && tryVritraImmortal(P, i, newGs.currentTurn, newGs.deck, newGs.discard, L)) {
       return;
     }
-    // 标记待播放死亡特效的角色（用于面板延迟置灰）
-    P[i]._pendingAnimDeath = true;
-    P[i].isDead = true;
-    P[i].roleRevealed = true;
-    L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-    if (P[i].hand?.length) {
-      newGs.discard.push(...P[i].hand);
-      P[i].hand = [];
-    }
-    if (P[i].godZone?.length) {
-      newGs.discard.push(...P[i].godZone);
-      P[i].godZone = [];
-      P[i].godName = null;
-      P[i].godLevel = 0;
-    }
+    killPlayerState(P, i, newGs.discard, L);
   };
   switch (drawnCard.effect) {
     case 'adjacentDamageHP': {
-      getLivingAdjacentTargets(P, playerIndex).forEach(idx => {
-        P[idx].hp = Math.max(0, P[idx].hp - drawnCard.value);
+      const targets = getLivingAdjacentTargets(P, playerIndex);
+      inspectionDamageDecision = submitLossEvents({
+        players: P,
+        deck: newGs.deck,
+        discard: newGs.discard,
+        log: L,
+        currentTurn: newGs.currentTurn,
+        events: targets.map((idx, order) => ({
+          targetIdx: idx, lostHp: drawnCard.value, source: drawnCard.name || '乱抓', order,
+          logHint: `${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`,
+        })),
+        statEventSeq,
+      });
+      if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
+        targets.forEach(idx => L.push(`${P[idx].name} 即将因乱抓失去 ${drawnCard.value} HP`));
+        break;
+      }
+      targets.forEach(idx => {
         L.push(`${P[idx].name} 被乱抓，失去 ${drawnCard.value} HP`);
-        if (P[idx].hp <= 0) killPlayer(idx);
+        if (P[idx].hp <= 0 && !inspectionDamageDecision.abilityData) killPlayer(idx);
       });
       break;
     }
     case 'selfDamageHP': {
-      // 失去 1 HP
-      P[playerIndex].hp = Math.max(0, P[playerIndex].hp - drawnCard.value);
+      inspectionDamageDecision = submitLossEvents({
+        players: P,
+        deck: newGs.deck,
+        discard: newGs.discard,
+        log: L,
+        currentTurn: newGs.currentTurn,
+        events: [{ targetIdx: playerIndex, lostHp: drawnCard.value, source: drawnCard.name || '自残' }],
+        statEventSeq,
+        statEventLogs: [`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`],
+      });
+      if (inspectionDamageDecision.phase === 'ETHEREALIZE_DECISION') {
+        L.push(`${P[playerIndex].name} 即将因自残失去 ${drawnCard.value} HP`);
+        break;
+      }
       L.push(`${P[playerIndex].name} 自残，失去 ${drawnCard.value} HP`);
-      if (P[playerIndex].hp <= 0) killPlayer(playerIndex);
+      if (P[playerIndex].hp <= 0 && !inspectionDamageDecision.abilityData) killPlayer(playerIndex);
       break;
     }
     case 'disableRest': {
@@ -205,8 +485,34 @@ function handleInspection(playerIndex, gs) {
       if (P[playerIndex].hand.length > 0) {
         const randomIndex = Math.floor(Math.random() * P[playerIndex].hand.length);
         const discardedCard = P[playerIndex].hand.splice(randomIndex, 1)[0];
-        newGs.discard.push(discardedCard);
+        const { kept, destroyed } = splitHandDiscardCards([discardedCard]);
+        if (kept.length) newGs.discard.push(...kept);
         L.push(`${P[playerIndex].name} 迫害妄想，弃置了一张牌`);
+        if (destroyed.length) L.push(`${P[playerIndex].name} 的衍生牌被销毁`);
+        inspectionDiscardEvents.push({
+          playerIndex,
+          card: discardedCard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...newGs.discard],
+        });
+        if (kept.length) {
+          const balance = applyBalanceDiscardSideEffects({
+            players: P,
+            deck: newGs.deck,
+            discard: newGs.discard,
+            log: L,
+            ownerIdx: playerIndex,
+            cards: kept,
+            reason: '迫害妄想弃牌',
+            applyHpDamage: applyHpDamageWithLink,
+            submitDamage: submitLossEvents,
+            currentTurn: newGs.currentTurn,
+            statEventSeq,
+            continuation: { _turnOwner: newGs.currentTurn },
+          });
+          L.splice(0, L.length, ...balance.log);
+          inspectionDamageDecision = balance.damageDecision || inspectionDamageDecision;
+        }
       }
       break;
     }
@@ -224,7 +530,10 @@ function handleInspection(playerIndex, gs) {
     }
     case 'healSAN': {
       // 恢复 1 SAN
-      P[playerIndex].san = Math.min(10, P[playerIndex].san + drawnCard.value);
+      submitRecoveryEvents({
+        players: P,
+        events: [{ targetIdx: playerIndex, gainSan: drawnCard.value, source: drawnCard.name || 'SAN检定' }],
+      });
       L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
       break;
     }
@@ -237,7 +546,11 @@ function handleInspection(playerIndex, gs) {
       if (newGs.deck.length > 0) {
         const newCard = newGs.deck.shift();
         P[playerIndex].hand.push(newCard);
-        L.push(`${P[playerIndex].name} 揭开真相，摸到 ${cardLogText(newCard, { alwaysShowName: true })}，选择收入手牌（不触发效果）`);
+        // “直接摸牌”是暗抽：事件与公开日志都不能携带牌面信息。
+        // 动画只需要一张牌背占位符；真正的牌仅存在于摸牌者的手牌中。
+        gainedCard = { id: `hidden-inspection-draw-${newGs._inspectionSeq || 0}-${playerIndex}`, hiddenDraw: true };
+        gainedCardLog = `${P[playerIndex].name} 揭开真相，直接摸1张牌收入手牌（不触发效果）`;
+        L.push(gainedCardLog);
       }
       break;
     }
@@ -267,8 +580,7 @@ function handleInspection(playerIndex, gs) {
     : L;
   const afterPlayers = copyPlayers(P);
   const afterDiscard = [...(Array.isArray(newGs.discard) ? newGs.discard : [])];
-  const statEventSeq = (gs?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
+  const statEvents = inspectionDamageDecision?.statEvents ?? buildStatEvents(beforePlayers, afterPlayers, finalLog.slice(beforeLogLen), {
     reason: drawnCard.name || 'SAN检定',
     seq: statEventSeq,
   });
@@ -288,26 +600,38 @@ function handleInspection(playerIndex, gs) {
     ...((gs?._statEvents) || []),
     ...statEvents,
   ];
-  newGs._inspectionEvents = [
-    ...((gs?._inspectionEvents) || []),
-    {
-      seq: newGs._inspectionSeq,
-      card: drawnCard,
-      target: playerIndex,
-      prevLogLen: beforeLogLen,
-      beforePlayers,
-      beforeLog,
-      beforeDiscard,
-      afterPlayers,
-      afterLog: [...finalLog],
-      afterDiscard,
-      statEvents,
-      statEventSeq: statEvents.length ? statEventSeq : null,
-    }
+  const inspectionEvent = {
+    seq: newGs._inspectionSeq,
+    card: drawnCard,
+    target: playerIndex,
+    prevLogLen: beforeLogLen,
+    beforePlayers,
+    beforeLog,
+    beforeDiscard,
+    beforeStatEventSeq: gs?._statEventSeq || 0,
+    afterPlayers,
+    afterLog: [...finalLog],
+    afterDiscard,
+    revealMsgs: finalLog.slice(beforeLogLen, beforeLogLen + 1),
+    effectMsgs: finalLog.slice(beforeLogLen + 1),
+    statEvents,
+    visualEvents: [],
+    statEventSeq: statEvents.length ? statEventSeq : null,
+    ...(inspectionDiscardEvents.length ? { discardEvents: inspectionDiscardEvents } : {}),
+    ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
+  };
+  const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
+  newGs._visualEvents = [
+    ...((gs?._visualEvents) || []),
+    ...(inspectionVisualEvent ? [inspectionVisualEvent] : []),
   ];
   // 更新游戏状态
   newGs.players = P;
   newGs.log = finalLog;
+  if (inspectionDamageDecision?.phase) {
+    newGs.phase = inspectionDamageDecision.phase;
+    newGs.abilityData = { ...(newGs.abilityData || {}), ...inspectionDamageDecision.abilityData };
+  }
   return newGs;
 }
 
@@ -325,9 +649,10 @@ function mergeInspectionMeta(target, inspectionResult) {
     _inspectionTarget: inspectionResult._inspectionTarget,
     _inspectionPrevLogLen: inspectionResult._inspectionPrevLogLen,
     _inspectionBeforePlayers: inspectionResult._inspectionBeforePlayers,
-    _inspectionEvents: inspectionResult._inspectionEvents,
+    _visualEvents: inspectionResult._visualEvents,
     _statEvents: inspectionResult._statEvents,
     _statEventSeq: inspectionResult._statEventSeq,
+    ...(['TSG_SLIME_BALANCE', 'ETHEREALIZE_DECISION'].includes(inspectionResult.phase) ? { phase: inspectionResult.phase } : {}),
     ...(inspectionResult.abilityData ? { abilityData: inspectionResult.abilityData } : {}),
   };
 }
@@ -349,9 +674,10 @@ export function processInspectionTargets(targets, startIndex, P, D, Disc, baseLo
       houndsOfTindalosTarget: nextMeta.houndsOfTindalosTarget,
       houndsOfTindalosElapsed: nextMeta.houndsOfTindalosElapsed,
       _inspectionSeq: nextMeta._inspectionSeq,
-      _inspectionEvents: nextMeta._inspectionEvents,
+      _visualEvents: nextMeta._visualEvents,
       _statEvents: nextMeta._statEvents,
       _statEventSeq: nextMeta._statEventSeq,
+      currentTurn: startIndex,
     });
     nextP = inspectionResult.players;
     nextD = inspectionResult.deck;
@@ -387,70 +713,153 @@ export function applyInspectionForSanLoss(targetIndex, newSan, startIndex, P, D,
 export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false, avoidNegativeFor = [], isAI = false) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc], msgs = [];
   const beforePlayers = copyPlayers(P);
+  const initialDiscard = [...Disc];
   let statePatch = {};
   let inspectionMeta = makeInspectionMeta(gs);
   const pendingInspectionTargets = [];
   let pendingEtherealizeLosses = [];
+  let deferredDirectLosses = [];
+  let pendingDamages = [];
+  let damageOrderSeq = 0;
   let directStatEvents = null;
   const executionTurnOwner = getCurrentExecutionTurnOwner(gs, ci);
   const dmgBonus = P[ci]?.damageBonus || 0;
-  const healHP = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].hp = clamp(P[i].hp + v); };
-  const healSAN = (i, v) => { if (i == null || !P[i] || P[i].isDead) return; P[i].san = clamp(P[i].san + v); };
+  const healHP = (i, v, source = card?.name || card?.type || 'HP恢复') => submitRecoveryEvents({
+    players: P,
+    events: [{ targetIdx: i, gainHp: v, source }],
+  });
+  const healSAN = (i, v, source = card?.name || card?.type || 'SAN恢复') => submitRecoveryEvents({
+    players: P,
+    events: [{ targetIdx: i, gainSan: v, source }],
+  });
+  // 伤害不再立即结算，而是先进入待结算队列：
+  // - 'eager' 模式立即逐条结算（虚化候选仍转入决策），供效果中途依赖结算后状态的场景使用；
+  // - 'batch' 模式在效果结束时统一处理：一旦存在虚化候选（伤害前置事件），
+  //   其余直接伤害也一并延迟（deferredDirectLosses），待决策链结束后归并结算。
+  const settlePendingDamages = (mode = 'batch') => {
+    if (!pendingDamages.length) return;
+    const batch = pendingDamages;
+    pendingDamages = [];
+    const deferredEligible = mode === 'batch'
+      ? batch.map(d => buildEtherealizeLoss({
+        players: P,
+        targetIdx: d.targetIdx,
+        currentTurn: gs?.currentTurn,
+        lostHp: d.kind === 'hp' ? d.amount : 0,
+        lostSan: d.kind === 'san' ? d.amount : 0,
+        source: d.source,
+      }))
+      : null;
+    const deferDirect = mode === 'batch' && (
+      pendingEtherealizeLosses.length > 0 || deferredEligible.some(Boolean)
+    );
+    batch.forEach((d, batchIdx) => {
+      if (!P[d.targetIdx] || P[d.targetIdx].isDead) return;
+      const etherealizeLoss = mode === 'eager'
+        ? buildEtherealizeLoss({
+          players: P,
+          targetIdx: d.targetIdx,
+          currentTurn: gs?.currentTurn,
+          lostHp: d.kind === 'hp' ? d.amount : 0,
+          lostSan: d.kind === 'san' ? d.amount : 0,
+          source: d.source,
+        })
+        : deferredEligible[batchIdx];
+      if (etherealizeLoss) {
+        pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...etherealizeLoss, order: d.order });
+        return;
+      }
+      if (deferDirect) {
+        deferredDirectLosses = appendEtherealizeLoss(deferredDirectLosses, {
+          targetIdx: d.targetIdx,
+          lostHp: d.kind === 'hp' ? d.amount : 0,
+          lostSan: d.kind === 'san' ? d.amount : 0,
+          source: d.source,
+          order: d.order,
+        });
+        return;
+      }
+      if (d.kind === 'hp') {
+        applyHpDamageWithLink(P, d.targetIdx, d.amount, Disc, d.msgsTarget, gs?.currentTurn, D);
+      } else {
+        P[d.targetIdx].san = clamp(P[d.targetIdx].san - d.amount);
+        const newSan = P[d.targetIdx].san;
+        if (newSan > 0 && newSan <= 6) {
+          pendingInspectionTargets.push(d.targetIdx);
+        }
+      }
+    });
+  };
   const hurtHPDirect = (i, v, targetMsgs = msgs, source = card?.name || card?.type || 'HP') => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    const etherealizeLoss = buildEtherealizeLoss({
-      players: P,
-      targetIdx: i,
-      currentTurn: gs?.currentTurn,
-      lostHp: v,
-      source,
-    });
-    if (etherealizeLoss) {
-      pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, etherealizeLoss);
-      return;
-    }
-    applyHpDamageWithLink(P, i, v, Disc, targetMsgs, gs?.currentTurn, D);
+    pendingDamages.push({ kind: 'hp', targetIdx: i, amount: v, source, msgsTarget: targetMsgs, order: damageOrderSeq++ });
   };
   const hurtHP = (i, v) => hurtHPDirect(i, v, msgs);
   const hurtSAN = (i, v) => {
     if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
-    const etherealizeLoss = buildEtherealizeLoss({
-      players: P,
-      targetIdx: i,
-      currentTurn: gs?.currentTurn,
-      lostSan: v,
-      source: card?.name || card?.type || 'SAN',
-    });
-    if (etherealizeLoss) {
-      pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, etherealizeLoss);
-      return;
-    }
-    P[i].san = clamp(P[i].san - v);
-    const newSan = P[i].san;
-    if (newSan > 0 && newSan <= 6) {
-      pendingInspectionTargets.push(i);
-    }
+    pendingDamages.push({ kind: 'san', targetIdx: i, amount: v, source: card?.name || card?.type || 'SAN', msgsTarget: msgs, order: damageOrderSeq++ });
   };
   const dealHP = (i, v) => hurtHP(i, v + dmgBonus);
   const dealSAN = (i, v) => hurtSAN(i, v + dmgBonus);
   const randDiscard = (i, count = 1) => {
-    if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
+    const discardEvents = [];
+    if (i == null || !P[i] || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return discardEvents;
     for (let n = 0; n < count; n++) {
       if (P[i].hand.length) {
         const x = 0 | Math.random() * P[i].hand.length;
         const c = P[i].hand.splice(x, 1)[0];
         // 黑山羊幼仔被弃置时销毁，不进入弃牌堆
-        if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+        if (isVanishingDerivedCard(c)) {
           msgs.push(`${P[i].name} 的衍生牌被销毁`);
         } else if (c.type !== 'blankZone') {
           Disc.push(c);
           msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+          const afterDiscardPlayers = copyPlayers(P);
+          const afterDiscard = [...Disc];
+          const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
           msgs.splice(0, msgs.length, ...balance.log);
+          (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
+            pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
+          });
+          discardEvents.push({
+            playerIndex: i,
+            card: c,
+            afterPlayers: afterDiscardPlayers,
+            afterDiscard,
+          });
         } else {
           msgs.push(`${P[i].name} 的空白区域牌消失了`);
         }
+        if (c.type !== 'blankZone' && !discardEvents.some(event => event.card === c)) {
+          discardEvents.push({
+            playerIndex: i,
+            card: c,
+            afterPlayers: copyPlayers(P),
+            afterDiscard: [...Disc],
+          });
+        }
       }
+    }
+    return discardEvents;
+  };
+  const appendForcedRandomDiscardEvent = (beforeForcedPlayers, beforeForcedDiscard, discardEvents) => {
+    if (!discardEvents.length) return;
+    const event = createCardEffectEvent({
+      effectKey: 'forcedRandomDiscard',
+      card,
+      actorIdx: ci,
+      beforePlayers: beforeForcedPlayers,
+      beforeDiscard: beforeForcedDiscard,
+      afterPlayers: copyPlayers(P),
+      afterDiscard: [...Disc],
+      discardEvents,
+      msgs: msgs.slice(),
+    });
+    if (event) {
+      statePatch = {
+        ...statePatch,
+        _visualEvents: [...(statePatch._visualEvents || []), event],
+      };
     }
   };
   const toggleRest = i => { if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return; P[i].isResting = !P[i].isResting; msgs.push(`${P[i].name}${P[i].isResting ? '进入' : '离开'}休息状态`); };
@@ -458,29 +867,126 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const others = P.map((_, i) => i).filter(i => i !== ci && !P[i].isDead);
   const allLiving = P.map((_, i) => i).filter(i => !P[i].isDead);
   const actor = P[ci];
-  const finish = (result, explicitStatEvents = null) => {
+  const buildChainEtherealizeDecision = () => {
+    const decision = buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
+    if (decision && deferredDirectLosses.length) {
+      return { ...decision, deferredDirectLosses };
+    }
+    return decision;
+  };
+  const finish = (result, explicitStatEvents = null, directMsgs = null) => {
+    const beforeSettlementMsgCount = (result.msgs || msgs).length;
+    const beforeDamageSettlementPlayers = copyPlayers(result.P || P);
+    const beforeDamageSettlementDiscard = [...(result.Disc || Disc)];
+    settlePendingDamages('batch');
+    let linkEtherealizeDecision = null;
+    const pendingLinkTarget = (result.P || P).findIndex(player => (
+      player?._pendingDamageLinkBreak && !(player.hand || []).some(isTsathogguaSlime)
+    ));
+    if (pendingLinkTarget >= 0) {
+      const reaction = resolvePendingDamageLinkBreak(
+        result.P || P,
+        pendingLinkTarget,
+        result.Disc || Disc,
+        result.msgs || msgs,
+        gs?.currentTurn ?? ci,
+        result.D || D,
+      );
+      linkEtherealizeDecision = reaction.etherealizeDecision || null;
+    }
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
-    const statEvents = explicitStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, { reason: card?.name || card?.type || '', seq: statEventSeq });
+    let statEvents = explicitStatEvents || directStatEvents || buildStatEvents(beforePlayers, result.P || P, result.msgs || msgs, {
+      reason: card?.name || card?.type || '',
+      seq: statEventSeq,
+      discardBefore: initialDiscard,
+      discardAfter: result.Disc || Disc,
+      defeatPlayersBefore: beforeDamageSettlementPlayers,
+      defeatDiscardBefore: beforeDamageSettlementDiscard,
+    });
+    statEvents = statEvents.map(event => ensureStatEventId(event));
+    const vritraVisualEvents = takeVritraImmortalRevealEvents(result.P || P);
+    statEvents = attachVritraRevealsToStatEvents(statEvents, vritraVisualEvents);
     const patchedStatEvents = Array.isArray(result.statePatch?._statEvents)
       ? result.statePatch._statEvents
       : [];
-    const mergedStatEvents = patchedStatEvents.length
-      ? [...statEvents, ...patchedStatEvents.filter(event => !statEvents.some(own => own?.seq === event?.seq && own?.type === event?.type && own?.target === event?.target))]
-      : statEvents;
+    // A draw effect runs after turn-start effects have already appended their
+    // stat events to gs. Preserve that history: replacing it here made an AI
+    // drawing 地下泉 erase the preceding 黑山羊幼仔 HP/SAN animation metadata.
+    const priorStatEvents = Array.isArray(gs?._statEvents) ? gs._statEvents : [];
+    const seenStatEvents = new Set();
+    const mergedStatEvents = [...priorStatEvents, ...statEvents, ...patchedStatEvents]
+      .map(event => ensureStatEventId(event))
+      .filter(event => {
+        const key = statEventIdentity(event);
+        if (seenStatEvents.has(key)) return false;
+        seenStatEvents.add(key);
+        return true;
+      });
     const mergedStatEventSeq = Math.max(
       statEvents.length ? statEventSeq : (gs?._statEventSeq || 0),
       result.statePatch?._statEventSeq || 0,
     );
-    const etherealizeDecision = statePatch?.abilityData?.type ? null : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci });
+    const etherealizeDecision = statePatch?.abilityData?.type
+      ? null
+      : (linkEtherealizeDecision || buildChainEtherealizeDecision());
     const slimeDecision = etherealizeDecision || statePatch?.abilityData?.type
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
+    const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => {
+      if (event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard') {
+        if (event.payload?.sequentialDiscard) return event;
+        return { ...event, statEvents };
+      }
+      if (event?.type === VISUAL_EVENT.SPHINX_RESULT) {
+        return {
+          ...event,
+          statEvents: statEvents.filter(statEvent => statEvent?.target === event.actorIdx),
+        };
+      }
+      return event;
+    });
+    // Inspection events own their reveal/effect messages. Keep the direct
+    // card-effect batch fixed before inspections append to the final rule log.
+    const effectVisualMsgs = directMsgs
+      ? [...directMsgs, ...(result.msgs || msgs).slice(beforeSettlementMsgCount)]
+      : (result.msgs || msgs);
+    const statVisualEvent = createStatEventsEvent({
+      statEvents,
+      msgs: effectVisualMsgs,
+    });
+    const canonicalVisualEvents = [
+      ...(gs?._visualEvents || []),
+      ...ownedVisualEvents,
+      ...(statVisualEvent ? [statVisualEvent] : []),
+      // A rule resolution without a visual effect still owns its explanation
+      // or decision prompt; it must survive without a state.log fallback.
+      ...(!statVisualEvent && !ownedVisualEvents.length && effectVisualMsgs.length
+        ? [createLogOnlyVisualEvent({ msgs: effectVisualMsgs })]
+        : []),
+    ].filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
     const nextStatePatch = {
       ...(result.statePatch || {}),
+      ...(canonicalVisualEvents.length ? { _visualEvents: canonicalVisualEvents } : {}),
       ...(etherealizeDecision ? { abilityData: etherealizeDecision } : {}),
       ...(slimeDecision ? { abilityData: slimeDecision } : {}),
       ...(mergedStatEvents.length ? { _statEvents: mergedStatEvents, _statEventSeq: mergedStatEventSeq } : {}),
     };
+    // A target choice authored by the card follows its damage/inspection
+    // reaction. Keeping both active would let target selection erase the loss.
+    if (['etherealizeRedirect', 'etherealizeSelectTarget', 'tsgSlimeBalance'].includes(nextStatePatch.abilityData?.type)) {
+      const targetDecision = deriveEffectDecisionState({ ...nextStatePatch, abilityData: null }, {
+        baseAbilityData: buildTargetContinuationAbilityData(gs.abilityData),
+        extraAbilityData: { _turnOwner: gs.currentTurn ?? ci },
+      });
+      if (targetDecision.hasDecision) {
+        nextStatePatch._decisionContinuations = appendDecisionContinuation(
+          nextStatePatch._decisionContinuations || gs,
+          createDecisionContinuation(targetDecision.phase, targetDecision.abilityData),
+        );
+        for (const key of ['peekHandTargets', 'peekHandSource', 'caveDuelTargets', 'caveDuelSource',
+          'damageLinkTargets', 'damageLinkSource', 'roseThornTargets', 'roseThornSource']) delete nextStatePatch[key];
+      }
+    }
     return {
       ...result,
       statePatch: nextStatePatch,
@@ -496,22 +1002,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
   const killPlayerByPetrification = (idx) => {
     if (idx == null || !P[idx] || P[idx].isDead) return;
     const target = P[idx];
-    target._pendingAnimDeath = true;
     target._petrified = true;
     target.isDead = true;
     target.roleRevealed = true;
     msgs.push(`☠ ${target.name}（${target.role}）被石化了！`);
-    const kept = [];
-    let destroyed = 0;
-    (target.hand || []).forEach(handCard => {
-      if (isBlackGoatYoung(handCard) || isTsathogguaSlime(handCard)) {
-        destroyed += 1;
-      } else if (handCard.type !== 'blankZone') {
-        kept.push(handCard);
-      }
-    });
+    const deathDiscardCards = (target.hand || []).filter(handCard => handCard?.type !== 'blankZone');
+    const { kept, destroyed } = splitHandDiscardCards(deathDiscardCards);
     if (kept.length) Disc.push(...kept);
-    if (destroyed) msgs.push(`${target.name} 的 ${destroyed} 张衍生牌被销毁`);
+    if (destroyed.length) msgs.push(`${target.name} 的 ${destroyed.length} 张衍生牌被销毁`);
     target.hand = [];
     if (target.godZone?.length) {
       Disc.push(...target.godZone);
@@ -663,20 +1161,28 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       const minHp = Math.min(...candidates.map(item => item.player.hp));
       const targetIdx = candidates.find(item => item.player.hp === minHp)?.idx;
+      const beforePetrificationPlayers = copyPlayers(P);
       const beforePetrifyTarget = { ...P[targetIdx] };
       killPlayerByPetrification(targetIdx);
       msgs.push(`【石化配方】场上 HP 最低的 ${beforePetrifyTarget.name} 立即死亡并石化`);
 
       const beforeAccomplicePlayers = copyPlayers(P);
+      const livingAccomplices = [...accomplices].filter(idx => P[idx] && !P[idx].isDead);
       const sanEvents = [];
-      [...accomplices].forEach(idx => {
-        if (P[idx] && !P[idx].isDead) {
-          P[idx].san = clamp(P[idx].san - 1);
-          msgs.push(`【石化配方】共犯 ${P[idx].name} 失去 1 SAN`);
+      const accompliceDamage = submitLossEvents({
+        players: P, deck: D, discard: Disc, log: msgs, currentTurn: gs?.currentTurn,
+        events: livingAccomplices.map((idx, order) => ({
+          targetIdx: idx, lostSan: 1, source: card?.name || '石化配方', order,
+        })),
+      });
+      livingAccomplices.forEach(idx => {
+        msgs.push(`【石化配方】共犯 ${P[idx].name} ${accompliceDamage.phase === 'ETHEREALIZE_DECISION' ? '即将失去' : '失去'} 1 SAN`);
+        if (!accompliceDamage.abilityData) {
           sanEvents.push(idx);
           if (P[idx].san > 0 && P[idx].san <= 6) pendingInspectionTargets.push(idx);
         }
       });
+      if (accompliceDamage.phase) statePatch = { ...statePatch, phase: accompliceDamage.phase, abilityData: accompliceDamage.abilityData };
       statePatch = {
         ...statePatch,
         petrifyingFormula: { active: false, progress: null, accomplices: [] },
@@ -688,15 +1194,20 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       });
       const seq = (gs?._statEventSeq || 0) + 1;
       directStatEvents = [
-        {
-          type: 'PETRIFY_DEATH',
+        createPlayerDefeatedStatEvent({
           target: targetIdx,
+          cause: 'petrification',
           from: playerStats(beforePetrifyTarget),
           to: playerStats(P[targetIdx]),
           reason: card?.name || card?.type || '',
+          logHint: msgs.find(line => line.includes(`${beforePetrifyTarget.name}（${beforePetrifyTarget.role}）被石化了`)) || '',
           seq,
           phaseOrder: 0,
-        },
+          playersBefore: beforePetrificationPlayers,
+          playersAfter: copyPlayers(P),
+          discardBefore: initialDiscard,
+          discardAfter: Disc,
+        }),
         ...sanEvents.map(idx => ({
           type: 'SAN_LOSS',
           target: idx,
@@ -720,21 +1231,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       msgs.push(`${actor.name} 解读石刻，翻开了牌堆顶的 ${revealedCards.length} 张牌`);
       if (isAI) {
-        // AI 策略：优先选非邪神牌中评分最高的；若没有则选邪神牌并承受 SAN 损失
-        const sorted = [...revealedCards].map((c, i) => ({ card: c, originalIdx: i })).sort((a, b) => {
-          const scoreA = a.card.isGod ? -10 : (isPositiveZoneCard(a.card) ? 5 : (isNegativeZoneCard(a.card) ? 2 : 3));
-          const scoreB = b.card.isGod ? -10 : (isPositiveZoneCard(b.card) ? 5 : (isNegativeZoneCard(b.card) ? 2 : 3));
-          return scoreB - scoreA;
+        const chosenIndex = chooseAiStoneCardIndex({
+          state: { ...gs, ...statePatch, players: P, deck: D, discard: Disc },
+          actorIdx: ci, cards: revealedCards,
         });
-        const chosen = sorted[0];
+        const chosen = { card: revealedCards[chosenIndex] };
         const remaining = revealedCards.filter(c => c.id !== chosen.card.id);
         P[ci].hand.push(chosen.card);
         msgs.push(`【解读石刻】${actor.name} 选择了 ${cardLogText(chosen.card, { alwaysShowName: true })} 收入手牌`);
         statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, chosen.card) };
         if (chosen.card.isGod) {
           msgs.push(`【解读石刻】${actor.name} 因选择邪神牌失去 1 SAN`);
-          P[ci].san = clamp(P[ci].san - 1);
-          if (P[ci].san > 0 && P[ci].san <= 6) pendingInspectionTargets.push(ci);
+          hurtSAN(ci, 1);
+          settlePendingDamages('eager');
         }
         // 剩余牌：AI 简单策略——非收入牌一半放牌堆顶，一半放牌堆底
         const mid = Math.ceil(remaining.length / 2);
@@ -762,8 +1271,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     allHealHP: () => {
+      const beforePlayers = card?.name === '地下泉' ? copyPlayers(P) : null;
       allLiving.forEach(i => healHP(i, card.val));
       msgs.push(`全体存活角色回复 ${card.val} HP`);
+      if (card?.name === '地下泉') {
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
+        const event = createCardEffectEvent({
+          effectKey: 'undergroundSpring',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          statEvents: directStatEvents,
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
     },
     selfHealBoth: () => { healHP(ci, 1); healSAN(ci, 1); msgs.push(`${actor.name} 回复了 1 HP 和 1 SAN`); },
     selfHealHPSAN: () => {
@@ -783,12 +1313,21 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfHealAdjHealHP: () => { healHP(ci, card.val); adjacent.filter(i => i !== ci).forEach(i => healHP(i, card.adjVal || 1)); msgs.push(`${actor.name} 回复了 ${card.val} HP，相邻角色各回复 ${card.adjVal || 1} HP`); },
     adjHealHP: () => { adjacent.forEach(i => healHP(i, card.val)); msgs.push(`${actor.name} 与相邻角色各回复 ${card.val} HP`); },
-    selfRevealHandHP: () => { actor.hp = 10; actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} HP 回满，手牌公开且盲抽改为挑选`); },
-    selfRevealHandSAN: () => { actor.san = Math.min(10, actor.san + card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
+    selfRevealHandHP: () => {
+      const healTarget = card.val || 8;
+      if (actor.hp < healTarget) {
+        actor.hp = healTarget;
+        msgs.push(`${actor.name} HP 恢复至 ${healTarget}，手牌公开且盲抽改为挑选`);
+      } else {
+        msgs.push(`${actor.name} 手牌公开且盲抽改为挑选（HP 不低于 ${healTarget}，未恢复）`);
+      }
+      actor.revealHand = true; actor.pickInsteadOfRandom = true;
+    },
+    selfRevealHandSAN: () => { healSAN(ci, card.val); actor.revealHand = true; actor.pickInsteadOfRandom = true; msgs.push(`${actor.name} 回复 ${card.val} SAN，手牌公开且盲抽改为挑选`); },
     globalOnlySwap: () => { statePatch = { globalOnlySwapOwner: ci }; msgs.push(`直到 ${actor.name} 的下回合开始前，所有角色技能都视为"掉包"`); },
     endTurnReplayHand: () => {},
     igniteTorch: () => {
-      if (!isAI) {
+      if (!isAI && actor.hand.length > 0) {
         statePatch = {
           ...statePatch,
           abilityData: {
@@ -799,7 +1338,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         msgs.push(`${actor.name} 准备弃一张牌并引燃火把`);
         return;
       }
-      randDiscard(ci, 1);
+      const beforeForcedPlayers = copyPlayers(P);
+      const beforeForcedDiscard = [...Disc];
+      const discardEvents = randDiscard(ci, 1);
+      appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       grantTurnScopedGodPowerImmunity(P[ci], executionTurnOwner);
       msgs.push(`【引燃火把】${actor.name} 本回合不受邪神之力影响`);
     },
@@ -807,6 +1349,12 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const oldDeck = D;
       D = Disc;
       Disc = oldDeck;
+      statePatch = {
+        ...statePatch,
+        zhuLight: gs?.zhuLight
+          ? { ...gs.zhuLight, cardIds: [] }
+          : null,
+      };
       msgs.push(`【地底天空】牌堆和弃牌堆交换了`);
     },
     geomagneticReversal: () => {
@@ -836,12 +1384,30 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     etherealize: () => {
+      const beforeEtherealizePlayers = copyPlayers(P);
+      const beforeEtherealizeDiscard = [...Disc];
       const hand = actor.hand || [];
-      const cardAlreadyInHand = card?.id ? hand.some(c => c?.id === card.id) : false;
-      const stackCount = hand.length + (cardAlreadyInHand ? 0 : 1);
+      const stackCount = hand.length;
       if (stackCount > 0) {
         actor.etherealizeStacks = (actor.etherealizeStacks || 0) + stackCount;
         msgs.push(`【半物质化】${actor.name} 进入半物质化状态，获得 ${stackCount} 层虚化`);
+        const event = createCardEffectEvent({
+          effectKey: 'etherealizeGain',
+          card,
+          actorIdx: ci,
+          beforePlayers: beforeEtherealizePlayers,
+          beforeDiscard: beforeEtherealizeDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: [msgs[msgs.length - 1]],
+          payload: { stackCount },
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       } else {
         msgs.push(`【半物质化】${actor.name} 手牌为空，无法获得虚化`);
       }
@@ -914,16 +1480,22 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfDamageDiscardHP: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        const beforeForcedPlayers = copyPlayers(P);
+        const beforeForcedDiscard = [...Disc];
         msgs.push(`${actor.name} 失去 ${card.val} HP`);
         hurtHP(ci, card.val);
-        randDiscard(ci, 1);
+        const discardEvents = randDiscard(ci, 1);
+        appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       }
     },
     selfDamageDiscardSAN: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        const beforeForcedPlayers = copyPlayers(P);
+        const beforeForcedDiscard = [...Disc];
         hurtSAN(ci, card.val);
         msgs.push(`${actor.name} 失去 ${card.val} SAN`);
-        randDiscard(ci, 1);
+        const discardEvents = randDiscard(ci, 1);
+        appendForcedRandomDiscardEvent(beforeForcedPlayers, beforeForcedDiscard, discardEvents);
       }
     },
     selfDamageRestHP: () => {
@@ -940,13 +1512,39 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         toggleRest(ci);
       }
     },
-    adjDamageHP: () => { applyAOEDamage(adjacent, 'hp', card.val); },
+    adjDamageHP: () => {
+      const beforePlayers = card?.name === '惊扰蝙蝠' ? copyPlayers(P) : null;
+      applyAOEDamage(adjacent, 'hp', card.val);
+      if (card?.name === '惊扰蝙蝠') {
+        settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
+        const event = createCardEffectEvent({
+          effectKey: 'startledBats',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          statEvents: directStatEvents,
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
+    },
     adjDamageSAN: () => { applyAOEDamage(adjacent, 'san', card.val); },
     adjDamageBoth: () => { applyAOEDamage(adjacent, 'both', card.val, card.hpVal, card.sanVal); },
     allDamageHP: () => {
       const beforePlayers = card?.name === '活火山' ? copyPlayers(P) : null;
       applyGlobalAOEDamage('hp', card.val);
       if (card?.name === '活火山') {
+        settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
         const event = createCardEffectEvent({
           effectKey: 'volcano',
           card,
@@ -955,7 +1553,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           beforeDiscard: [...Disc],
           afterPlayers: copyPlayers(P),
           afterDiscard: [...Disc],
-          statEvents: directStatEvents || buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card?.name || card?.type || '', seq: (gs?._statEventSeq || 0) + 1 }),
+          statEvents: directStatEvents,
           msgs: msgs.slice(-1),
         });
         if (event) {
@@ -967,7 +1565,31 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
     },
     allDamageSAN: () => { applyGlobalAOEDamage('san', card.val); },
-    allDamageBoth: () => { applyGlobalAOEDamage('both', card.val); },
+    allDamageBoth: () => {
+      const beforePlayers = card?.name === '夜风呼啸' ? copyPlayers(P) : null;
+      applyGlobalAOEDamage('both', card.val);
+      if (card?.name === '夜风呼啸') {
+        settlePendingDamages('eager');
+        directStatEvents ||= buildStatEvents(beforePlayers, P, msgs.slice(-1), { reason: card.name, seq: (gs?._statEventSeq || 0) + 1 });
+        const event = createCardEffectEvent({
+          effectKey: 'nightWind',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard: [...Disc],
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          statEvents: directStatEvents,
+          msgs: msgs.slice(-1),
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
+      }
+    },
     adjRest: () => {
       adjacent.forEach(i => {
         if (!avoidNegativeFor.includes(i)) {
@@ -992,21 +1614,34 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (!avoidNegativeFor.includes(i) && P[i]?.hand?.length) {
           const x = 0 | Math.random() * P[i].hand.length;
           const c = P[i].hand.splice(x, 1)[0];
-          if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
+          if (isVanishingDerivedCard(c)) {
             msgs.push(`${P[i].name} 的衍生牌被销毁`);
           } else if (c.type !== 'blankZone') {
             Disc.push(c);
             msgs.push(`${P[i].name} 失去了 ${cardLogText(c, { alwaysShowName: true })}`);
-            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌' });
+            const afterDiscardPlayers = copyPlayers(P);
+            const afterDiscard = [...Disc];
+            const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: i, cards: [c], reason: '失去手牌', applyHpDamage: applyHpDamageWithLink, submitDamage: submitLossEvents, currentTurn: gs?.currentTurn });
             msgs.splice(0, msgs.length, ...balance.log);
+            (balance.etherealizeDecision?.pendingLosses || []).forEach(loss => {
+              pendingEtherealizeLosses = appendEtherealizeLoss(pendingEtherealizeLosses, { ...loss, order: damageOrderSeq++ });
+            });
+            earthquakeDiscardEvents.push({
+              playerIndex: i,
+              card: c,
+              afterPlayers: afterDiscardPlayers,
+              afterDiscard,
+            });
+          } else {
+            msgs.push(`${P[i].name} 的空白区域牌消失了`);
+          }
+          if (c.type !== 'blankZone' && !earthquakeDiscardEvents.some(event => event.card === c)) {
             earthquakeDiscardEvents.push({
               playerIndex: i,
               card: c,
               afterPlayers: copyPlayers(P),
               afterDiscard: [...Disc],
             });
-          } else {
-            msgs.push(`${P[i].name} 的空白区域牌消失了`);
           }
         }
       });
@@ -1025,9 +1660,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     selfRenounceGod: () => {
       if (actor.godName) {
-        if (actor.godZone?.length) Disc.push(...actor.godZone);
+        const beforePlayers = copyPlayers(P);
+        const beforeDiscard = [...Disc];
+        const renouncedGodCards = [...(actor.godZone || [])];
+        if (renouncedGodCards.length) Disc.push(...renouncedGodCards);
         actor.godZone = []; actor.godName = null; actor.godLevel = 0;
         msgs.push(`${actor.name} 放弃信仰`);
+        const event = createCardEffectEvent({
+          effectKey: 'selfRenounceGod',
+          card,
+          actorIdx: ci,
+          beforePlayers,
+          beforeDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: [msgs[msgs.length - 1]],
+          payload: { cards: renouncedGodCards },
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       }
     },
     graveDigGod: () => {
@@ -1040,10 +1695,29 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       }
       if (isAI) {
         const picked = godCards[godCards.length - 1];
+        const beforePlayers = copyPlayers(P);
+        const beforeDiscard = [...Disc];
         const [godCard] = Disc.splice(picked.discardIndex, 1);
         P[ci].hand.push(godCard);
         statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, godCard) };
-        msgs.push(`${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`);
+        const retrieveMsg = `${actor.name} 从弃牌堆中取回 ${cardLogText(godCard, { alwaysShowName: true })}`;
+        msgs.push(retrieveMsg);
+        const event = createGraveDigEvent({
+          playerIdx: ci,
+          playerName: actor.name,
+          card: godCard,
+          msgs: [retrieveMsg],
+          beforePlayers,
+          afterPlayers: copyPlayers(P),
+          beforeDiscard,
+          afterDiscard: [...Disc],
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            _visualEvents: [...(statePatch._visualEvents || []), event],
+          };
+        }
       } else {
         statePatch = {
           ...statePatch,
@@ -1084,6 +1758,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             source: ci,
             targets,
             targetIndex: 0,
+            ...(gs?._isMP ? { buryAliveChoices: Array(P.length).fill(null) } : {}),
           }
         };
         msgs.push(`${actor.name} 与相邻角色准备各将一张手牌放到牌堆底`);
@@ -1101,6 +1776,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         msgs.push(`${actor.name} 失去 3 HP`);
         hurtHP(ci, 3);
+        settlePendingDamages('eager');
       }
       healSAN(ci, card.val);
       msgs.push(`${actor.name} 回复 ${card.val} SAN`);
@@ -1109,6 +1785,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (!avoidNegative && !avoidNegativeFor.includes(ci) && actor.hasBelievedGod) {
         msgs.push(`${actor.name} 失去 3 HP`);
         hurtHP(ci, 3);
+        settlePendingDamages('eager');
       }
       healSAN(ci, card.val);
       msgs.push(`${actor.name} 回复 ${card.val} SAN`);
@@ -1131,10 +1808,23 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     swapAllHands: () => {
       const swapTarget = ti != null ? ti : others.reduce((best, i) => P[i].hand.length > P[best].hand.length ? i : best, others[0] ?? ci);
       if (swapTarget != null && swapTarget !== ci && P[swapTarget] && !P[swapTarget].isDead) {
+        const playersBeforeSwap = copyPlayers(P);
         const myHand = [...P[ci].hand];
         P[ci].hand = [...P[swapTarget].hand];
         P[swapTarget].hand = myHand;
-        msgs.push(`${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`);
+        const swapMsg = `${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`;
+        msgs.push(swapMsg);
+        const moves = [[ci, swapTarget], [swapTarget, ci]]
+          .filter(([from]) => playersBeforeSwap[from].hand.length > 0);
+        const swapEvents = moves.map(([from, to], index) => createCardMoveVisualEvent({
+          from: { zone: 'hand', playerIdx: from },
+          to: { zone: 'hand', playerIdx: to },
+          count: playersBeforeSwap[from].hand.length,
+          effect: 'fullHandSwap',
+          ...(index === 0 ? { playersBefore: playersBeforeSwap } : {}),
+          ...(index === moves.length - 1 ? { playersAfter: copyPlayers(P), msgs: [swapMsg] } : {}),
+        }));
+        statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), ...swapEvents] };
       } else {
         msgs.push(`${actor.name} 无法找到交换目标`);
       }
@@ -1153,6 +1843,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           msgs.push(`${actor.name} 失去 ${card.val} HP`);
         }
         hurtHP(ci, card.val);
+        settlePendingDamages('eager');
         if (P[ci] && !P[ci].isDead) {
           markSkipNextDraw(P[ci], card.name || '扭伤');
           msgs.push(`${actor.name} 下回合开始时不能摸牌`);
@@ -1178,18 +1869,21 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const deferredGlobalLogs = [];
       const affectedTargets = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
       const beforeGlobalPlayers = copyPlayers(P);
+      const beforeGlobalDiscard = [...Disc];
+      const burrowingWormTriggerMsgs = [];
       affectedTargets.forEach(i => {
         const localMsgs = [];
         hurtHPDirect(i, (card.val || 0) + dmgBonus, localMsgs);
+        settlePendingDamages('eager');
         deferredGlobalLogs.push(...localMsgs);
       });
       const afterGlobalPlayers = copyPlayers(P);
       if (affectedTargets.length) {
-        if (avoidSelf && affectedTargets.length === allLiving.length - 1) {
-          msgs.push(`除${actor.name}外，全体存活角色失去 ${card.val} HP`);
-        } else {
-          msgs.push(`全体存活角色失去 ${card.val} HP`);
-        }
+        const globalDamageMsg = avoidSelf && affectedTargets.length === allLiving.length - 1
+          ? `除${actor.name}外，全体存活角色失去 ${card.val} HP`
+          : `全体存活角色失去 ${card.val} HP`;
+        msgs.push(globalDamageMsg);
+        if (card?.name === '钻地魔虫') burrowingWormTriggerMsgs.push(globalDamageMsg);
       }
       if (deferredGlobalLogs.length) msgs.push(...deferredGlobalLogs);
       const alivePlayers = P.map((p, i) => i).filter(i => !P[i].isDead && !avoidNegativeFor.includes(i) && !(avoidSelf && i === ci));
@@ -1198,13 +1892,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const beforeExtraPlayer = { ...P[randomTarget] };
         const localMsgs = [];
         hurtHPDirect(randomTarget, (card.val || 0) + dmgBonus, localMsgs);
+        settlePendingDamages('eager');
         statePatch = appendRandomTargetEvent(statePatch, gs, {
           sourceIdx: ci,
           targetIdx: randomTarget,
           label: card.name || '随机目标',
           resultText: `${P[randomTarget].name} 被选中`,
           phaseOrder: 1,
-        });
+        }, { createPhaseGroup: card?.name === '钻地魔虫' });
+        const phaseGroupId = card?.name === '钻地魔虫'
+          ? statePatch._visualEvents?.findLast(event => event?.type === VISUAL_EVENT.RANDOM_TARGET)?.phaseGroupId || null
+          : null;
         msgs.push(`${P[randomTarget].name} 额外失去 ${card.val} HP`);
         if (localMsgs.length) msgs.push(...localMsgs);
         const seq = (gs?._statEventSeq || 0) + 1;
@@ -1219,6 +1917,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               reason: card?.name || card?.type || '',
               seq,
               phaseOrder: 0,
+              ...(phaseGroupId ? { phaseGroupId } : {}),
             })),
           ...((P[randomTarget]?.hp ?? 0) < (beforeExtraPlayer.hp ?? 0) ? [{
             type: 'HP_LOSS',
@@ -1228,8 +1927,32 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
             reason: card?.name || card?.type || '',
             seq,
             phaseOrder: 2,
+            ...(phaseGroupId ? { phaseGroupId } : {}),
           }] : []),
         ];
+      }
+      if (card?.name === '钻地魔虫') {
+        const phaseGroupId = statePatch._visualEvents?.findLast(event => event?.type === VISUAL_EVENT.RANDOM_TARGET)?.phaseGroupId || null;
+        const event = createCardEffectEvent({
+          effectKey: 'burrowingWorm',
+          card,
+          actorIdx: ci,
+          phaseGroupId,
+          phaseOrder: -1,
+          beforePlayers: beforeGlobalPlayers,
+          beforeDiscard: beforeGlobalDiscard,
+          afterPlayers: copyPlayers(P),
+          afterDiscard: [...Disc],
+          msgs: burrowingWormTriggerMsgs,
+        });
+        if (event) {
+          statePatch = {
+            ...statePatch,
+            // The global sweep resolves before its random follow-up target.
+            // Preserve that rule order in the canonical transaction.
+            _visualEvents: [event, ...(statePatch._visualEvents || [])],
+          };
+        }
       }
     },
     throwStone: () => {
@@ -1258,6 +1981,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       if (damage > 0) {
         const localMsgs = [];
         hurtHPDirect(randomTarget, damage, localMsgs);
+        settlePendingDamages('eager');
         if (localMsgs.length) msgs.push(...localMsgs);
       }
       const seq = (gs?._statEventSeq || 0) + 1;
@@ -1270,60 +1994,118 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         seq,
         phaseOrder: 2,
       }] : [];
+      // 手写的 HP_LOSS 会顶掉 finish() 里 buildStatEvents 的 includeDefeat 合成，
+      // 致死时必须显式补发 PLAYER_DEFEATED（同石化配方），否则呈现层没有
+      // GUILLOTINE/DEATH 可播，目标只靠 HP_DAMAGE 的 timeline 提前置灰。
+      if (damage > 0 && !beforeTarget.isDead && P[randomTarget]?.isDead) {
+        directStatEvents.push(createPlayerDefeatedStatEvent({
+          target: randomTarget,
+          cause: 'hpDepleted',
+          from: playerStats(beforeTarget),
+          to: playerStats(P[randomTarget]),
+          reason: card?.name || card?.type || '',
+          logHint: msgs.find(line => line.includes(P[randomTarget].name) && line.includes('倒下了')) || '',
+          seq,
+          phaseOrder: 3,
+          playersBefore: beforePlayers,
+          playersAfter: copyPlayers(P),
+          discardBefore: initialDiscard,
+          discardAfter: Disc,
+        }));
+      }
+      const throwStoneEvent = createThrowStoneEvent({
+        sourceIdx: ci,
+        targetIdx: randomTarget,
+        roll,
+        distance,
+        damage,
+        resultText: `${P[randomTarget].name} 被选中`,
+        msgs: msgs.slice(),
+        playersBefore: beforePlayers,
+        playersAfter: copyPlayers(P),
+        statEvents: directStatEvents,
+        legacySeq: statePatch._randomTargetSeq,
+      });
+      if (throwStoneEvent) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), throwStoneEvent],
+        };
+      }
     },
     sameAbyssChoice: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         msgs.push(`${actor.name} 失去 ${card.hpVal || 2} HP`);
         hurtHP(ci, card.hpVal || 2);
+        settlePendingDamages('eager');
       }
+      const getSameAbyssHandCount = i => P[i]?.hand?.length || 0;
       const livingPlayers = P.map((p, i) => i).filter(i => !P[i].isDead);
       if (livingPlayers.length === 0) return;
       let maxHand = -1;
       let maxHandPlayers = [];
       livingPlayers.forEach(i => {
-        if (P[i].hand.length > maxHand) {
-          maxHand = P[i].hand.length;
+        const handCount = getSameAbyssHandCount(i);
+        if (handCount > maxHand) {
+          maxHand = handCount;
           maxHandPlayers = [i];
-        } else if (P[i].hand.length === maxHand) {
+        } else if (handCount === maxHand) {
           maxHandPlayers.push(i);
         }
       });
-      const targetIdx = maxHandPlayers[0];
-      const actorHandCount = P[ci].hand.length;
-      const discardCount = Math.max(0, P[targetIdx].hand.length - actorHandCount);
-      msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${P[targetIdx].hand.length} 张），须做出选择`);
-      if (targetIdx === 0) {
+      // When the triggering player ties for the largest hand, every other
+      // tied player takes priority regardless of seat order.
+      const targetIdx = maxHandPlayers.find(i => i !== ci) ?? maxHandPlayers[0];
+      const actorHandCount = getSameAbyssHandCount(ci);
+      const targetHandCount = getSameAbyssHandCount(targetIdx);
+      const discardCount = Math.max(0, targetHandCount - actorHandCount);
+      const sourceDamageDecision = buildChainEtherealizeDecision()
+        || buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: gs?.currentTurn ?? ci });
+      if (sourceDamageDecision) {
+        statePatch = { ...statePatch, abilityData: sourceDamageDecision,
+          _sameAbyssContinuation: { awaitingSourceDamage: true, actorIdx: ci, targetIdx,
+            _turnOwner: gs?.currentTurn ?? ci },
+        };
+        return { P, D, Disc, msgs, statePatch };
+      }
+      msgs.push(`【同归深渊】${P[targetIdx].name} 手牌最多（${targetHandCount} 张），须做出选择`);
+      if (gs?._aiPreview || (targetIdx === 0 && !isAI)) {
         return {
           P, D, Disc, msgs,
           statePatch: {
             abilityData: {
               type: 'sameAbyssChoice',
+              actorIdx: ci,
               targetIdx,
               actorHandCount,
               discardCount,
+              targetHandCount,
             }
           }
         };
       }
-      const target = P[targetIdx];
-      if (discardCount > 0 && target.hp <= 5) {
-        for (let d = 0; d < discardCount; d++) {
-          if (target.hand.length > actorHandCount) {
-            const c = target.hand.shift();
-            if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
-              msgs.push(`${target.name} 的衍生牌被销毁`);
-            } else if (c.type !== 'blankZone') {
-              Disc.push(c);
-              const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: msgs, ownerIdx: targetIdx, cards: [c], reason: '同归深渊弃牌' });
-              msgs.splice(0, msgs.length, ...balance.log);
-            }
-          }
-        }
-        msgs.push(`【同归深渊】${target.name} 选择弃置手牌至 ${actorHandCount} 张`);
-      } else {
-        msgs.push(`【同归深渊】${target.name} 选择承受伤害，失去 4 HP`);
-        hurtHP(targetIdx, 4);
-      }
+      const sourceStatEvents = attachVritraRevealsToStatEvents(
+        buildStatEvents(beforePlayers, P, msgs, { reason: card.name || '同归深渊', seq: (gs._statEventSeq || 0) + 1 }),
+        takeVritraImmortalRevealEvents(P),
+      );
+      const sourceVisual = createStatEventsEvent({ statEvents: sourceStatEvents, msgs: [...msgs] });
+      const resolved = resolveSameAbyssState({
+        ...gs, players: P, deck: D, discard: Disc, log: [...(gs.log || []), ...msgs],
+        _statEvents: [...(gs._statEvents || []), ...sourceStatEvents],
+        _statEventSeq: (gs._statEventSeq || 0) + (sourceStatEvents.length ? 1 : 0),
+        _visualEvents: [...(gs._visualEvents || []), ...(sourceVisual ? [sourceVisual] : [])],
+        abilityData: { ...gs.abilityData, type: 'sameAbyssChoice', actorIdx: ci, targetIdx,
+          actorHandCount },
+      }, { card });
+      P = resolved.players; D = resolved.deck; Disc = resolved.discard;
+      msgs = resolved.log.slice(gs.log?.length || 0);
+      directStatEvents = [];
+      statePatch = {
+        ...statePatch, _statEvents: resolved._statEvents, _statEventSeq: resolved._statEventSeq,
+        _visualEvents: resolved._visualEvents, _sameAbyssContinuation: resolved._sameAbyssContinuation,
+        ...(!['ACTION', 'AI_TURN'].includes(resolved.phase) ? { abilityData: resolved.abilityData } : {}),
+      };
+      return { P, D, Disc, msgs, statePatch };
     },
     sphinxGuess: () => {
       if (D.length === 0) {
@@ -1333,6 +2115,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       const topCard = D[0];
       const isZone = isZoneCard(topCard);
       if (isAI) {
+        const sphinxPlayersBefore = copyPlayers(P);
         const guessYes = Math.random() < 0.5;
         msgs.push(`${actor.name} 猜测牌堆顶的牌${guessYes ? '是' : '不是'}区域牌`);
         const actualCard = D.shift();
@@ -1342,26 +2125,41 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           P[ci].hand.push(actualCard);
           statePatch = { ...statePatch, ...appendPublicCardGainTriggers({ ...gs, ...statePatch }, P, ci, actualCard) };
         } else {
-          if (avoidNegative || avoidNegativeFor.includes(ci)) {
-            msgs.push(`猜测错误！${actor.name} 负面效果已规避`);
-          } else {
-            msgs.push(`猜测错误！${actor.name} 失去 3 HP`);
+          const isTreasureHunter = (actor._nyaBorrow || actor.role) === '寻宝者';
+          const dodgeRoll = isTreasureHunter ? 1 + (Math.random() * 6 | 0) : null;
+          const sphinxAvoided = dodgeRoll != null && dodgeRoll >= 4;
+          // 只有真正存在规避结算时才使用“即将失去”。普通角色的伤害会在
+          // 本次结算中直接生效，提前再写一条会和下方最终结果重复。
+          msgs.push(`猜测错误！${actor.name} ${dodgeRoll != null ? '即将失去' : '失去'} 3 HP`);
+          if (dodgeRoll != null) {
+            P[ci].roleRevealed = true;
+            msgs.push(`${actor.name}（寻宝者）掷出 ${dodgeRoll} 点，${sphinxAvoided ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`);
+          }
+          if (!sphinxAvoided) {
             hurtHP(ci, 3);
           }
           Disc.push(actualCard);
         }
-        statePatch = {
-          ...statePatch,
-          _animSphinxReveal: { card: actualCard, guessYes, guessCorrect, actorIdx: ci }
-        };
+        const sphinxEvent = createSphinxResultEvent({
+          actorIdx: ci,
+          card: actualCard,
+          sourceCard: card,
+          guessCorrect,
+          msgs: msgs.slice(),
+          playersBefore: sphinxPlayersBefore,
+          playersAfter: copyPlayers(P),
+        });
+        if (sphinxEvent) {
+          statePatch._visualEvents = [...(statePatch._visualEvents || []), sphinxEvent];
+        }
       } else {
         return {
           P, D, Disc, msgs,
           statePatch: {
             abilityData: {
               type: 'sphinxGuess',
+              playerIndex: ci,
               topCard,
-              sphinxAvoidNegative: avoidNegative || avoidNegativeFor.includes(ci),
             }
           }
         };
@@ -1380,6 +2178,10 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     caveDuel: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+        if (!actor.hand.length) {
+          msgs.push(`${actor.name} 没有手牌，无法进行穴居人战争`);
+          return;
+        }
         const validTargets = others.filter(i => P[i].hand.length > 0);
         if (validTargets.length === 0) {
           msgs.push(`没有其他角色有手牌，无法进行穴居人战争`);
@@ -1412,59 +2214,19 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     revealTopCards: () => {
       if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
         const revealedCards = [];
-        const isZoneMatchKey = (card, key) => {
-          if (!isZoneCard(card)) return false;
-          return /^[A-Z]$/.test(key) ? card.letter === key : /^\d$/.test(key) ? String(card.number) === String(key) : false;
-        };
+        const isZoneMatchKey = matchesTortoiseKey;
         for (let i = 0; i < card.val && D.length > 0; i++) {
           revealedCards.push(D.shift());
         }
         if (revealedCards.length > 0) {
           msgs.push(`${actor.name} 展示了牌堆顶的 ${revealedCards.length} 张牌：${revealedCards.map(c => cardLogText(c)).join(' ')}`);
-          const letterCountMap = {};
-          const numberCountMap = {};
-          P[ci].hand.forEach(card => {
-            if (isZoneCard(card) && card.key) {
-              const letter = card.key.match(/[A-Z]/);
-              const number = card.key.match(/\d/);
-              if (letter) {
-                const l = letter[0];
-                letterCountMap[l] = (letterCountMap[l] || 0) + 1;
-              }
-              if (number) {
-                const n = number[0];
-                numberCountMap[n] = (numberCountMap[n] || 0) + 1;
-              }
-            }
-          });
-          let maxLetterCount = 0;
-          const maxLetters = [];
-          Object.entries(letterCountMap).forEach(([key, count]) => {
-            if (count > maxLetterCount) {
-              maxLetterCount = count;
-              maxLetters.length = 0;
-              maxLetters.push(key);
-            } else if (count === maxLetterCount) {
-              maxLetters.push(key);
-            }
-          });
-          let maxNumberCount = 0;
-          const maxNumbers = [];
-          Object.entries(numberCountMap).forEach(([key, count]) => {
-            if (count > maxNumberCount) {
-              maxNumberCount = count;
-              maxNumbers.length = 0;
-              maxNumbers.push(key);
-            } else if (count === maxNumberCount) {
-              maxNumbers.push(key);
-            }
-          });
-          const selectableKeys = [];
-          if (maxLetters.length > 0) selectableKeys.push(...maxLetters);
-          if (maxNumbers.length > 0) selectableKeys.push(...maxNumbers);
+          const selectableKeys = getTortoiseSelectableKeys(P[ci].hand);
           if (selectableKeys.length > 0) {
             if (isAI) {
-              const selectedKey = selectableKeys[Math.floor(Math.random() * selectableKeys.length)];
+              const selectedKey = chooseAiTortoiseKey({
+                state: { ...gs, ...statePatch, players: P, deck: D, discard: Disc },
+                actorIdx: ci, revealedCards, selectableKeys,
+              });
               msgs.push(`${actor.name} 选择了编号 ${selectedKey}`);
               const matchedCards = revealedCards.filter(c => isZoneMatchKey(c, selectedKey));
               if (matchedCards.length > 0) {
@@ -1545,12 +2307,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     },
     reverseTurnOrder: () => {
       const currentDir = gs?.turnDirection || 1;
-      const newDir = -currentDir;
-      statePatch = { ...statePatch, turnDirection: newDir };
-      msgs.push(`${actor.name} 打出【逆流】，回合轮换方向变为${newDir === 1 ? '顺时针' : '逆时针'}`);
+      if (gs?._turnFlowStage === TURN_FLOW_STAGE.END_TURN) {
+        const newDir = -currentDir;
+        statePatch = { ...statePatch, turnDirection: newDir };
+        msgs.push(`【逆流】${actor.name} 在回合结束阶段令回合轮换方向变为${newDir === 1 ? '顺时针' : '逆时针'}`);
+      } else {
+        actor.pendingTurnDirectionReversals = (actor.pendingTurnDirectionReversals || 0) + 1;
+        msgs.push(`${actor.name} 打出【逆流】，将在本回合结束时反转回合轮换方向`);
+      }
     },
     moldyFood: () => {
-      const d1 = 1 + (Math.random() * 6 | 0);
+      const d1 = Number.isInteger(gs?._pendingMoldyFoodRoll) ? gs._pendingMoldyFoodRoll : 1 + (Math.random() * 6 | 0);
       const isEven = d1 % 2 === 0;
       const seq = (gs?._moldyFoodDiceSeq || 0) + 1;
       const negativeAvoided = !isEven && (avoidNegative || avoidNegativeFor.includes(ci));
@@ -1562,15 +2329,42 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         if (!negativeAvoided) {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），失去 1 HP，下回合开始时不能摸牌`);
           hurtHP(ci, 1);
+          settlePendingDamages('eager');
           markSkipNextDraw(P[ci], '霉变食物');
         } else {
           msgs.push(`【霉变食物】${actor.name} 掷出 ${d1} 点（单数），负面效果已规避`);
         }
       }
+      const diceEvent = createDiceResultVisualEvent({
+        mode: 'moldyFood',
+        actorIdx: ci,
+        actorName: actor.name,
+        d1,
+        d2: 0,
+        negativeAvoided,
+        msgs: msgs.slice(-1),
+      });
+      if (diceEvent) {
+        statePatch = {
+          ...statePatch,
+          _visualEvents: [...(statePatch._visualEvents || []), diceEvent],
+        };
+      }
     },
     albinoCreature: () => {
       const hand = actor.hand || [];
-      const fireCards = hand.filter(c => cardContainsFireText(c));
+      // During an Endless Corridor replay the resolving card is intentionally
+      // still in the actor's hand while its effect is applied.  Do not let
+      // Albino Creature match its own description (which contains "火").
+      // Exclude the current instance by identity and, for cloned snapshots,
+      // by its unique card id.  This avoids mutating the hand just to hide the
+      // card and keeps the state diff limited to the actual effect.
+      const resolvingCardId = card?.id;
+      const fireCards = hand.filter(candidate => (
+        candidate !== card
+        && !(resolvingCardId != null && candidate?.id === resolvingCardId)
+        && cardContainsFireText(candidate)
+      ));
       if (fireCards.length > 0) {
         if (isAI) {
           const chosenCard = fireCards[Math.floor(Math.random() * fireCards.length)];
@@ -1579,19 +2373,27 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           if (candidates.length > 0) {
             const randomTarget = candidates[Math.floor(Math.random() * candidates.length)];
             const beforeTarget = { ...P[randomTarget] };
+            statePatch = appendRandomTargetEvent(statePatch, gs, {
+              sourceIdx: ci,
+              targetIdx: randomTarget,
+              label: card.name || '白化生物',
+              resultText: `${P[randomTarget].name} 被选中`,
+              phaseOrder: 0,
+            });
             hurtHP(randomTarget, 2);
             hurtSAN(randomTarget, 2);
+            settlePendingDamages('eager');
             msgs.push(`${P[randomTarget].name} 失去 2 HP 和 2 SAN`);
             const seq = (gs?._statEventSeq || 0) + 1;
-            directStatEvents = [{
-              type: 'HP_LOSS',
+            directStatEvents = ['HP_LOSS', 'SAN_LOSS'].map(type => ({
+              type,
               target: randomTarget,
               from: playerStats(beforeTarget),
               to: playerStats(P[randomTarget]),
               reason: '白化生物',
               seq,
-              phaseOrder: 0,
-            }];
+              phaseOrder: 1,
+            }));
           }
         } else {
           statePatch = {
@@ -1602,12 +2404,14 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
               fireCardIds: fireCards.map(c => c.id),
             }
           };
-          msgs.push(`${actor.name} 收入了白化生物，准备亮出带"火"字的手牌`);
+          msgs.push(`${actor.name} 准备结算白化生物，亮出带"火"字的手牌`);
         }
       } else {
         msgs.push(`【白化生物】${actor.name} 没有带"火"字的手牌，失去 2 HP 和 2 SAN`);
-        hurtHP(ci, 2);
-        hurtSAN(ci, 2);
+        if (!avoidNegative && !avoidNegativeFor.includes(ci)) {
+          hurtHP(ci, 2);
+          hurtSAN(ci, 2);
+        }
       }
     },
     allHealHPDamageSAN: () => {
@@ -1632,8 +2436,11 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const earlyReturn = handler();
     if (earlyReturn) return finish(earlyReturn);
   }
+  settlePendingDamages('batch');
+  const directEffectMsgs = [...msgs];
   const directStatEventSeq = (gs?._statEventSeq || 0) + 1;
   if (!directStatEvents) directStatEvents = buildStatEvents(beforePlayers, P, msgs, { reason: card?.name || card?.type || '', seq: directStatEventSeq });
+  directStatEvents = directStatEvents.map(event => ensureStatEventId(event));
   const inspectionStartMeta = directStatEvents.length
     ? {
       ...inspectionMeta,
@@ -1654,7 +2461,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const pendingChainDecision = statePatch?.abilityData?.type
       ? statePatch.abilityData
-      : buildEtherealizeRedirectDecision(pendingEtherealizeLosses, { _turnOwner: gs?.currentTurn ?? ci })
+      : buildChainEtherealizeDecision()
         || buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: gs?.currentTurn ?? ci });
     const processed = processInspectionTargets(
       inspectionTargets,
@@ -1667,7 +2474,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
     );
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
     msgs = [...msgs, ...processed.log.slice(inspectionBaseLog.length)];
-    statePatch = { ...statePatch, ...inspectionMeta };
+    const mergedVisualEvents = [
+      ...(statePatch._visualEvents || []),
+      ...(inspectionMeta._visualEvents || []),
+    ].filter((event, index, events) => (
+      !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+    ));
+    statePatch = {
+      ...statePatch,
+      ...inspectionMeta,
+      ...(mergedVisualEvents.length ? { _visualEvents: mergedVisualEvents } : {}),
+    };
   }
-  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents);
+  return finish({ P, D, Disc, msgs, statePatch }, directStatEvents, directEffectMsgs);
 }

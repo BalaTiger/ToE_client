@@ -1,8 +1,32 @@
 import { describe, it, expect } from 'vitest';
 import { applyBalanceDiscardSideEffects } from '../balanceCards';
+import { submitLossEvents } from '../effectEngine';
 import { makeStandardPlayers } from './factory';
 
 describe('balanceCards', () => {
+  it('回合外弃置天平时先进入虚化决策且不提前扣除属性', () => {
+    const players = makeStandardPlayers(3);
+    players[1].hp = 8;
+    players[1].etherealizeStacks = 1;
+    const result = applyBalanceDiscardSideEffects({
+      players,
+      deck: [],
+      discard: [],
+      log: [],
+      ownerIdx: 1,
+      cards: [{ type: 'lifeBalance', name: '生命天平' }],
+      currentTurn: 0,
+      submitDamage: submitLossEvents,
+    });
+
+    expect(players[1].hp).toBe(8);
+    expect(result.etherealizeDecision).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 3,
+    });
+  });
+
   it('天平牌从当前持有者手牌进入弃牌堆时惩罚当前持有者', () => {
     const players = makeStandardPlayers(3);
     players[1].hp = 8;
@@ -34,5 +58,27 @@ describe('balanceCards', () => {
     expect(soul.players[2].san).toBe(5);
     expect(soul.log.at(-2)).toContain('生命天平');
     expect(soul.log.at(-1)).toContain('灵魂天平');
+  });
+
+  it('通过统一扣减入口返回可归属的规范属性事件', () => {
+    const players = makeStandardPlayers(2);
+    players[1].san = 8;
+    const result = applyBalanceDiscardSideEffects({
+      players,
+      deck: [],
+      discard: [],
+      log: [],
+      ownerIdx: 1,
+      cards: [{ type: 'soulBalance', name: '灵魂天平' }],
+      reason: '追捕弃牌',
+      currentTurn: 1,
+      submitDamage: submitLossEvents,
+      statEventSeq: 12,
+    });
+
+    expect(result.statEvents).toEqual([
+      expect.objectContaining({ type: 'SAN_LOSS', target: 1, seq: 12, from: expect.objectContaining({ san: 8 }), to: expect.objectContaining({ san: 5 }) }),
+    ]);
+    expect(result.log.at(-1)).toContain('【灵魂天平】');
   });
 });

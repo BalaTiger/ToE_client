@@ -1,0 +1,19 @@
+{
+  "mode": "built-in image_gen",
+  "jobs": [
+    {
+      "key": "frames",
+      "prompt": "Use case: ui-mockup asset extraction and style matching. Input image is the user's exact selected reference. Generate only a READY-TO-CUT raster atlas of the HORIZONTAL BUTTON BACKGROUNDS that match the three thin bronze-framed rectangular action buttons directly above the fan of hand cards in the reference. This REPLACES the previous octagonal round seals. NO octagonal discs or coins. Each button is a wide clipped-corner rectangle, about 3.1:1 width to height, fine old brass double rim, tiny carved corner details, blackened subtly colored interior stone, quiet flat front view, not bulbous, not glossy, not futuristic.\nFour buttons arranged 2 columns by 2 rows, in four equal cells on a wide canvas, each centered with generous empty space and not touching. SAME exact geometry, diameter of corner notches and line thickness for all four. Top-left skill: dark teal with aged pale brass, matching reference skill button. Top-right rest: warm smoky amber-brown with brass, matching reference rest button. Bottom-left multiply: dark desaturated violet with brass. Bottom-right end turn: dark oxblood/red-brown with copper, matching reference end-turn button. Distinct restrained tonal colors, no neon.\nAll centers EMPTY: NO icons, NO text, NO digits, NO lettering, because live Chinese labels and icons will be composited later. Subtle fine material only in center. No art from the cards and no costs. Transparent exterior if supported; otherwise perfectly flat white matte exterior, absolutely NO painted checkerboard. Four isolated crisp usable button frames and no other items. Target atlas 1536x768, uniform 2x2 cells, each actual horizontal frame approximately 660x210 inside its cell. Exact front-facing alignment, no perspective.",
+      "refs": [
+        "C:\\Users\\zhuzi\\AppData\\Local\\Temp\\codex-clipboard-28fe985c-ab4b-4170-bf3f-4463d85cc044.png"
+      ]
+    },
+    {
+      "key": "table",
+      "prompt": "Use case: game UI bitmap background. Use the supplied image only as an art direction reference for the BOTTOM HAND-CARD AREA. Generate a new long wide dark tabletop decorative backdrop for the player's hand, no functional elements. Deep black teal polished cracked stone, a faint fine incised horizontal border near the upper edge, subtly worn antique bronze. Center 70 percent is empty almost-black stone with sparse texture, reserved for actual live cards to be placed later. Far left edge only: very restrained cropped old book, small candle flame, tiny curl of tentacle; far right edge only: cropped old book spines with NO writing and a small tentacle curl, both kept low in the corners. Atmospheric illustration matching the reference's elegant dark Cthulhu tabletop, tasteful detailed but subdued. No big creature, no heads, no floating skulls, no UI, NO buttons, NO cards, NO text, NO numbers, NO labels, no symbols that imply mana or costs, no battle zones. The dark material must visually merge with existing near-black green game panels. Composition flat frontal UI backdrop, wide horizontal 3:1 aspect ratio, approximately 1536x512. The decorative props occupy less than 14 percent on each edge and never intrude into the empty central region. Top edge mostly dark and calm for the action bar. High quality raster illustration for production background, no mockup or presentation sheet.",
+      "refs": [
+        "C:\\Users\\zhuzi\\AppData\\Local\\Temp\\codex-clipboard-28fe985c-ab4b-4170-bf3f-4463d85cc044.png"
+      ]
+    }
+  ]
+}

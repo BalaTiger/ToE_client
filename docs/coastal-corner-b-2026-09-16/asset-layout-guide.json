@@ -1,0 +1,30 @@
+{
+  "coordinateSystem": "Pixels in the final alpha WebP; hand-measured text safe regions",
+  "corner-b-header": {
+    "size": [2144, 590],
+    "aspectRatio": 3.6338983050847458,
+    "interiorBoundsApprox": { "left": 310, "right": 2020, "top": 144, "bottom": 424 },
+    "textSafe": { "left": 340, "right": 1150, "top": 160, "bottom": 407 },
+    "suggestedControlCenters": [[1440, 285], [1810, 285]],
+    "suggestedControlDiameter": 290,
+    "notes": "Native image contains no text or button glyphs. Keep the whole header proportional so its circular rivets remain round. Positions and control size scale together."
+  },
+  "corner-b-journal": {
+    "size": [975, 1407],
+    "aspectRatio": 0.6929637526652452,
+    "printedPageFrameApprox": { "left": 195, "right": 900, "top": 100, "bottom": 1227 },
+    "claspMaxX": 240,
+    "textSafe": { "left": 255, "right": 860, "top": 170, "bottom": 1175 },
+    "textInsetsPercent": { "left": 26.15, "right": 11.8, "top": 12.1, "bottom": 16.5 },
+    "suggestedHeadingCenter": [557.5, 205],
+    "suggestedBodyTop": 285,
+    "notes": "Prefer equal-axis scaling of the whole journal. Rivets occur along the spine, including near y=495, so vertically stretching the image or middle border slice would distort circles. Content can scroll independently inside the page. Existing scene tentacles should cover the lower-right page."
+  },
+  "corner-b-control": {
+    "size": [1113, 1113],
+    "aspectRatio": 1,
+    "center": [556.5, 556.5],
+    "iconSafeDiameter": 790,
+    "notes": "The same square base is used by both controls. Add a separate dedicated icon; use equal width/height and contain."
+  }
+}

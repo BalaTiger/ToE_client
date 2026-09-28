@@ -35,6 +35,8 @@ export const copyPlayers = (ps) => ps.map(p => ({
     ...p.huntQualityMemory,
     handIds: [...(p.huntQualityMemory.handIds || [])],
   } : null,
+  damageLink: p.damageLink ? { ...p.damageLink } : p.damageLink,
+  damageLinks: Array.isArray(p.damageLinks) ? p.damageLinks.map(link => ({ ...link })) : p.damageLinks,
   disableRestNextTurn: !!p.disableRestNextTurn,
   disableSkillNextTurn: !!p.disableSkillNextTurn,
   handLimitDecreaseNextTurn: p.handLimitDecreaseNextTurn || 0
@@ -44,9 +46,9 @@ export const isZoneCard = (card) => !!card?.isZone;
 
 export const isBlankZoneCard = (card) => card?.type === 'blankZone';
 
-export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung;
-export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime;
-export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore;
+export const isBlackGoatYoung = (card) => !!card?.isBlackGoatYoung || card?.type === 'blackGoatYoung';
+export const isTsathogguaSlime = (card) => !!card?.isTsathogguaSlime || card?.type === 'tsathogguaSlime';
+export const isGeomagneticRestore = (card) => !!card?.isGeomagneticRestore || card?.type === 'geomagneticRestore';
 export const isVanishingDerivedCard = (card) => isBlackGoatYoung(card) || isTsathogguaSlime(card) || isGeomagneticRestore(card);
 export const canRevealForHunt = (card) => !!card && !isBlackGoatYoung(card) && !isTsathogguaSlime(card);
 export const isRevealedCultist = (player) => ((player?._nyaBorrow || player?.role) === ROLE_CULTIST) && !!player?.roleRevealed;
@@ -57,15 +59,17 @@ export const hasHuntRevealableCard = (playerOrHand) => {
 
 export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter, extra = {}) {
   if (!Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
+  const { pendingSlimeBalanceDecisions: carriedDecisions = [], ...decisionExtra } = extra;
+  const decisions = [];
   for (let i = 0; i < playersAfter.length; i++) {
     const before = playersBefore[i];
     const after = playersAfter[i];
-    if (!before || !after || after.isDead) continue;
+    if (!before || !after || after.isDead || after.hp <= 0) continue;
     const lostHp = Math.max(0, (before.hp || 0) - (after.hp || 0));
     const lostSan = Math.max(0, (before.san || 0) - (after.san || 0));
     if (!(lostHp || lostSan)) continue;
     if ((after.hand || []).some(isTsathogguaSlime)) {
-      return {
+      decisions.push({
         type: 'tsgSlimeBalance',
         targetIdx: i,
         beforeHp: before.hp,
@@ -74,11 +78,15 @@ export function buildTsathogguaSlimeBalanceDecision(playersBefore, playersAfter,
         afterSan: after.san,
         lostHp,
         lostSan,
-        ...extra,
-      };
+        ...(after._pendingDamageLinkBreak ? { pendingDamageLinkBreak: { ...after._pendingDamageLinkBreak } } : {}),
+        ...decisionExtra,
+      });
     }
   }
-  return null;
+  if (!decisions.length) return null;
+  const [first, ...rest] = decisions;
+  const queued = [...rest, ...carriedDecisions];
+  return queued.length ? { ...first, pendingSlimeBalanceDecisions: queued } : first;
 }
 
 export function getLivingAdjacentIndices(players, ci) {
@@ -92,6 +100,11 @@ export function getLivingAdjacentIndices(players, ci) {
     !players[idx].isDead &&
     arr.indexOf(idx) === pos
   ));
+}
+
+export function getAdjacentTargets(players, ci) {
+  if (!Array.isArray(players) || ci == null || !players[ci]) return [];
+  return [ci, ...getLivingAdjacentIndices(players, ci)];
 }
 
 export function buildEtherealizeLoss({ players, targetIdx, currentTurn, lostHp = 0, lostSan = 0, source = 'damage' } = {}) {
@@ -147,16 +160,21 @@ export function buildEtherealizeRedirectDecision(pendingLosses, extra = {}) {
   };
 }
 
-export const separateBlackGoatYoung = (cards) => {
-  if (!cards) return { kept: [], destroyed: [] };
+export const splitHandDiscardCards = (cards) => {
+  const animationCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   const kept = [];
   const destroyed = [];
-  for (const c of cards) {
+  for (const c of animationCards) {
     if (isVanishingDerivedCard(c)) destroyed.push(c);
     else kept.push(c);
   }
-  return { kept, destroyed };
+  return { kept, destroyed, animationCards };
 };
+
+// Backward-compatible name used by death/loot settlement. New discard paths
+// should prefer splitHandDiscardCards so the animation-only card list is not
+// accidentally confused with the cards that actually enter the discard pile.
+export const separateBlackGoatYoung = (cards) => splitHandDiscardCards(cards);
 
 export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   if (currentTurn == null || D == null || currentTurn === i) return false;
@@ -173,14 +191,18 @@ export function tryVritraImmortal(P, i, currentTurn, D, Disc, L) {
   const hasGod = revealed.some(c => c && c.isGod);
   if (hasGod) {
     Disc.push(...revealed);
-    L.push(`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；出现邪神牌，力量消散…`);
+    const msg=`【不灭之躯】${P[i].name} 濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；出现邪神牌，力量消散…`;
+    L.push(msg);
+    P[i]._vritraImmortalReveal={targetIdx:i,cards:revealed,succeeded:false,msg};
     D.length = 0;
     D.push(...deckCopy);
     return false;
   }
   P[i].hp = 1;
   Disc.push(...revealed);
-  L.push(`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；未见邪神牌，HP恢复至1！`);
+  const msg=`【不灭之躯】${P[i].name} 在濒死之际激发龙血之力，翻开 ${revealed.length} 张：${revealText}；未见邪神牌，HP恢复至1！`;
+  L.push(msg);
+  P[i]._vritraImmortalReveal={targetIdx:i,cards:revealed,succeeded:true,msg};
   D.length = 0;
   D.push(...deckCopy);
   return true;
@@ -212,6 +234,20 @@ export const isDodgeableZoneCard = (card) => {
   if (!card) return false;
   if (card.dodgeable != null) return !!card.dodgeable;
   return isNegativeZoneCard(card);
+};
+
+export const cardContainsFireText = (card) => {
+  if (!card) return false;
+  return [card.name || '', card.subtitle || '', card.desc || ''].join('').toLowerCase().includes('火');
+};
+
+export const shouldTriggerTreasureDodge = (card, player, { moldyFoodRoll = null } = {}) => {
+  if (!isDodgeableZoneCard(card)) return false;
+  if (card.type === 'moldyFood') return moldyFoodRoll != null && moldyFoodRoll % 2 === 1;
+  if (card.type === 'albinoCreature') return !(player?.hand || []).some(cardContainsFireText);
+  if (card.type === 'sphinxGuess') return false;
+  if (card.type === 'sacHealSelfSANCultist') return !!player?.hasBelievedGod;
+  return true;
 };
 
 export const zoneCardHasGuaranteedHpLoss = (card) => {
@@ -268,6 +304,16 @@ export const isWinHand = (hand) => {
   const missingNumbers = Math.max(0, NUMS.length - numbers.size);
   return Math.max(missingLetters, missingNumbers) <= blankCount;
 };
+
+// 本地玩家（seat 0）集齐宝藏时的日志/胜利文案。联机下日志会广播给其他客户端，
+// 必须用真实昵称而非「你」，避免远端玩家误解获胜者。
+export const localTreasureWinLog = (gs) => (
+  gs?._isMP ? `${gs?.players?.[0]?.name || '你'} 集齐了全部编号！` : '你集齐了全部编号！'
+);
+
+export const localTreasureWinReason = (gs) => (
+  gs?._isMP ? `${gs?.players?.[0]?.name || '你'} 集齐了全部编号并获胜！` : '你集齐了全部编号并获胜！'
+);
 
 export const getLivingPlayerOrder = (players, startIdx) => {
   const aliveOrder = [];
@@ -351,11 +397,10 @@ export const getNextLivingIndex = (players, ci) => {
 
 export function killPlayerState(P, i, Disc, L) {
   if (i == null || !P[i] || P[i].isDead) return;
-  P[i]._pendingAnimDeath = true;
   P[i].isDead = true;
   P[i].roleRevealed = true;
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
-  const { kept, destroyed } = separateBlackGoatYoung(P[i].hand);
+  const { kept, destroyed } = splitHandDiscardCards(P[i].hand);
   if (kept.length) Disc.push(...kept);
   if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张衍生牌被销毁`);
   P[i].hand = [];
@@ -365,14 +410,6 @@ export function killPlayerState(P, i, Disc, L) {
     P[i].godName = null;
     P[i].godLevel = 0;
   }
-}
-
-export function clearPendingAnimDeathFlags(players, preservePid = null) {
-  return (players || []).map((p, idx) => {
-    if (!p) return p;
-    if (p._pendingAnimDeath && idx !== preservePid) return { ...p, _pendingAnimDeath: false };
-    return { ...p };
-  });
 }
 
 export function makeInspectionMeta(gs){
@@ -388,7 +425,7 @@ export function makeInspectionMeta(gs){
     _inspectionTarget: gs?._inspectionTarget??null,
     _inspectionPrevLogLen: gs?._inspectionPrevLogLen??null,
     _inspectionBeforePlayers: gs?._inspectionBeforePlayers??null,
-    _inspectionEvents: gs?._inspectionEvents??[],
+    _visualEvents: gs?._visualEvents??[],
     _statEvents: gs?._statEvents??[],
     _statEventSeq: gs?._statEventSeq||0,
   };

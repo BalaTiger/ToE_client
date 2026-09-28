@@ -1,0 +1,194 @@
+[
+  {
+    "check": {
+      "theme": "地神的潜影",
+      "w": 1280,
+      "h": 720,
+      "file": "runtime-earth",
+      "scene": "battle-coastal-zhu"
+    },
+    "anchor": {
+      "bottom": 380.25,
+      "height": 273.0625,
+      "left": 198.40625,
+      "right": 334.9375,
+      "top": 107.1875,
+      "width": 136.53125,
+      "x": 198.40625,
+      "y": 107.1875
+    },
+    "board": {
+      "bottom": 720,
+      "height": 720,
+      "left": 0,
+      "right": 1280,
+      "top": 0,
+      "width": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "flame": {
+      "bottom": 380.25,
+      "height": 273.0625,
+      "left": 198.40625,
+      "right": 334.9375,
+      "top": 107.1875,
+      "width": 136.53125,
+      "x": 198.40625,
+      "y": 107.1875
+    },
+    "renderer": "sdr",
+    "scroll": [
+      1280,
+      720
+    ],
+    "viewport": [
+      1280,
+      720
+    ]
+  },
+  {
+    "check": {
+      "theme": "群星呼唤",
+      "w": 1280,
+      "h": 800,
+      "file": "runtime-stars-16x10",
+      "scene": "battle-coastal-effects"
+    },
+    "anchor": {
+      "bottom": 460.25,
+      "height": 273.0625,
+      "left": 198.40625,
+      "right": 334.9375,
+      "top": 187.1875,
+      "width": 136.53125,
+      "x": 198.40625,
+      "y": 187.1875
+    },
+    "board": {
+      "bottom": 800,
+      "height": 800,
+      "left": 0,
+      "right": 1280,
+      "top": 0,
+      "width": 1280,
+      "x": 0,
+      "y": 0
+    },
+    "flame": {
+      "bottom": 460.25,
+      "height": 273.0625,
+      "left": 198.40625,
+      "right": 334.9375,
+      "top": 187.1875,
+      "width": 136.53125,
+      "x": 198.40625,
+      "y": 187.1875
+    },
+    "renderer": "sdr",
+    "scroll": [
+      1280,
+      800
+    ],
+    "viewport": [
+      1280,
+      800
+    ]
+  },
+  {
+    "check": {
+      "theme": "先贤的馈赠",
+      "w": 1330,
+      "h": 700,
+      "file": "runtime-sage-19x10",
+      "scene": "battle-coastal-many"
+    },
+    "anchor": {
+      "bottom": 346.984375,
+      "height": 283.71875,
+      "left": 206.140625,
+      "right": 348,
+      "top": 63.265625,
+      "width": 141.859375,
+      "x": 206.140625,
+      "y": 63.265625
+    },
+    "board": {
+      "bottom": 700,
+      "height": 700,
+      "left": 0,
+      "right": 1330,
+      "top": 0,
+      "width": 1330,
+      "x": 0,
+      "y": 0
+    },
+    "flame": {
+      "bottom": 346.984375,
+      "height": 283.71875,
+      "left": 206.140625,
+      "right": 348,
+      "top": 63.265625,
+      "width": 141.859375,
+      "x": 206.140625,
+      "y": 63.265625
+    },
+    "renderer": "sdr",
+    "scroll": [
+      1330,
+      700
+    ],
+    "viewport": [
+      1330,
+      700
+    ]
+  },
+  {
+    "check": {
+      "theme": "析骨为柴",
+      "w": 1600,
+      "h": 700,
+      "file": "runtime-bone-wide",
+      "scene": "battle-coastal"
+    },
+    "anchor": {
+      "bottom": 346.984375,
+      "height": 283.71875,
+      "left": 341.140625,
+      "right": 483,
+      "top": 63.265625,
+      "width": 141.859375,
+      "x": 341.140625,
+      "y": 63.265625
+    },
+    "board": {
+      "bottom": 700,
+      "height": 700,
+      "left": 135,
+      "right": 1465,
+      "top": 0,
+      "width": 1330,
+      "x": 135,
+      "y": 0
+    },
+    "flame": {
+      "bottom": 346.984375,
+      "height": 283.71875,
+      "left": 341.140625,
+      "right": 483,
+      "top": 63.265625,
+      "width": 141.859375,
+      "x": 341.140625,
+      "y": 63.265625
+    },
+    "renderer": "sdr",
+    "scroll": [
+      1600,
+      700
+    ],
+    "viewport": [
+      1600,
+      700
+    ]
+  }
+]

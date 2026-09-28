@@ -1,0 +1,413 @@
+[
+  {
+    "label": "伏行之混沌 Lv.1",
+    "value": "NYA:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "伏行之混沌 Lv.2",
+    "value": "NYA:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "伏行之混沌 Lv.3",
+    "value": "NYA:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "拉莱耶之主 Lv.1",
+    "value": "CTH:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "拉莱耶之主 Lv.2",
+    "value": "CTH:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "拉莱耶之主 Lv.3",
+    "value": "CTH:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "森之领主 Lv.1",
+    "value": "SHU:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "森之领主 Lv.2",
+    "value": "SHU:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "森之领主 Lv.3",
+    "value": "SHU:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "烛九阴 Lv.1",
+    "value": "ZHU:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "烛九阴 Lv.2",
+    "value": "ZHU:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "烛九阴 Lv.3",
+    "value": "ZHU:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "阿波菲斯 Lv.1",
+    "value": "APO:1",
+    "arrows": [
+      "down"
+    ],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 156,
+    "visible": 146
+  },
+  {
+    "label": "阿波菲斯 Lv.2",
+    "value": "APO:2",
+    "arrows": [
+      "down"
+    ],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 156,
+    "visible": 146
+  },
+  {
+    "label": "阿波菲斯 Lv.3",
+    "value": "APO:3",
+    "arrows": [
+      "down"
+    ],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 156,
+    "visible": 146
+  },
+  {
+    "label": "戈耳工 Lv.1",
+    "value": "GOR:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "戈耳工 Lv.2",
+    "value": "GOR:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "戈耳工 Lv.3",
+    "value": "GOR:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "轩辕坟三妖 Lv.1",
+    "value": "XUA:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "轩辕坟三妖 Lv.2",
+    "value": "XUA:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "轩辕坟三妖 Lv.3",
+    "value": "XUA:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "八岐大蛇 Lv.1",
+    "value": "ORO:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "八岐大蛇 Lv.2",
+    "value": "ORO:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "八岐大蛇 Lv.3",
+    "value": "ORO:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "无可名状者 Lv.1",
+    "value": "HAS:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "无可名状者 Lv.2",
+    "value": "HAS:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "无可名状者 Lv.3",
+    "value": "HAS:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "爆燃者 Lv.1",
+    "value": "KTH:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "爆燃者 Lv.2",
+    "value": "KTH:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "爆燃者 Lv.3",
+    "value": "KTH:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "荣冠亡者特拉维科利 Lv.1",
+    "value": "TRA:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "荣冠亡者特拉维科利 Lv.2",
+    "value": "TRA:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "荣冠亡者特拉维科利 Lv.3",
+    "value": "TRA:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "堕落的范·海辛 Lv.1",
+    "value": "VAN:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "堕落的范·海辛 Lv.2",
+    "value": "VAN:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "堕落的范·海辛 Lv.3",
+    "value": "VAN:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "弗栗多 Lv.1",
+    "value": "VRI:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "弗栗多 Lv.2",
+    "value": "VRI:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "弗栗多 Lv.3",
+    "value": "VRI:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "蟾蜍之神 Lv.1",
+    "value": "TSG:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "蟾蜍之神 Lv.2",
+    "value": "TSG:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "蟾蜍之神 Lv.3",
+    "value": "TSG:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "尸林魔君帝辛 Lv.1",
+    "value": "DIX:1",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "尸林魔君帝辛 Lv.2",
+    "value": "DIX:2",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  },
+  {
+    "label": "尸林魔君帝辛 Lv.3",
+    "value": "DIX:3",
+    "arrows": [],
+    "bodyFits": true,
+    "font": "10.5px",
+    "total": 146,
+    "visible": 146
+  }
+]

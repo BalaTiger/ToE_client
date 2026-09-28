@@ -1,6 +1,7 @@
-import { cardLogText, formatSanLoss } from './coreUtils';
+import { cardLogText, copyPlayers, formatSanLoss, isVanishingDerivedCard } from './coreUtils';
 import { getEndTurnReplayHandCards } from './endTurnEvents';
 import { withClearedTurnAnimFields } from './turnAnimState';
+import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 
 export function buildEndTurnReplayStartState({
   baseGs,
@@ -67,13 +68,12 @@ export function buildEndTurnReplayGodEncounter({
   actorLabel = '你',
 }) {
   const P = players;
-  P[actorIndex].godEncounters = (P[actorIndex].godEncounters || 0) + 1;
-  const encounterCount = P[actorIndex].godEncounters;
-  const cost = encounterCount;
+  const encounterProgress = advanceGodEncounter(P[actorIndex], stateLike);
+  const cost = encounterProgress.sanLoss;
   const cultistImmune = !!(isCultist && P[actorIndex].roleRevealed);
   const effectMsg = cultistImmune
-    ? `${actorLabel}（邪祀者）遭遇邪神 ${card.name}！（第${encounterCount}次）免疫SAN损耗`
-    : `${actorLabel} 遭遇邪神 ${card.name}！（第${encounterCount}次）${formatSanLoss(cost)}`;
+    ? `${actorLabel}（邪祀者）遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+    : `${actorLabel} 遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
 
   return {
     players: P,
@@ -99,6 +99,7 @@ export function buildEndTurnReplayZoneDraw({
   card,
   actorName = '你',
 }) {
+  const forcedKeep = !!card?.forced;
   return {
     state: {
       ...stateLike,
@@ -107,8 +108,8 @@ export function buildEndTurnReplayZoneDraw({
       drawReveal: {
         card,
         msgs: [],
-        needsDecision: true,
-        forcedKeep: false,
+        needsDecision: !forcedKeep,
+        forcedKeep,
         drawerIdx: actorIndex,
         drawerName: actorName,
         fromEndTurnReplay: true,
@@ -147,4 +148,23 @@ export function advanceEndTurnReplayPatch(stateLike) {
   return stateLike?._endTurnReplay
     ? { _endTurnReplay: { ...stateLike._endTurnReplay, index: (stateLike._endTurnReplay.index || 0) + 1 } }
     : {};
+}
+
+export function resolveEndTurnReplayDiscard({
+  players = [],
+  discard = [],
+  actorIndex = 0,
+  card,
+} = {}) {
+  const nextPlayers = copyPlayers(players);
+  const hand = nextPlayers[actorIndex]?.hand || [];
+  const cardIndex = hand.findIndex(handCard => handCard?.id === card?.id);
+  if (cardIndex >= 0) hand.splice(cardIndex, 1);
+
+  const destroyed = isVanishingDerivedCard(card);
+  return {
+    players: nextPlayers,
+    discard: destroyed ? [...discard] : [...discard, card],
+    destroyed,
+  };
 }

@@ -1,6 +1,56 @@
 import { bindAnimLogChunks, isDrawLikeLog, isTurnStartLog } from './animLogs';
-import { buildBewitchForcedCardQueue, buildInspectionAwareAnimQueue } from './animQueueHelpers';
+import { compileFreshVisualEventReplay, compileVisualEventToAnimTransaction } from './visualEventTransactionCompiler';
 import { appendFinalStatePatch } from './animStatePatch';
+import { copyPlayers } from './coreUtils';
+import { createAnimTransactionEvent, getVisualEvents, VISUAL_EVENT } from './visualEvents';
+
+export function createCthRlyehDreamStep(targetPid = 0, msgs = []) {
+  return {
+    type: 'CTH_RLYEH_DREAM',
+    targetPid,
+    msgs: Array.isArray(msgs) ? msgs.filter(Boolean) : [],
+  };
+}
+
+export function createCthRestDrawReplayEvent({
+  beforePlayers,
+  beforeDiscard,
+  zhuLight,
+  actorName,
+  cthDraws,
+  cthDrawLogs,
+  preSteps = [],
+  statSteps = [],
+  playDream = true,
+} = {}) {
+  const draws = (Array.isArray(cthDraws) ? cthDraws : []).filter(Boolean);
+  if (!draws.length) return null;
+  const logs = Array.isArray(cthDrawLogs) ? cthDrawLogs.filter(Boolean) : [];
+  const triggerLabel = actorName || '你';
+  const drawSteps = draws.map(card => ({
+    type: 'DRAW_CARD',
+    card,
+    triggerName: triggerLabel,
+    targetPid: 0,
+    msgs: logs.filter(line => line.includes(card.name) || (card.key && line.includes(card.key))),
+  }));
+  return createAnimTransactionEvent({
+    actorIdx: 0,
+    actorName: actorName || '你',
+    context: 'cthRlyehDream',
+    barrier: 'turnBoundary',
+    queue: [
+      ...(Array.isArray(preSteps) ? preSteps : []),
+      ...(playDream ? [createCthRlyehDreamStep(0, logs)] : []),
+      ...drawSteps,
+      ...(Array.isArray(statSteps) ? statSteps : []),
+    ],
+    msgs: logs,
+    beforePlayers: copyPlayers(beforePlayers || []),
+    beforeDiscard: [...(beforeDiscard || [])],
+    zhuLight: zhuLight || null,
+  });
+}
 
 export function isStatAnimationStep(step) {
   if (!step) return false;
@@ -11,8 +61,8 @@ export function isStatAnimationStep(step) {
   return false;
 }
 
-export function buildInspectionReplay(oldGs, newGs, { buildAnimQueue, copyPlayers } = {}) {
-  return buildInspectionAwareAnimQueue(oldGs, newGs, { buildAnimQueue, copyPlayers });
+export function buildInspectionReplay(oldGs, newGs) {
+  return compileFreshVisualEventReplay(oldGs, newGs);
 }
 
 export function isLaterDrawBoundaryLog(line) {
@@ -60,22 +110,24 @@ export function findFreshBewitchReplayLog(logDelta = []) {
 }
 
 export function hasFreshRandomTargetEvents(newGs, oldGs) {
-  const oldSeq = oldGs?._randomTargetSeq || 0;
-  return (newGs?._randomTargetEvents || []).some(event => event?.seq > oldSeq);
+  const oldVisualEventIds = new Set(getVisualEvents(oldGs).map(event => event?.id).filter(Boolean));
+  return getVisualEvents(newGs).some(event => (
+    (event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE) &&
+    event?.id &&
+    !oldVisualEventIds.has(event.id)
+  ));
 }
 
 export function buildRandomTargetReplay({
   oldGs,
   newGs,
   logDelta = [],
-  buildAnimQueue,
-  copyPlayers,
   finalFields = ['players', 'discard', 'log', 'phase', 'abilityData'],
 } = {}) {
   if (!hasFreshRandomTargetEvents(newGs, oldGs)) {
     return { queue: [], inspectionEvents: [], inspectionSeq: oldGs?._inspectionSeq || 0 };
   }
-  const inspectionReplay = buildInspectionReplay(oldGs, newGs, { buildAnimQueue, copyPlayers });
+  const inspectionReplay = buildInspectionReplay(oldGs, newGs);
   const queue = appendFinalStatePatch(
     bindAnimLogChunks(inspectionReplay.queue, { statLogs: logDelta }),
     newGs,
@@ -92,33 +144,17 @@ export function buildBewitchGiftReplay({
   oldGs,
   newGs,
   bewitchEvent,
-  logDelta = [],
-  visualStatQueue = [],
-  buildAnimQueue,
-  copyPlayers,
 } = {}) {
   if (!bewitchEvent) return { queue: [], inspectionEvents: [], inspectionSeq: oldGs?._inspectionSeq || 0 };
-  const inspectionReplay = buildInspectionReplay(oldGs, newGs, { buildAnimQueue, copyPlayers });
-  const fallbackStatQueue = bindAnimLogChunks(
-    inspectionReplay.queue,
-    { statLogs: logDelta },
-  );
-  const statQueue = visualStatQueue.length
-    ? [...visualStatQueue, ...fallbackStatQueue.filter(step => !isStatAnimationStep(step))]
-    : fallbackStatQueue;
-  const targetIdx = bewitchEvent.targetIdx;
-  const queue = buildBewitchForcedCardQueue(
-    bewitchEvent.sourceIdx ?? newGs?.currentTurn,
-    targetIdx,
-    bewitchEvent.card,
-    bewitchEvent.targetName || newGs?.players?.[targetIdx]?.name,
-    statQueue,
-    bewitchEvent.msgs || logDelta,
-  );
+  const transaction = compileVisualEventToAnimTransaction(bewitchEvent, newGs, oldGs);
+  const queue = transaction?.queue || [];
+  const inspectionEvents = (bewitchEvent.settlementEvents || [])
+    .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
   return {
     queue,
-    inspectionEvents: inspectionReplay.inspectionEvents,
-    inspectionSeq: inspectionReplay.inspectionSeq,
-    statQueue,
+    inspectionEvents,
+    inspectionSeq: Math.max(oldGs?._inspectionSeq || 0, ...inspectionEvents.map(event => event?.legacySeq ?? event?.seq ?? 0)),
+    encounterQueue: queue.filter(step => step?.cardAcquisitionStage === 'godEncounter'),
+    acceptanceQueue: queue.filter(step => step?.cardAcquisitionStage === 'acceptance'),
   };
 }

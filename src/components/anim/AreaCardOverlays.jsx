@@ -1,6 +1,20 @@
 import React, { useEffect } from 'react';
-import { DDCard } from '../../components/cards';
-import { _getZoomCompensatedRect, getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { MiniCardFace } from '../../components/cards';
+import { _getZoomCompensatedRect, getPileAnchorCenter, getPileCardAnchor, getPlayerHandAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { getCardFlightStyle } from './cardSizing';
+import { getCaveDuelCardStyle } from './caveDuelGeometry';
+import {
+  createEffectNoiseOrigin,
+  createEffectNoiseSampler,
+  loadEffectNoiseTexture,
+} from './effectNoise';
+import { VOLCANO_METEOR_DELAYS, getVolcanoMeteorFall } from './volcanoTiming';
+
+function getVolcanoSceneScale(){
+  const baselineArea=1366*768;
+  const area=Math.max(360*640,window.innerWidth*window.innerHeight);
+  return Math.max(0.86,Math.min(1.58,Math.sqrt(area/baselineArea)));
+}
 
 function GeomagneticReversalAnim({anim,exiting}){
   const msgs=(anim?.msgs||[]).slice(-3);
@@ -57,19 +71,25 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
     let attempts=0;
     const measure=()=>{
       const actorIdx=anim?.actorIdx ?? anim?.targetPid ?? 0;
-      const from=getPlayerHandAnchorCenter(actorIdx);
-      const to=getPileAnchorCenter('[data-discard-pile]',null);
+      const from=getPlayerHandCardAnchor(actorIdx,anim?.restoreCard||anim?.card);
+      const to=getPileCardAnchor('[data-discard-pile]',null);
       if(!to&&attempts<8){
         attempts+=1;
         rafId=requestAnimationFrame(measure);
         return;
       }
-      const dest=to||{x:window.innerWidth*0.5,y:window.innerHeight*0.5};
+      const dest=to||getRevealCardAnchor();
+      const flight=getCardFlightStyle(from,dest);
       setPath({
+        ...flight,
         left:from.x,
         top:from.y,
+        marginLeft:-flight.width/2,
+        marginTop:-flight.height/2,
         '--gm-restore-tx':`${dest.x-from.x}px`,
         '--gm-restore-ty':`${dest.y-from.y}px`,
+        '--mid-rotation':'178deg',
+        '--to-rotation':`${360+(dest.rotation||0)}deg`,
       });
     };
     rafId=requestAnimationFrame(()=>{rafId=requestAnimationFrame(measure);});
@@ -80,13 +100,24 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
     };
   },[anim]);
   const msgs=(anim?.msgs||[]).slice(-3);
+  const restoreCard=anim?.restoreCard||anim?.card||{
+    name:'反转复原',
+    desc:'这张牌消失并消除当前"地磁反转"效果',
+    type:'geomagneticRestore',
+    isGeomagneticRestore:true,
+  };
   return(
     <div className={`geomagnetic-restore-overlay${exiting?' geomagnetic-restore-exiting':''}`}>
       <div className="geomagnetic-restore-vignette"/>
       {path&&(
         <>
           <div className="geomagnetic-restore-card" style={path}>
-            <DDCard card={anim?.restoreCard||anim?.card||{name:'反转复原',key:'GMR',letter:'R',number:0,type:'geomagneticRestore'}} compact/>
+            <MiniCardFace
+              card={restoreCard}
+              width={path.width}
+              height={path.height}
+              frameStyle={{boxShadow:'none',border:'none',background:'transparent'}}
+            />
           </div>
           <div className="geomagnetic-restore-ripple" style={path}/>
         </>
@@ -100,48 +131,71 @@ function GeomagneticRestoreShuffleAnim({anim,exiting}){
   );
 }
 
-function VolcanoAnim({anim,exiting}){
+function VolcanoAnim({exiting}){
   const canvasRef=React.useRef(null);
   const [impacts,setImpacts]=React.useState(null);
+  const [noiseTexture,setNoiseTexture]=React.useState(null);
   useEffect(()=>{
+    let disposed=false;
+    loadEffectNoiseTexture()
+      .then(texture=>{
+        if(!disposed)setNoiseTexture(texture);
+      })
+      .catch(()=>{
+        if(!disposed)setNoiseTexture(false);
+      });
+    return()=>{disposed=true;};
+  },[]);
+  useEffect(()=>{
+    let disposed=false;
     const measure=()=>{
+      if(disposed)return;
+      const sceneScale=getVolcanoSceneScale();
       const deck=getPileAnchorCenter('[data-deck-pile]',{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08});
       const discard=getPileAnchorCenter('[data-discard-pile]',{x:window.innerWidth*0.72,y:window.innerHeight*0.46});
       const hand=getPlayerHandAnchorCenter(0);
       const center={x:window.innerWidth*0.50,y:window.innerHeight*0.45};
       const source={x:window.innerWidth*0.62,y:window.innerHeight*0.5};
       const raw=[
-        {x:deck.x-38,y:deck.y+54,delay:0.10,scale:0.92,rot:-28},
-        {x:center.x-165,y:center.y-48,delay:0.22,scale:0.74,rot:-22},
-        {x:discard.x+30,y:discard.y+18,delay:0.34,scale:0.84,rot:30},
-        {x:center.x+145,y:center.y-88,delay:0.46,scale:0.68,rot:24},
-        {x:hand.x-132,y:Math.min(window.innerHeight-112,hand.y-42),delay:0.58,scale:0.78,rot:-18},
-        {x:center.x+15,y:center.y+78,delay:0.70,scale:0.64,rot:8},
-        {x:hand.x+112,y:Math.min(window.innerHeight-96,hand.y-26),delay:0.82,scale:0.82,rot:34},
+        {x:deck.x-38*sceneScale,y:deck.y+54*sceneScale,delay:VOLCANO_METEOR_DELAYS[0],scale:0.92,rot:-28},
+        {x:center.x-165*sceneScale,y:center.y-48*sceneScale,delay:VOLCANO_METEOR_DELAYS[1],scale:0.74,rot:-22},
+        {x:discard.x+30*sceneScale,y:discard.y+18*sceneScale,delay:VOLCANO_METEOR_DELAYS[2],scale:0.84,rot:30},
+        {x:center.x+145*sceneScale,y:center.y-88*sceneScale,delay:VOLCANO_METEOR_DELAYS[3],scale:0.68,rot:24},
+        {x:hand.x-132*sceneScale,y:Math.min(window.innerHeight-112*sceneScale,hand.y-42*sceneScale),delay:VOLCANO_METEOR_DELAYS[4],scale:0.78,rot:-18},
+        {x:center.x+15*sceneScale,y:center.y+78*sceneScale,delay:VOLCANO_METEOR_DELAYS[5],scale:0.64,rot:8},
+        {x:hand.x+112*sceneScale,y:Math.min(window.innerHeight-96*sceneScale,hand.y-26*sceneScale),delay:VOLCANO_METEOR_DELAYS[6],scale:0.82,rot:34},
       ];
       setImpacts(raw.map((p,idx)=>({
         ...p,
-        x:Math.max(54,Math.min(window.innerWidth-54,p.x)),
-        y:Math.max(76,Math.min(window.innerHeight-54,p.y)),
-        sourceX:source.x+(idx-3)*10,
-        sourceY:source.y+((idx%3)-1)*7,
+        x:Math.max(54*sceneScale,Math.min(window.innerWidth-54*sceneScale,p.x)),
+        y:Math.max(76*sceneScale,Math.min(window.innerHeight-54*sceneScale,p.y)),
+        sourceX:source.x+(idx-3)*10*sceneScale,
+        sourceY:source.y+((idx%3)-1)*7*sceneScale,
+        scale:p.scale*sceneScale,
         nearBoost:idx===1||idx===3||idx===5?1:0,
         nearPhase:0.1+(idx%3)*0.035,
         seed:idx,
       })));
     };
     requestAnimationFrame(()=>requestAnimationFrame(measure));
+    window.addEventListener('resize',measure);
+    return()=>{
+      disposed=true;
+      window.removeEventListener('resize',measure);
+    };
   },[]);
   useEffect(()=>{
     const canvas=canvasRef.current;
-    if(!canvas||!impacts?.length)return undefined;
+    if(!canvas||!impacts?.length||noiseTexture==null)return undefined;
     const ctx=canvas.getContext('2d');
     let raf=0;
     const isMobileLike=()=>(
       (typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)
       || Math.min(window.innerWidth,window.innerHeight)<760
     );
-    const dpr=Math.min(window.devicePixelRatio||1,isMobileLike()?1.35:2);
+    const mobileLike=isMobileLike();
+    const quality=mobileLike?0.62:0.78;
+    const dpr=Math.min(window.devicePixelRatio||1,mobileLike?1.12:1.45);
     const resize=()=>{
       const w=window.innerWidth;
       const h=window.innerHeight;
@@ -164,10 +218,10 @@ function VolcanoAnim({anim,exiting}){
       const sourceY=typeof impact.sourceY==='number'?impact.sourceY:-window.innerHeight*0.34;
       const seed=impact.seed??idx;
       const scale=impact.scale||1;
-      const fall=0.68+rand(seed+4)*0.16;
+      const fall=getVolcanoMeteorFall(seed);
       const delay=impact.delay||0;
       const baseR=(54+seed*4+18*rand(seed+20))*scale;
-      const debris=Array.from({length:18},(_,i)=>{
+      const debris=Array.from({length:Math.max(9,Math.round(18*quality))},(_,i)=>{
         const a=-Math.PI*0.95+rand(seed*31+i)*Math.PI*1.9;
         const speed=(42+rand(seed*67+i)*96)*scale;
         return {
@@ -178,7 +232,7 @@ function VolcanoAnim({anim,exiting}){
           color:rand(seed*127+i)>.42?'#ff9a22':'#ffd26d',
         };
       });
-      const smoke=Array.from({length:16},(_,i)=>({
+      const smoke=Array.from({length:Math.max(7,Math.round(16*quality))},(_,i)=>({
         ox:(rand(seed*151+i)-0.5)*48*scale,
         oy:(rand(seed*163+i)-0.5)*28*scale,
         vx:(rand(seed*181+i)-0.5)*44*scale,
@@ -186,19 +240,27 @@ function VolcanoAnim({anim,exiting}){
         r:14+rand(seed*211+i)*34,
         life:0.7+rand(seed*229+i)*0.82,
       }));
-      const lava=Array.from({length:28},(_,i)=>{
-        const a=(i/28)*Math.PI*2;
+      const lavaCount=Math.max(18,Math.round(28*quality));
+      const lava=Array.from({length:lavaCount},(_,i)=>{
+        const a=(i/lavaCount)*Math.PI*2;
         return {
           a,
           r:0.68+rand(seed*241+i)*0.58,
         };
       });
-      const noise=Array.from({length:64},(_,i)=>({
+      const noise=Array.from({length:Math.max(28,Math.round(64*quality))},(_,i)=>({
         x:(rand(seed*263+i)-0.5)*1.95,
         y:(rand(seed*281+i)-0.5)*1.72,
         r:0.02+rand(seed*307+i)*0.065,
         a:0.08+rand(seed*313+i)*0.18,
       }));
+      const noiseSampler=noiseTexture
+        ?createEffectNoiseSampler(noiseTexture,{
+          origin:createEffectNoiseOrigin(`volcano-lava-${seed}`),
+          scale:1.85,
+          velocity:{x:0,y:0},
+        })
+        :null;
       return {
         ...impact,
         x,
@@ -215,6 +277,7 @@ function VolcanoAnim({anim,exiting}){
         smoke,
         lava,
         noise,
+        noiseSampler,
       };
     });
     const drawGlow=(x,y,r,color,alpha=1)=>{
@@ -231,32 +294,16 @@ function VolcanoAnim({anim,exiting}){
       const t=clamp01((x-edge0)/(edge1-edge0));
       return t*t*(3-2*t);
     };
-    const valueNoise=(x,y,seed)=>{
-      const xi=Math.floor(x), yi=Math.floor(y);
-      const xf=x-xi, yf=y-yi;
-      const h=(ix,iy)=>rand(seed+ix*37.17+iy*91.73);
-      const u=xf*xf*(3-2*xf);
-      const v=yf*yf*(3-2*yf);
-      const a=h(xi,yi), b=h(xi+1,yi), c=h(xi,yi+1), d=h(xi+1,yi+1);
-      return (a+(b-a)*u)+((c+(d-c)*u)-(a+(b-a)*u))*v;
-    };
-    const fractalNoise=(x,y,seed)=>{
-      let amp=0.56;
-      let freq=1;
-      let sum=0;
-      let norm=0;
-      for(let i=0;i<4;i++){
-        sum+=valueNoise(x*freq,y*freq,seed+i*103.9)*amp;
-        norm+=amp;
-        amp*=0.5;
-        freq*=2.05;
-      }
-      return sum/norm;
+    const sampleLavaNoise=(sampler,u,v,seed=0)=>{
+      if(!sampler)return rand(seed)*0.72+rand(seed+19.7)*0.28;
+      const n0=sampler.sampleVector(u,v,0).value*0.5+0.5;
+      const n1=sampler.sampleVector(u*2.15+0.17,v*2.05-0.11,0).value*0.5+0.5;
+      return n0*0.68+n1*0.32;
     };
     const buildNoiseLavaPatch=(impact)=>{
       const maxR=impact.baseR*1.22;
-      const w=Math.ceil(Math.min(270,Math.max(96,maxR*2.55)));
-      const h=Math.ceil(Math.min(250,Math.max(88,maxR*2.35)));
+      const w=Math.ceil(Math.min(mobileLike?190:225,Math.max(86,maxR*2.28)));
+      const h=Math.ceil(Math.min(mobileLike?176:210,Math.max(78,maxR*2.1)));
       const off=document.createElement('canvas');
       off.width=w;
       off.height=h;
@@ -270,8 +317,18 @@ function VolcanoAnim({anim,exiting}){
           const nx=(px-cx)/(w*0.48);
           const ny=(py-cy)/(h*0.5);
           const angle=Math.atan2(ny,nx);
-          const borderNoise=fractalNoise(Math.cos(angle)*1.8+impact.seed*0.2,Math.sin(angle)*1.8,impact.seed*29);
-          const localNoise=fractalNoise(px/34,py/28-impact.seed*0.31,impact.seed*47);
+          const borderNoise=sampleLavaNoise(
+            impact.noiseSampler,
+            Math.cos(angle)*0.38+0.5,
+            Math.sin(angle)*0.38+0.5,
+            impact.seed*29+angle,
+          );
+          const localNoise=sampleLavaNoise(
+            impact.noiseSampler,
+            px/w*1.24,
+            py/h*1.18-impact.seed*0.07,
+            impact.seed*47+px*0.13+py*0.07,
+          );
           const radiusWarp=1+(borderNoise-0.5)*0.34;
           const dist=Math.sqrt(nx*nx+ny*ny)/radiusWarp;
           const edge=1-smoothstep(0.72+localNoise*0.1,1.08,dist);
@@ -304,7 +361,7 @@ function VolcanoAnim({anim,exiting}){
     specs.forEach(impact=>{
       impact.lavaPatch=buildNoiseLavaPatch(impact);
     });
-    const drawNoiseLavaPatch=(impact,r,fade)=>{
+    const drawNoiseLavaPatch=(impact,r)=>{
       const patch=impact.lavaPatch;
       if(!patch)return;
       const scale=r/patch.maxR;
@@ -424,7 +481,6 @@ function VolcanoAnim({anim,exiting}){
       ctx.translate(x,y);
       ctx.rotate(angle);
       ctx.scale(depthScale,depthScale);
-      if(cameraPass>0.04)ctx.filter=`blur(${((1.35+0.95*impact.nearBoost)*cameraPass).toFixed(2)}px)`;
       const tailLen=(180+80*impact.scale)*speedScale*(0.8+0.2*cameraPass)*(1-0.22*crossPass);
       const tailGrad=ctx.createLinearGradient(-tailLen,0,10,0);
       tailGrad.addColorStop(0,'rgba(60,25,18,0)');
@@ -461,7 +517,6 @@ function VolcanoAnim({anim,exiting}){
       }
       ctx.closePath();
       ctx.fill();
-      ctx.filter='none';
       ctx.restore();
     };
     const drawImpact=(impact,time)=>{
@@ -474,7 +529,7 @@ function VolcanoAnim({anim,exiting}){
       }
       drawLavaPool(impact,age);
       const lowAge=Math.floor(age*18)/18;
-      impact.debris.forEach((d,i)=>{
+      impact.debris.forEach(d=>{
         if(lowAge>d.life)return;
         const p=lowAge/d.life;
         const x=impact.x+Math.cos(d.a)*d.speed*p;
@@ -485,7 +540,7 @@ function VolcanoAnim({anim,exiting}){
         ctx.arc(x,y,d.size*(1-p*0.5),0,Math.PI*2);
         ctx.fill();
       });
-      impact.smoke.forEach((s,i)=>{
+      impact.smoke.forEach(s=>{
         if(lowAge>s.life)return;
         const p=lowAge/s.life;
         const x=impact.x+s.ox+s.vx*p;
@@ -532,7 +587,7 @@ function VolcanoAnim({anim,exiting}){
       cancelAnimationFrame(raf);
       window.removeEventListener('resize',resize);
     };
-  },[impacts,exiting]);
+  },[impacts,exiting,noiseTexture]);
   return(
     <div className={`volcano-overlay${exiting?' volcano-exiting':''}`}>
       <div className="volcano-vignette"/>
@@ -541,52 +596,293 @@ function VolcanoAnim({anim,exiting}){
   );
 }
 
+function UndergroundSpringAnim({exiting}){
+  return(
+    <div style={{
+      position:'fixed',inset:0,zIndex:1200,pointerEvents:'none',overflow:'hidden',
+      background:'radial-gradient(circle at 50% 52%, rgba(79,210,255,0.12), rgba(2,8,18,0.22) 42%, rgba(0,0,0,0.36) 74%)',
+      animation:exiting?'springSceneFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out both',
+    }}>
+      <style>{`
+        @keyframes springDropTravel {
+          0% { transform: translate3d(-50%, -112px, 0); opacity: 0; filter: blur(0.2px); }
+          10% { opacity: 1; filter: blur(0); }
+          88% { opacity: 1; filter: blur(0); }
+          100% { transform: translate3d(-50%, calc(50vh - 5px), 0); opacity: 0; filter: blur(0.8px); }
+        }
+        @keyframes springDropShape {
+          0% { transform: scale(0.72, 1.42); border-radius: 48% 48% 57% 57%; }
+          70% { transform: scale(1.02, 1.02); border-radius: 50%; }
+          88% { transform: scale(1.14, 0.82); border-radius: 50%; }
+          100% { transform: scale(1.72, 0.32); border-radius: 50%; }
+        }
+        @keyframes springDropHighlight {
+          0% { opacity: 0.76; transform: translate(-50%, -50%) scale(0.56, 0.78); }
+          70% { opacity: 0.58; transform: translate(-50%, -50%) scale(0.9); }
+          88% { opacity: 0.42; transform: translate(-50%, -50%) scale(1.05, 0.68); }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1.16, 0.38); }
+        }
+        @keyframes springDropAfterimage {
+          0% { transform: translate3d(-50%, -126px, 0) scale(0.72, 1.65); opacity: 0; }
+          12% { opacity: 0.24; }
+          88% { transform: translate3d(-50%, calc(50vh - 62px), 0) scale(0.96, 3.8); opacity: 0.16; }
+          100% { transform: translate3d(-50%, calc(50vh - 24px), 0) scale(1.05, 1.6); opacity: 0; }
+        }
+        @keyframes springSplash {
+          0%, 42% { opacity: 0; transform: translate(-50%, -50%) scale(0.16); }
+          50% { opacity: 1; }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(1); }
+        }
+        @keyframes springRipple {
+          0%, 36% { opacity: 0; transform: translate(-50%, -50%) scale(0.14); }
+          44% { opacity: 0.82; }
+          100% { opacity: 0; transform: translate(-50%, -50%) scale(var(--spring-ripple-scale, 1)); }
+        }
+        @keyframes springMist {
+          0%, 34% { opacity: 0; transform: translate(-50%, -50%) scale(0.5); }
+          44% { opacity: 0.54; }
+          100% { opacity: 0; transform: translate(-50%, -58%) scale(1.4); }
+        }
+        @keyframes springSceneFadeOut {
+          to { opacity: 0; }
+        }
+      `}</style>
+      <div style={{
+        position:'absolute',left:'50%',top:'50%',width:260,height:62,borderRadius:'50%',
+        transform:'translate(-50%,-50%)',background:'radial-gradient(ellipse, rgba(98,220,255,0.18), rgba(38,123,166,0.08) 46%, rgba(5,18,28,0) 72%)',
+        filter:'blur(2px)',
+      }}/>
+      <div style={{
+        position:'absolute',left:'50%',top:0,width:12,height:12,borderRadius:'50%',
+        background:'linear-gradient(180deg, rgba(198,245,255,0), rgba(92,213,250,0.24) 32%, rgba(28,130,190,0))',
+        filter:'blur(5px)',
+        animation:'springDropAfterimage 0.28s cubic-bezier(.28,0,.88,.34) both',
+      }}/>
+      <div style={{
+        position:'absolute',left:'50%',top:0,width:15,height:15,
+        animation:'springDropTravel 0.28s cubic-bezier(.28,0,.88,.34) both',
+      }}>
+        <div style={{
+          position:'absolute',left:0,top:0,width:15,height:15,borderRadius:'48% 48% 57% 57%',
+          background:'radial-gradient(circle at 37% 30%, #f2fdff 0 11%, #91ecff 29%, #1b9bd1 73%, #0b4564 100%)',
+          boxShadow:'0 0 10px rgba(125,226,255,0.72), 0 0 28px rgba(45,170,220,0.32)',
+          transformOrigin:'50% 88%',
+          animation:'springDropShape 0.28s linear both',
+        }}>
+          <div style={{
+            position:'absolute',left:'35%',top:'29%',width:4.5,height:3.5,borderRadius:'50%',
+            background:'rgba(246,253,255,0.88)',
+            filter:'blur(0.4px)',
+            animation:'springDropHighlight 0.28s linear both',
+          }}/>
+        </div>
+      </div>
+      {[0,1,2].map(i=>(
+        <div key={i} style={{
+          position:'absolute',left:'50%',top:'50%',width:110+i*72,height:28+i*19,borderRadius:'50%',
+          border:`${2-i*0.3}px solid rgba(${130+i*22},${225+i*8},255,${0.55-i*0.1})`,
+          boxShadow:'0 0 18px rgba(120,220,255,0.32)',
+          '--spring-ripple-scale':1.25+i*0.46,
+          animation:`springRipple 0.68s ease-out ${i*0.045}s both`,
+        }}/>
+      ))}
+      <div style={{
+        position:'absolute',left:'50%',top:'50%',width:142,height:30,borderRadius:'50%',
+        background:'radial-gradient(ellipse, rgba(230,252,255,0.62), rgba(120,225,255,0.24) 34%, rgba(120,225,255,0) 72%)',
+        animation:'springSplash 0.6s ease-out both',
+      }}/>
+      <div style={{
+        position:'absolute',left:'50%',top:'48%',width:210,height:80,borderRadius:'50%',
+        background:'radial-gradient(ellipse, rgba(190,246,255,0.18), rgba(190,246,255,0) 68%)',
+        filter:'blur(7px)',
+        animation:'springMist 0.72s ease-out both',
+      }}/>
+    </div>
+  );
+}
+
+function createBatSpecs(){
+  const w=window.innerWidth;
+  const h=window.innerHeight;
+  const focal=0.95;
+  const unit=Math.min(w,h)*0.48;
+  const project=(worldX,worldY,z)=>({
+    x:(worldX*focal/z)*unit,
+    y:(worldY*focal/z)*unit,
+  });
+  const projectScale=z=>0.55/Math.pow(z,1.35);
+  return Array.from({length:58},(_,i)=>{
+  const angle=(i/58)*Math.PI*2+(i%7)*0.13;
+  const depth=(i*29%100)/100;
+  const spread=0.28+((i*31)%44)/100+depth*0.1;
+  const worldX=Math.cos(angle)*spread;
+  const worldY=Math.sin(angle)*spread*0.72;
+  const startZ=5.4+depth*1.4;
+  const midZ=1.24+((i*11)%36)/100;
+  const nearZ=0.105+((i*7)%58)/1000;
+  const vanishZ=Math.max(0.07,nearZ-0.026);
+  const start=project(worldX,worldY,startZ);
+  const mid=project(worldX,worldY,midZ);
+  const near=project(worldX,worldY,nearZ);
+  const vanish=project(worldX,worldY,vanishZ);
+  const nearScale=projectScale(nearZ);
+  const vanishScale=projectScale(vanishZ);
+  return {
+    startX:start.x,
+    startY:start.y,
+    midX:mid.x,
+    midY:mid.y,
+    nearX:near.x,
+    nearY:near.y,
+    vanishX:vanish.x,
+    vanishY:vanish.y,
+    size:28+((i*13)%42),
+    delay:(i%17)*0.014,
+    duration:0.58+((i*7)%24)/100,
+    opacity:0.74+((i*5)%22)/100,
+    rot:angle*180/Math.PI+90+(((i*17)%50)-25),
+    flap:0.16+((i*3)%7)*0.014,
+    startScale:projectScale(startZ),
+    midScale:projectScale(midZ),
+    nearScale,
+    vanishScale,
+    blur:2.1-depth*0.9,
+    midBlur:0.36,
+  };
+  });
+}
+
+function BatSilhouette({spec,idx}){
+  return(
+    <div style={{
+      position:'absolute',left:'50%',top:'50%',width:spec.size,height:spec.size*0.48,
+      marginLeft:-spec.size/2,
+      marginTop:-(spec.size*0.24),
+      '--bat-start-x':`${spec.startX}px`,
+      '--bat-start-y':`${spec.startY}px`,
+      '--bat-mid-x':`${spec.midX}px`,
+      '--bat-mid-y':`${spec.midY}px`,
+      '--bat-near-x':`${spec.nearX}px`,
+      '--bat-near-y':`${spec.nearY}px`,
+      '--bat-vanish-x':`${spec.vanishX}px`,
+      '--bat-vanish-y':`${spec.vanishY}px`,
+      '--bat-start-scale':spec.startScale,
+      '--bat-mid-scale':spec.midScale,
+      '--bat-near-scale':spec.nearScale,
+      '--bat-vanish-scale':spec.vanishScale,
+      '--bat-blur':`${spec.blur}px`,
+      '--bat-mid-blur':`${spec.midBlur}px`,
+      '--bat-rot':`${spec.rot}deg`,
+      '--bat-opacity':spec.opacity,
+      opacity:spec.opacity,
+      transformOrigin:'50% 50%',
+      animation:`batFlyOut ${spec.duration}s linear ${spec.delay}s both`,
+      filter:`drop-shadow(0 0 ${Math.max(4,spec.size*0.18)}px rgba(0,0,0,0.78))`,
+      zIndex:10+Math.round(spec.nearScale*10)+(idx%5),
+      willChange:'transform, opacity',
+    }}>
+      <svg viewBox="-60 -28 120 56" width="100%" height="100%" aria-hidden="true" style={{display:'block',overflow:'visible'}}>
+        <g style={{animation:`batBodyBob ${spec.flap*2.4}s ease-in-out ${idx*0.03}s infinite`}}>
+          <path d="M-5 -4 C-4 -11 -1 -15 0 -18 C1 -15 4 -11 5 -4 C9 -2 12 3 11 10 C10 18 5 24 0 25 C-5 24 -10 18 -11 10 C-12 3 -9 -2 -5 -4 Z" fill="#030507"/>
+          <path d="M-6 -5 C-13 -20 -28 -25 -45 -24 C-40 -17 -39 -10 -48 -5 C-37 -4 -34 2 -38 10 C-27 6 -19 9 -12 18 C-12 8 -10 1 -6 -5 Z" fill="#030507" style={{transformOrigin:'-7px 0',animation:`batLeftWing ${spec.flap}s ease-in-out ${idx*0.02}s infinite alternate`}}/>
+          <path d="M6 -5 C13 -20 28 -25 45 -24 C40 -17 39 -10 48 -5 C37 -4 34 2 38 10 C27 6 19 9 12 18 C12 8 10 1 6 -5 Z" fill="#030507" style={{transformOrigin:'7px 0',animation:`batRightWing ${spec.flap}s ease-in-out ${idx*0.02}s infinite alternate`}}/>
+          <path d="M-4 -15 L-11 -24 L-6 -12 Z M4 -15 L11 -24 L6 -12 Z" fill="#030507"/>
+        </g>
+      </svg>
+    </div>
+  );
+}
+
+function StartledBatsAnim({exiting}){
+  const batSpecs=React.useMemo(()=>createBatSpecs(),[]);
+  return(
+    <div style={{
+      position:'fixed',inset:0,zIndex:1200,pointerEvents:'none',overflow:'hidden',
+      background:'radial-gradient(circle at 50% 48%, rgba(18,21,28,0.16), rgba(0,0,0,0.52) 78%)',
+      opacity:exiting?0:undefined,
+      animation:exiting?'none':'batsSceneLife 1.02s linear both',
+    }}>
+      <style>{`
+        @keyframes batFlyOut {
+          0% { transform: translate(var(--bat-start-x), var(--bat-start-y)) rotate(var(--bat-rot)) scale(var(--bat-start-scale)); opacity: 0; filter: blur(var(--bat-blur)); }
+          10% { opacity: 0.34; filter: blur(var(--bat-blur)); }
+          38% { transform: translate(var(--bat-mid-x), var(--bat-mid-y)) rotate(calc(var(--bat-rot) + 6deg)) scale(var(--bat-mid-scale)); opacity: var(--bat-opacity, 1); filter: blur(var(--bat-mid-blur)); }
+          76% { transform: translate(var(--bat-near-x), var(--bat-near-y)) rotate(calc(var(--bat-rot) + 19deg)) scale(var(--bat-near-scale)); opacity: var(--bat-opacity, 1); filter: blur(0.15px); }
+          84% { transform: translate(var(--bat-vanish-x), var(--bat-vanish-y)) rotate(calc(var(--bat-rot) + 24deg)) scale(var(--bat-vanish-scale)); opacity: 0; filter: blur(1.8px); }
+          100% { transform: translate(var(--bat-vanish-x), var(--bat-vanish-y)) rotate(calc(var(--bat-rot) + 24deg)) scale(var(--bat-vanish-scale)); opacity: 0; filter: blur(1.8px); }
+        }
+        @keyframes batLeftWing {
+          from { transform: rotate(22deg) scaleY(0.72); }
+          to { transform: rotate(-18deg) scaleY(1.16); }
+        }
+        @keyframes batRightWing {
+          from { transform: rotate(-22deg) scaleY(0.72); }
+          to { transform: rotate(18deg) scaleY(1.16); }
+        }
+        @keyframes batBodyBob {
+          0%, 100% { transform: translateY(0); }
+          50% { transform: translateY(2px); }
+        }
+        @keyframes batsSceneLife {
+          0% { opacity: 0; }
+          8% { opacity: 1; }
+          76% { opacity: 1; }
+          100% { opacity: 0; }
+        }
+        @keyframes batsSceneFadeOut {
+          from, to { opacity: 0; }
+        }
+      `}</style>
+      <div style={{
+        position:'absolute',inset:0,
+        background:'radial-gradient(circle at 50% 50%, rgba(218,224,226,0.22) 0 9%, rgba(105,112,122,0.17) 20%, rgba(18,20,26,0.18) 36%, rgba(0,0,0,0.34) 70%, rgba(0,0,0,0.66) 100%)',
+      }}/>
+      <div style={{
+        position:'absolute',left:'50%',top:'50%',width:210,height:150,borderRadius:'50%',
+        transform:'translate(-50%,-50%)',
+        background:'radial-gradient(ellipse, rgba(226,232,236,0.26), rgba(78,82,94,0.14) 42%, rgba(0,0,0,0) 72%)',
+        filter:'blur(5px)',
+        opacity:0.82,
+      }}/>
+      {batSpecs.map((spec,idx)=><BatSilhouette key={idx} spec={spec} idx={idx}/>)}
+    </div>
+  );
+}
+
 function CaveDuelAnim({anim,exiting}){
   const {sourceIdx,targetIdx,sourceCard,targetCard,winnerIdx}=anim||{};
   const [pts,setPts]=React.useState(null);
   useEffect(()=>{
+    let firstRaf=null;
+    let secondRaf=null;
     const measure=()=>{
-      const srcEl=document.querySelector(`[data-pid="${sourceIdx}"]`);
-      const tgtEl=document.querySelector(`[data-pid="${targetIdx}"]`);
-      const srcR=_getZoomCompensatedRect(srcEl);
-      const tgtR=_getZoomCompensatedRect(tgtEl);
-      const centerX=window.innerWidth/2;
-      const centerY=window.innerHeight*0.44;
-      const srcX=srcR?srcR.left+srcR.width/2:centerX-180;
-      const srcY=srcR?srcR.top+srcR.height*0.7:centerY+80;
-      const tgtX=tgtR?tgtR.left+tgtR.width/2:centerX+180;
-      const tgtY=tgtR?tgtR.top+tgtR.height*0.7:centerY+80;
-      const winnerEl=winnerIdx!=null?document.querySelector(`[data-pid="${winnerIdx}"]`):null;
-      const winnerR=_getZoomCompensatedRect(winnerEl);
-      const winX=winnerR?winnerR.left+winnerR.width/2:(winnerIdx===sourceIdx?srcX:(winnerIdx===targetIdx?tgtX:centerX));
-      const winY=winnerR?winnerR.top+winnerR.height*0.72:(winnerIdx===sourceIdx?srcY:(winnerIdx===targetIdx?tgtY:centerY+120));
-      setPts({centerX,centerY,srcX,srcY,tgtX,tgtY,winX,winY});
+      const reveal=getRevealCardAnchor();
+      const pile=getPileCardAnchor('[data-deck-pile]');
+      const width=Math.min(window.innerWidth*0.22,window.innerHeight*0.25,Math.max(pile.width,reveal.width*0.68));
+      const height=width*590/392;
+      const centerX=reveal.x;
+      const centerY=reveal.y-window.innerHeight*0.06;
+      const gap=Math.max(18,width*0.22);
+      const middleLeft={x:centerX-(width+gap)/2,y:centerY,width,height};
+      const middleRight={...middleLeft,x:centerX+(width+gap)/2};
+      const source=getPlayerHandCardAnchor(sourceIdx,sourceCard);
+      const target=getPlayerHandCardAnchor(targetIdx,targetCard);
+      const sourceEnd=winnerIdx==null?source:getPlayerHandCardAnchor(winnerIdx,sourceCard);
+      const targetEnd=winnerIdx==null?target:getPlayerHandCardAnchor(winnerIdx,targetCard);
+      setPts({centerX,centerY,width,height,middleLeft,middleRight,
+        sourceStyle:getCaveDuelCardStyle(source,middleLeft,sourceEnd),
+        targetStyle:getCaveDuelCardStyle(target,middleRight,targetEnd,0.04),
+      });
     };
-    requestAnimationFrame(()=>requestAnimationFrame(measure));
-  },[sourceIdx,targetIdx,winnerIdx]);
+    firstRaf=requestAnimationFrame(()=>{
+      secondRaf=requestAnimationFrame(measure);
+    });
+    return ()=>{
+      if(firstRaf!=null)cancelAnimationFrame(firstRaf);
+      if(secondRaf!=null)cancelAnimationFrame(secondRaf);
+    };
+  },[sourceIdx,targetIdx,winnerIdx,sourceCard,targetCard]);
   if(!anim||!pts)return null;
-  const makeStyle=(fromX,fromY,midX,midY,toX,toY,delay=0)=>({
-    position:'absolute',
-    left:pts.centerX-36,
-    top:pts.centerY-52,
-    width:72,
-    height:104,
-    '--fromX':`${fromX}px`,
-    '--fromY':`${fromY}px`,
-    '--midX':`${midX}px`,
-    '--midY':`${midY}px`,
-    '--toX':`${toX}px`,
-    '--toY':`${toY}px`,
-    animation:`caveDuelCardPath 2.35s cubic-bezier(.2,.7,.2,1) ${delay}s both`,
-  });
-  const srcFromX=pts.srcX-pts.centerX;
-  const srcFromY=pts.srcY-pts.centerY;
-  const tgtFromX=pts.tgtX-pts.centerX;
-  const tgtFromY=pts.tgtY-pts.centerY;
-  const srcToX=(winnerIdx==null?pts.srcX:pts.winX)-pts.centerX-24;
-  const srcToY=(winnerIdx==null?pts.srcY:pts.winY)-pts.centerY;
-  const tgtToX=(winnerIdx==null?pts.tgtX:pts.winX)-pts.centerX+24;
-  const tgtToY=(winnerIdx==null?pts.tgtY:pts.winY)-pts.centerY;
   const srcNum=sourceCard?.isGod?0:(sourceCard?.number||0);
   const tgtNum=targetCard?.isGod?0:(targetCard?.number||0);
   const winnerLabel=winnerIdx==null?'平局':winnerIdx===sourceIdx?'左侧胜出':'右侧胜出';
@@ -596,33 +892,34 @@ function CaveDuelAnim({anim,exiting}){
       background:'radial-gradient(circle at 50% 45%, rgba(40,24,8,0.25), rgba(0,0,0,0.78))',
       animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
     }}>
-      <div style={{position:'absolute',left:'50%',top:'14%',transform:'translateX(-50%)',textAlign:'center'}}>
-        <div style={{fontFamily:"'Cinzel',serif",fontSize:16,letterSpacing:3,color:'#d8b66a',textShadow:'0 0 12px #d8b66a88'}}>── 穴居人战争 ──</div>
-        <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',fontSize:13,color:'#c8a96e',marginTop:8,opacity:.92}}>{winnerLabel}</div>
+      <div className="toe-dialog" style={{position:'absolute',left:'50%',top:'14%',transform:'translateX(-50%)',textAlign:'center',padding:'14px 24px'}}>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:16,letterSpacing:3,color:'#d8b66a',textShadow:'0 1px 3px #000'}}>穴居人战争</div>
+        <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal',fontSize:13,color:'#c8a96e',marginTop:8,opacity:.92}}>{winnerLabel}</div>
       </div>
       <div style={{position:'absolute',left:pts.centerX-70,top:pts.centerY-10,width:140,height:56,borderRadius:'50%',background:'radial-gradient(circle, #2c1a0acc 0%, #12090400 72%)',filter:'blur(4px)',opacity:.85}}/>
-      <div style={makeStyle(srcFromX,srcFromY,-56,-10,srcToX,srcToY,0)}>
-        <DDCard card={sourceCard} compact/>
+      <div style={pts.sourceStyle}>
+        <MiniCardFace card={sourceCard} width={pts.sourceStyle.width} frameStyle={{boxShadow:'none'}}/>
       </div>
-      <div style={makeStyle(tgtFromX,tgtFromY,56,-10,tgtToX,tgtToY,0.04)}>
-        <DDCard card={targetCard} compact/>
+      <div style={pts.targetStyle}>
+        <MiniCardFace card={targetCard} width={pts.targetStyle.width} frameStyle={{boxShadow:'none'}}/>
       </div>
-      <div style={{position:'absolute',left:pts.centerX-118,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"'Cinzel',serif",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .9s forwards'}}>{srcNum}</div>
-      <div style={{position:'absolute',left:pts.centerX+26,top:pts.centerY+56,width:92,textAlign:'center',fontFamily:"'Cinzel',serif",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .95s forwards'}}>{tgtNum}</div>
-      <div style={{position:'absolute',left:'50%',top:`${pts.centerY+48}px`,transform:'translateX(-50%)',fontSize:34,opacity:0,animation:'caveDuelVsPop 1s ease-out .82s forwards'}}>⚔</div>
+      <div style={{position:'absolute',left:pts.middleLeft.x-pts.width/2,top:pts.centerY+pts.height/2+8,width:pts.width,textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .9s forwards'}}>{srcNum}</div>
+      <div style={{position:'absolute',left:pts.middleRight.x-pts.width/2,top:pts.centerY+pts.height/2+8,width:pts.width,textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:26,color:'#e8c87a',opacity:0,animation:'caveDuelScorePop 1.1s ease-out .95s forwards'}}>{tgtNum}</div>
+      <div style={{position:'absolute',left:'50%',top:`${pts.centerY+pts.height/2+2}px`,transform:'translateX(-50%)',fontSize:34,opacity:0,animation:'caveDuelVsPop 1s ease-out .82s forwards'}}>⚔</div>
       {winnerIdx!=null&&(
         <div style={{
           position:'absolute',
-          left:winnerIdx===sourceIdx?pts.centerX-92:pts.centerX+52,
-          top:pts.centerY-70,
+          left:(winnerIdx===sourceIdx?pts.middleLeft.x:pts.middleRight.x)-14,
+          top:pts.centerY-pts.height/2-32,
           fontSize:28,
           opacity:0,
           animation:'caveDuelDancePop 1.1s ease-out 1.38s forwards',
-          filter:'drop-shadow(0 0 10px #f0d080aa)',
-        }}>🕺</div>
+          color:'#d8c392',
+          filter:'drop-shadow(0 0 6px #c0a26d66)',
+        }}>✦</div>
       )}
     </div>
   );
 }
 
-export { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim };
+export { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, StartledBatsAnim, UndergroundSpringAnim, VolcanoAnim };

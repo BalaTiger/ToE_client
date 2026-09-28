@@ -3,8 +3,7 @@ import {
   isPositiveZoneCard,
   isNegativeZoneCard,
   estimateZoneCardKeepScore,
-  getPrevLivingIndex,
-  getNextLivingIndex,
+  getAdjacentTargets,
   getZoneCardPolarity,
   zoneCardHasGuaranteedHpLoss,
   zoneCardHasGuaranteedSanLoss,
@@ -20,11 +19,72 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
 } from './coreUtils';
+import { getActiveDamageLinksForPlayer } from './damageLinks';
+import { createAiObservationState, evaluateAiState, rankAiActions } from './aiPolicy';
+import { runAiPreview } from './aiPreviewRuntime';
+import { previewAiZoneAcquisition } from './aiRulePreview';
+import { chooseAiPublicCardIndex } from './aiPublicChoices';
 
-function getAdjacentTargets(players, ci) {
-  const prev = getPrevLivingIndex(players, ci);
-  const next = getNextLivingIndex(players, ci);
-  return [ci, ...[prev, next].filter((idx, pos, arr) => idx != null && arr.indexOf(idx) === pos)];
+function damageLinkMissingHp(player) {
+  return Math.min(4, Math.max(0, 10 - (player?.hp || 0)));
+}
+
+export function chooseAiDamageLinkTarget(players, sourceIdx, validTargetIndices = []) {
+  const source = players?.[sourceIdx];
+  if (!source || source.isDead) return null;
+  const validTargets = validTargetIndices
+    .filter(idx => idx != null && idx !== sourceIdx && players[idx] && !players[idx].isDead)
+    .map(idx => ({ idx, player: players[idx] }));
+  if (!validTargets.length) return null;
+  const role = source._nyaBorrow || source.role;
+
+  if (role === ROLE_HUNTER && source.hp > 3) {
+    const validSet = new Set(validTargets.map(target => target.idx));
+    const chaseTargets = getHunterChaseTargets(players, sourceIdx)
+      .filter(target => validSet.has(target.idx));
+    if (chaseTargets.length) {
+      return orderHunterChaseTargets(players, sourceIdx, chaseTargets, () => 0)[0]?.idx ?? null;
+    }
+    const publicEnemies = validTargets.filter(({ player }) => player.roleRevealed && player.role !== ROLE_HUNTER);
+    if (publicEnemies.length) {
+      return [...publicEnemies].sort((a, b) => a.player.hp - b.player.hp || a.idx - b.idx)[0].idx;
+    }
+  }
+
+  if (role === ROLE_CULTIST && source.hp > 3) {
+    const revealedHunters = validTargets.filter(({ player }) => player.roleRevealed && player.role === ROLE_HUNTER);
+    if (revealedHunters.length) {
+      return [...revealedHunters].sort((a, b) => a.player.hp - b.player.hp || a.idx - b.idx)[0].idx;
+    }
+  }
+
+  // Defensive fallback: maximize the possible next-turn heal and, on ties,
+  // choose the sturdier target so an incidental hit is less likely to waste it.
+  return [...validTargets].sort((a, b) => (
+    damageLinkMissingHp(b.player) - damageLinkMissingHp(a.player)
+    || b.player.hp - a.player.hp
+    || a.idx - b.idx
+  ))[0].idx;
+}
+
+function estimateDamageLinkZoneCardScore(self, players, ci, role) {
+  const validTargets = players.map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== ci && player && !player.isDead)
+    .map(({ idx }) => idx);
+  const targetIdx = chooseAiDamageLinkTarget(players, ci, validTargets);
+  if (targetIdx == null) return -100;
+  const target = players[targetIdx];
+  const healValue = damageLinkMissingHp(self) + damageLinkMissingHp(target);
+  if (role === ROLE_HUNTER) {
+    const canAttack = self.hp > 3 && hasHuntRevealableCard(self)
+      && hasHuntRevealableCard(target)
+      && !(target.roleRevealed && target.role === ROLE_HUNTER);
+    const attackValue = canAttack ? (target.hp <= 6 ? 6.5 : 4.2) : 0;
+    const selfRisk = canAttack && self.hp <= 6 ? 3.5 : 0;
+    return attackValue + healValue * 0.45 - selfRisk - (self.hp <= 3 ? 4.5 : 0);
+  }
+  if (role === ROLE_TREASURE) return healValue * 0.65 - (healValue ? 0.8 : 1.4) - (self.hp <= 3 ? 2.5 : 0);
+  return healValue * 0.55 - (healValue ? 0.7 : 1.2) - (self.hp <= 3 ? 2.5 : 0);
 }
 
 function getLivingAdjacentTargets(players, ci) {
@@ -80,7 +140,7 @@ function zoneCardGiftHpHealValue(card) {
     case 'selfHealBoth21':
       return 2;
     case 'selfRevealHandHP':
-      return 10;
+      return card.val || 8;
     case 'selfHealAdjDamageHP':
     case 'selfHealAdjHealHP':
       return card.val || 0;
@@ -161,27 +221,6 @@ function sortByLowestHpThenSan(a, b) {
   return (a.player.hp - b.player.hp) || (a.player.san - b.player.san) || (a.idx - b.idx);
 }
 
-function estimateSameAbyssSelfFollowupPenalty(card, self, players, ci) {
-  if (card?.type !== 'sameAbyssChoice' || !self || self.isDead) return 0;
-  const living = players
-    .map((player, idx) => ({ player, idx }))
-    .filter(({ player }) => player && !player.isDead);
-  if (!living.length) return 0;
-  const selfHandAfterKeep = (self.hand?.length || 0) + 1;
-  const maxOtherHand = Math.max(
-    0,
-    ...living
-      .filter(({ idx }) => idx !== ci)
-      .map(({ player }) => player.hand?.length || 0)
-  );
-  if (selfHandAfterKeep < maxOtherHand) return 0;
-  const actorHandCount = selfHandAfterKeep;
-  const discardCount = Math.max(0, selfHandAfterKeep - actorHandCount);
-  const hpLoss = 4;
-  const deathRisk = self.hp <= hpLoss ? 8 : 0;
-  return hpLoss * 2.2 + discardCount * 1.5 + deathRisk + 2;
-}
-
 function estimateEtherealizeZoneCardScore(self, players, ci) {
   if (!self || self.isDead) return -1;
   if (!getLivingAdjacentTargets(players, ci).length) return -1;
@@ -193,17 +232,14 @@ function estimateEtherealizeZoneCardScore(self, players, ci) {
 function estimateHunterGlobalDamageScore(players, hpLoss = 0, sanLoss = 0, dmgBonus = 0) {
   const nonHunters = players
     .map((player, idx) => ({ player, idx }))
-    .filter(({ player }) => player && player.role !== ROLE_HUNTER);
+    .filter(({ player }) => player && player.roleRevealed && player.role !== ROLE_HUNTER);
   if (!nonHunters.length) return 0;
   const killedNonHunters = nonHunters.filter(({ player }) => {
     if (player.isDead) return true;
     const nextHp = player.hp - (hpLoss || 0) - dmgBonus;
-    const nextSan = player.san - (sanLoss || 0);
-    return nextHp <= 0 || nextSan <= 0;
+    return nextHp <= 0;
   });
   const livingNonHunters = nonHunters.filter(({ player }) => !player.isDead);
-  const immediateWin = killedNonHunters.length === nonHunters.length;
-  if (immediateWin) return 120;
   if (!killedNonHunters.length) return 0;
   const revealedBonus = killedNonHunters.filter(({ player }) => player.roleRevealed).length * 2;
   const damagePressure = livingNonHunters.length * Math.max(hpLoss || 0, sanLoss || 0) * 0.25;
@@ -222,6 +258,25 @@ function getZoneAxisProgress(card, self) {
     addsLetter: !!card?.letter && !letters.has(card.letter),
     addsNumber: card?.number != null && !numbers.has(card.number),
   };
+}
+
+function estimateHunterHuntAmmoBonus(card, self) {
+  if (!isZoneCard(card) || !canRevealForHunt(card)) return 0;
+
+  // Only versatile zone cards count as dependable hunt ammunition here.
+  // God and derived cards either disappear before the action phase or cannot
+  // reliably answer a zone card revealed by the target.
+  const huntAmmo = (self?.hand || []).filter(
+    handCard => isZoneCard(handCard) && canRevealForHunt(handCard),
+  ).length;
+  const progress = getZoneAxisProgress(card, self);
+  const coverageBonus = (progress.addsLetter ? 0.35 : 0) + (progress.addsNumber ? 0.35 : 0);
+
+  // Even with four existing zone cards, a new card is worth slightly more
+  // than the residual cost of a safe 1 HP self-damage card. This lets a
+  // healthy hunter prepare for a multi-hunt turn without making heavier
+  // self-damage cards attractive by default.
+  return Math.max(0.9, 2.5 - huntAmmo * 0.4) + coverageBonus;
 }
 
 function isLowRiskHandValueCard(card) {
@@ -287,7 +342,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 0.8; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandHP': score = Math.max(0, (card.val || 8) - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'selfRevealHandSAN': score = (10 - self.san) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.6, 0);
@@ -314,7 +369,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       score = -card.val * 1.8 + 0.5;
       break;
     case 'damageLink':
-      score = 4.2;
+      score = estimateDamageLinkZoneCardScore(self, players, ci, ROLE_HUNTER);
       break;
     case 'etherealize':
       score = estimateEtherealizeZoneCardScore(self, players, ci);
@@ -326,7 +381,7 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
       score = hasProliferatingZPayoff(self) ? 3.0 : 1.0;
       break;
     case 'sameAbyssChoice':
-      score = -(card.hpVal || 2) * 2.1 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+      score = -(card.hpVal || 2) * 2.1;
       break;
     case 'roseThornGiftAllHand': {
       const hunters = players.filter((p, i) => i !== ci && !p.isDead && p.role === ROLE_HUNTER);
@@ -378,7 +433,9 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
         }
       }
       const totalDamageToOthers = targets.filter(idx => idx !== ci).length * (hpLoss || sanLoss);
-      score = totalDamageToOthers * 0.3 + revealedEnemyPressure;
+      // 追猎者的胜利条件要求压低整桌血线；即使本次 AOE 不能立刻击杀，
+      // 它也同时制造后续追捕斩杀线，并且这张区域牌本身还能作为追捕弹药。
+      score = 3 + totalDamageToOthers * 1.25 + revealedEnemyPressure;
       if (self.hp <= hpLoss + 1) score -= 5;
       break;
     }
@@ -422,7 +479,21 @@ function estimateHunterZoneCardScore(card, self, players, ci) {
   }
   if (self.hp <= 2 && zoneCardHasGuaranteedHpLoss(card)) score -= 4;
   if (self.san <= 2 && zoneCardHasGuaranteedSanLoss(card)) score -= 4;
+  const isSingleTargetSelfDamage = [
+    'selfDamageHP', 'selfDamageSAN', 'selfDamageHPSAN',
+    'selfDamageHPPeek', 'selfDamageDiscardHP', 'selfDamageDiscardSAN',
+  ].includes(card.type);
+  let isSafeSelfDamageAmmo = false;
+  if (isSingleTargetSelfDamage) {
+    const hpLoss = zoneCardHasGuaranteedHpLoss(card) ? (card.hpVal || card.val || 1) : 0;
+    const sanLoss = zoneCardHasGuaranteedSanLoss(card) ? (card.sanVal || card.val || 1) : 0;
+    isSafeSelfDamageAmmo = self.hp - hpLoss >= 5 && self.san - sanLoss >= 5;
+    if (self.hp - hpLoss >= 6 && self.san - sanLoss >= 6) score += 1.25;
+  }
   score += estimateRoleHandValueBias(card, self, ROLE_HUNTER);
+  // Ammunition value may justify a safe self-inflicted cost, but it must not
+  // rescue tactically unusable cards (for example an invalid damage link).
+  if (score >= 0 || isSafeSelfDamageAmmo) score += estimateHunterHuntAmmoBonus(card, self);
 
   const abandonedHunts = self?._abandonedHunts || 0;
   const ammoPressure = self.hand.length <= 2 || abandonedHunts >= 2;
@@ -460,7 +531,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
     case 'selfHealHPSAN': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'selfHealBoth21': score = (10 - self.hp) * 1.5 + (10 - self.san) * 1.0; break;
     case 'sacHealSelfSAN': score = (10 - self.san) * 1.8 - 1.2; break;
-    case 'selfRevealHandHP': score = (10 - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
+    case 'selfRevealHandHP': score = Math.max(0, (card.val || 8) - self.hp) * 2.2 - estimateRevealHandExposurePenalty(self); break;
     case 'selfRevealHandSAN': score = (10 - self.san) * 2.3 - estimateRevealHandExposurePenalty(self); break;
     case 'adjHealHP':
       score = getLivingAdjacentTargets(players, ci).reduce((sum, idx) => sum + (10 - players[idx].hp) * 0.3, 0);
@@ -487,7 +558,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       score = -card.val * 1.8 + 0.6;
       break;
     case 'damageLink':
-      score = 0.1;
+      score = estimateDamageLinkZoneCardScore(self, players, ci, ROLE_TREASURE);
       break;
     case 'etherealize':
       score = estimateEtherealizeZoneCardScore(self, players, ci);
@@ -499,7 +570,7 @@ function estimateTreasureZoneCardScore(card, self, players, ci) {
       score = hasProliferatingZPayoff(self) ? 3.2 : 1.1;
       break;
     case 'sameAbyssChoice':
-      score = -(card.hpVal || 2) * 2.2 - estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
+      score = -(card.hpVal || 2) * 2.2;
       break;
     case 'roseThornGiftAllHand':
       score = -100;
@@ -625,7 +696,7 @@ function estimateCultistZoneCardScore(card, self, players, ci, context = {}) {
       case 'selfHealHPSelfDamageSAN':
         return { targets: [ci], hpDelta: card.hpVal, sanDelta: -card.sanVal, hpLoss: 0, sanLoss: card.sanVal };
       case 'selfRevealHandHP':
-        return { targets: [ci], hpDelta: 10, sanDelta: 0, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
+        return { targets: [ci], hpDelta: card.val || 8, sanDelta: 0, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'selfRevealHandSAN':
         return { targets: [ci], hpDelta: 0, sanDelta: 10, hpLoss: 0, sanLoss: 0, special: 'revealHandExposure' };
       case 'adjHealHP':
@@ -726,7 +797,7 @@ function estimateCultistZoneCardScore(card, self, players, ci, context = {}) {
     case 'selfBerserk':
       return finishScore(2 + minSan * 0.2);
     case 'damageLink':
-      return finishScore(0.5);
+      return finishScore(estimateDamageLinkZoneCardScore(self, players, ci, ROLE_CULTIST));
     case 'firstComePick':
       return finishScore(1.8);
     case 'proliferatingZ':
@@ -799,21 +870,100 @@ export function aiChooseHunterLootCards(targetHand, hunterHand, maxToTake = 3) {
   return scored.slice(0, maxToTake).map(s => s.card);
 }
 
-export function chooseFirstComePickForAI(cards, ci, players) {
+export function chooseFirstComePickForAI(cards, ci, players, gs = {}) {
   if (!cards?.length) return 0;
-  const scored = cards.map((card, index) => ({
-    index,
-    score: estimateZoneCardKeepScore(card, ci, players) + (isZoneCard(card) ? 0.5 : 0),
-  }));
-  scored.sort((a, b) => b.score - a.score);
-  return scored[0].index;
+  return chooseAiPublicCardIndex({ state: { ...gs, players }, actorIdx: ci, cards });
 }
 
 export function getHunterChaseTargets(players, hunterIdx, huntAbandoned = []) {
   return players
     .map((player, idx) => ({ player, idx }))
-    .filter(({ player, idx }) => !player.isDead && idx !== hunterIdx && player.role !== ROLE_HUNTER && !huntAbandoned.includes(idx))
+    .filter(({ player, idx }) => (
+      !player.isDead
+      && idx !== hunterIdx
+      && !(player.roleRevealed && player.role === ROLE_HUNTER)
+      && !huntAbandoned.includes(idx)
+    ))
     .filter(({ player }) => hasHuntRevealableCard(player));
+}
+
+export function getHunterLowQualityConfidence(gs, players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  const memory = hunter?.huntQualityMemory;
+  if (!memory || !Array.isArray(memory.handIds) || memory.handIds.length === 0) return 0;
+  const currentIds = new Set((hunter.hand || []).map(card => card?.id).filter(id => id != null));
+  const retained = memory.handIds.filter(id => currentIds.has(id)).length;
+  const retention = retained / memory.handIds.length;
+  if (retention < 0.5) return 0;
+
+  const livingCount = Math.max(1, players.filter(player => player && !player.isDead).length);
+  const turnGap = Math.max(0, (gs?.turn || 0) - (memory.turn || 0));
+  const elapsedRounds = Math.floor(turnGap / livingCount);
+  if (elapsedRounds >= 3) return 0;
+
+  const timeFactor = elapsedRounds <= 0 ? 1 : elapsedRounds === 1 ? 0.75 : 0.45;
+  const handSizeDrift = Math.abs((hunter.hand || []).length - (memory.handSize || memory.handIds.length));
+  const driftPenalty = handSizeDrift <= 1 ? 1 : handSizeDrift === 2 ? 0.75 : 0.45;
+  return retention * timeFactor * driftPenalty;
+}
+
+export function evaluateHunterChaseHandQuality(gs, players, hunterIdx) {
+  const hunter = players?.[hunterIdx];
+  const hand = hunter?.hand || [];
+  const zoneCards = hand.filter(card => isZoneCard(card) && canRevealForHunt(card));
+  const zoneRatio = zoneCards.length / Math.max(1, hand.length);
+  const baseScore = zoneCards.length >= 4
+    ? 1
+    : zoneCards.length === 3
+      ? 0.86
+      : zoneCards.length === 2
+        ? 0.7
+        : zoneCards.length === 1
+          ? 0.34
+          : 0;
+  const ratioBonus = Math.max(-0.12, Math.min(0.12, (zoneRatio - 0.5) * 0.3));
+  const lowQualityConfidence = getHunterLowQualityConfidence(gs, players, hunterIdx);
+  const rememberedFailures = hunter?.huntQualityMemory?.failedChainCount
+    ?? hunter?.huntQualityMemory?.failedTargetCount
+    ?? 0;
+  const failurePenalty = lowQualityConfidence * Math.min(0.65, rememberedFailures * 0.25);
+  const score = Math.max(0, Math.min(1, baseScore + ratioBonus - failurePenalty));
+  return {
+    suitable: zoneCards.length >= 2 && score >= 0.55,
+    score,
+    zoneCardCount: zoneCards.length,
+    zoneRatio,
+    lowQualityConfidence,
+    rememberedFailures,
+  };
+}
+
+export function orderHunterChaseTargets(players, hunterIdx, targets, random = Math.random) {
+  const hunterLimit = Math.floor((players?.length || 0) / 2);
+  const revealedHunterCount = (players || []).filter(player => (
+    player && player.roleRevealed && player.role === ROLE_HUNTER
+  )).length;
+  const allUnrevealedAreSafe = hunterLimit > 0 && revealedHunterCount >= hunterLimit;
+  const safeTargets = (targets || []).filter(({ player }) => (
+    (player.roleRevealed && player.role !== ROLE_HUNTER)
+    || (!player.roleRevealed && allUnrevealedAreSafe)
+  ));
+  const shouldConcentrate = safeTargets.length > 0;
+  const linkedTargetIds = new Set(
+    (players?.[hunterIdx]?.hp > 3 ? getActiveDamageLinksForPlayer(players, hunterIdx) : [])
+      .map(link => link.a === hunterIdx ? link.b : link.a)
+  );
+  const pool = (shouldConcentrate ? safeTargets : (targets || []))
+    .map(target => ({ target, tieBreaker: random() }));
+  pool.sort((a, b) => {
+    const linkedOrder = Number(linkedTargetIds.has(b.target.idx)) - Number(linkedTargetIds.has(a.target.idx));
+    if (linkedOrder) return linkedOrder;
+    const hpOrder = shouldConcentrate
+      ? (a.target.player.hp - b.target.player.hp)
+      : (b.target.player.hp - a.target.player.hp);
+    return hpOrder || (a.tieBreaker - b.tieBreaker);
+  });
+  return pool.map(({ target }) => target);
 }
 
 export function shouldHunterKeepChasing(players, hunterIdx, huntAbandoned = []) {
@@ -848,7 +998,6 @@ export function shouldAiRest(gs, ai, aiEffRole) {
     return false;
   }
 
-  if (ai.hp <= 3) return true;
   if (ai.hp <= 5) return Math.random() < Math.min(0.88, 0.72 + cthBias);
   return Math.random() < Math.min(0.74, 0.52 + cthBias);
 }
@@ -880,15 +1029,23 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
   const canUseSkill = !self.disableSkill && !gs?.restUsed && (aiEffRole === ROLE_HUNTER ? true : !gs?.skillUsed);
   const hunterHuntCards = (self.hand || []).filter(canRevealForHunt);
   const hunterHandLimit = self._nyaHandLimit ?? 4;
-  const hunterOverLimit = hunterHuntCards.length > hunterHandLimit;
+  const hunterOverLimit = (self.hand || []).length > hunterHandLimit;
   const someoneWounded = players.some((p, i) => i !== ct && !p.isDead && p.hp < 10);
+  const hunterHandQuality = aiEffRole === ROLE_HUNTER
+    ? evaluateHunterChaseHandQuality(gs, players, ct)
+    : null;
+  const hunterCanChase = (
+    canUseSkill
+    && aiEffRole === ROLE_HUNTER
+    && hunterHuntCards.length > 0
+    && hunterTargets.length > 0
+    && !!hunterHandQuality?.suitable
+  );
+  const forceHunterChase = hunterCanChase && (hunterOverLimit || someoneWounded);
 
   const shouldHunterUseSkill =
-    canUseSkill &&
-    aiEffRole === ROLE_HUNTER &&
-    hunterHuntCards.length > 0 &&
-    hunterTargets.length > 0 &&
-    (hunterOverLimit || someoneWounded);
+    forceHunterChase
+    || (hunterCanChase && Math.random() < 0.85);
 
   const aliveOthers = players.some((p, i) => i !== ct && !p.isDead);
   const canBewitch = aiEffRole === ROLE_CULTIST && (self.hand || []).length > 0 && aliveOthers;
@@ -910,6 +1067,8 @@ export function decideAiSkillUsage(gs, players, ct, aiEffRole, hunterTargets = [
     hunterHandLimit,
     hunterOverLimit,
     someoneWounded,
+    hunterHandQuality,
+    forceHunterChase,
   };
 }
 
@@ -966,7 +1125,7 @@ export function chooseAiRoseThornTarget(players, sourceIdx, validTargetIndices) 
   )[0].idx;
 }
 
-export function chooseAiCultistBewitchPlan(players, sourceIdx) {
+function chooseLegacyCultistBewitchPlan(players, sourceIdx) {
   const self = players?.[sourceIdx];
   if (!self || self.isDead) return null;
   const targets = players
@@ -1126,17 +1285,12 @@ export function chooseAiCultistBewitchPlan(players, sourceIdx) {
   return null;
 }
 
-export function aiShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
+function legacyShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
   if (!card || !isZoneCard(card)) return forced;
   if (card.isGod) return true;
   
   const self = players[ci];
   const role = self?._nyaBorrow || self?.role;
-
-  if (card.type === 'sameAbyssChoice') {
-    const selfPenalty = estimateSameAbyssSelfFollowupPenalty(card, self, players, ci);
-    if (selfPenalty > 0 && (self?.hp || 0) <= (card.hpVal || 2) + 4) return false;
-  }
 
   if (card.type === 'roseThornGiftAllHand') {
     const hand = self?.hand || [];
@@ -1186,7 +1340,9 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
     const othersWithSameLetter = otherPlayers.filter(p => p.hand.some(c => c.letter === card.letter)).length;
     const othersWithSameNumber = otherPlayers.filter(p => p.hand.some(c => c.number === card.number)).length;
     
-    if (othersWithSameLetter > 0 && othersWithSameNumber > 0) return false;
+    // 追猎者需要按伤害/弹药价值评估负面牌，不能因桌面已有同轴牌就在
+    // 身份评分前直接否决（活火山等高价值 AOE 会因此被误弃）。
+    if (role !== ROLE_HUNTER && othersWithSameLetter > 0 && othersWithSameNumber > 0) return false;
     if (card.type === 'blankZone') return true;
     if (forced) return false;
   }
@@ -1206,117 +1362,103 @@ export function aiShouldKeepZoneCard(card, ci, players, forced = false, context 
   return estimateZoneCardKeepScore(card, ci, players) > 0;
 }
 
-export function canTreasureHunterWinBySwap(players, ti) {
-  const self = players[ti];
-  if (!self || self.isDead) return null;
-  const role = self._nyaBorrow || self.role;
-  if (role !== ROLE_TREASURE) return null;
-
-  const myHand = self.hand || [];
-  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
-  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
-  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
-  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
-
-  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
-  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
-
-  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
-  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
-
-  const targetPlayers = players
-    .map((p, i) => ({ player: p, idx: i }))
-    .filter(({ player, idx }) => idx !== ti && !player.isDead);
-
-  for (const { player, idx } of targetPlayers) {
-    for (const card of player.hand || []) {
-      if (card.isGod) continue;
-      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
-      if (hasNeeded) {
-        const giveCard = player.hand.find(c => !c.isGod && !((neededLetter && c.letter === neededLetter) || (neededNumber && c.number === neededNumber)));
-        const newMissingLetters = ['A', 'B', 'C', 'D'].filter(l => {
-          if (neededLetter && l === neededLetter) return false;
-          if (giveCard && giveCard.letter === l) return false;
-          return !myLetters.has(l);
-        });
-        const newMissingNumbers = [1, 2, 3, 4].filter(n => {
-          if (neededNumber && n === neededNumber) return false;
-          if (giveCard && giveCard.number === n) return false;
-          return !myNumbers.has(n);
-        });
-        if (newMissingLetters.length === 0 && newMissingNumbers.length === 0) {
-          return { targetIdx: idx, neededCard: card };
-        }
-      }
-    }
-  }
-  return null;
+function makeDecisionObservation(players, actorIdx, context = {}) {
+  const state = context.state || context.gs || context;
+  const observation = createAiObservationState({
+    ...state,
+    players,
+    currentTurn: state.currentTurn ?? actorIdx,
+    deck: context.deck || state.deck || [],
+    discard: context.discard || state.discard || [],
+    log: state.log || [],
+  }, actorIdx);
+  // Compatibility callers that only pass players have supplied no deck
+  // knowledge. They must not make empty-deck immortality a certainty.
+  if (!Array.isArray(context.deck || state.deck) && state.deckCount == null) observation._aiUnknownDeck = true;
+  return observation;
 }
 
-export function shouldTreasureHunterSwapToAvoidRegression(players, ti) {
-  const self = players[ti];
-  if (!self || self.isDead) return null;
-  const role = self._nyaBorrow || self.role;
-  if (role !== ROLE_TREASURE) return null;
-
-  const handLimit = self._nyaHandLimit ?? 4;
-  const zoneCards = (self.hand || []).filter(isZoneCard);
-  if (zoneCards.length <= handLimit) return null;
-
-  const myHand = self.hand || [];
-  const myLetters = new Set(myHand.filter(c => c.letter && !c.isGod).map(c => c.letter));
-  const myNumbers = new Set(myHand.filter(c => c.number != null && !c.isGod).map(c => c.number));
-  const missingLetters = ['A', 'B', 'C', 'D'].filter(l => !myLetters.has(l));
-  const missingNumbers = [1, 2, 3, 4].filter(n => !myNumbers.has(n));
-
-  if (missingLetters.length === 0 && missingNumbers.length === 0) return null;
-  if (missingLetters.length > 1 || missingNumbers.length > 1) return null;
-
-  const neededLetter = missingLetters.length === 1 ? missingLetters[0] : null;
-  const neededNumber = missingNumbers.length === 1 ? missingNumbers[0] : null;
-
-  const targetPlayers = players
-    .map((p, i) => ({ player: p, idx: i }))
-    .filter(({ player, idx }) => idx !== ti && !player.isDead);
-
-  for (const { player, idx } of targetPlayers) {
-    for (const card of player.hand || []) {
-      if (card.isGod) continue;
-      const hasNeeded = (neededLetter && card.letter === neededLetter) || (neededNumber && card.number === neededNumber);
-      if (hasNeeded) {
-        return { targetIdx: idx, neededCard: card };
-      }
-    }
-  }
-  return null;
+function rankCultistBewitchActions(players, sourceIdx, context = {}) {
+  const observation = makeDecisionObservation(players, sourceIdx, context);
+  const self = observation.players?.[sourceIdx];
+  if (!self || self.isDead) return [];
+  const legacy = runAiPreview(() => chooseLegacyCultistBewitchPlan(observation.players, sourceIdx));
+  const targets = observation.players.map((player, idx) => ({ player, idx }))
+    .filter(({ player, idx }) => idx !== sourceIdx && !player.isDead);
+  const actions = [{ type: 'pass' }, ...self.hand.filter(card => !isBlackGoatYoung(card))
+    .flatMap(card => targets.map(({ idx }) => ({ type: 'gift', card, targetIdx: idx })))];
+  return rankAiActions({
+    state: observation,
+    actorIdx: sourceIdx,
+    actions,
+    simulate: (state, action) => action.type === 'pass' ? state : previewAiZoneAcquisition(state, {
+      card: action.card, receiverIdx: action.targetIdx, giverIdx: sourceIdx,
+    }),
+    evaluate: (outcome, action) => [
+      action.type === 'pass'
+        ? (legacy ? -1 : 1)
+        : (legacy?.card?.id === action.card.id && legacy.targetIdx === action.targetIdx ? 1 : 0),
+      evaluateAiState(outcome, sourceIdx).at(-1),
+    ],
+  });
 }
 
-export function canCultistWinByBewitch(players, ti) {
-  const cultistPlan = chooseAiCultistBewitchPlan(players, ti);
-  if (!cultistPlan) return false;
-
-  const self = players[ti];
-  const target = players[cultistPlan.targetIdx];
-  if (!self || !target) return false;
-
-  const card = cultistPlan.card;
-  if (card.isGod) {
-    const sanLoss = estimateGodGiftSanLoss(card, target);
-    return target.san - sanLoss <= 0 && target.hp > 0;
-  } else {
-    const sanLoss = zoneCardCanGiftLowerSan(card, target);
-    return target.san - sanLoss <= 0 && target.hp > 0;
-  }
+export function chooseAiCultistBewitchPlan(players, sourceIdx, context = {}) {
+  const action = rankCultistBewitchActions(players, sourceIdx, context)[0]?.action;
+  if (!action || action.type === 'pass') return null;
+  // Return the actor's real card object, never an observation placeholder.
+  const card = players[sourceIdx].hand.find(held => held.id === action.card.id);
+  return card ? { card, targetIdx: action.targetIdx } : null;
 }
 
-export function canCultistEmptyHandByBewitch(players, ti) {
+export function aiShouldKeepZoneCard(card, ci, players, forced = false, context = {}) {
+  if (!card || !isZoneCard(card)) return forced;
+  if (card.isGod) return true;
+  const observation = makeDecisionObservation(players, ci, context);
+  const preferredKeep = legacyShouldKeepZoneCard(card, ci, observation.players, forced, observation);
+  const sourceState = context.state || context.gs || context;
+  const continuation = sourceState.abilityData || {};
+  const hasPendingDraws = continuation.continueTurnStartDraw || continuation.fromTsathogguaSlime
+    || continuation._tsgExtraDrawReady || (continuation.cthDrawsRemaining || 0) > 0
+    || sourceState._cthContinueRestDraws || (sourceState.pendingDrawCount || 0) > 0
+    || (sourceState._aiEndTurnReplayQueue?.length || 0) > 0
+    || (sourceState._turnFlowStage === 'draw' && players[ci]?.godName === 'TSG'
+      && (players[ci].hand || []).some(isTsathogguaSlime));
+  const allowTreasureDeclaration = context.allowTreasureDeclaration ?? (!hasPendingDraws
+    && !['turnStart', 'endTurn', 'turnBoundary'].includes(sourceState._turnFlowStage));
+  const ranked = rankAiActions({
+    state: observation,
+    actorIdx: ci,
+    allowTreasureDeclaration,
+    actions: [{ keep: false }, { keep: true }],
+    simulate: (state, action) => previewAiZoneAcquisition(state, {
+      card, receiverIdx: ci, keep: action.keep,
+      avoidNegative: !!context.avoidNegative,
+      avoidNegativeFor: context.avoidNegativeFor || [],
+    }),
+    // Preserve existing longer-term judgments (exposure, hunt ammunition,
+    // faith and card axes) after the shared terminal/survival priorities.
+    evaluate: (outcome, action) => [
+      action.keep === preferredKeep ? 1 : 0,
+      evaluateAiState(outcome, ci).at(-1),
+    ],
+  });
+  return ranked[0]?.action.keep ?? preferredKeep;
+}
+
+export function canCultistWinByBewitch(players, ti, context = {}) {
+  const best = rankCultistBewitchActions(players, ti, context)[0];
+  return best?.action.type === 'gift' && best.terminal > 0;
+}
+
+export function canCultistEmptyHandByBewitch(players, ti, context = {}) {
   const self = players[ti];
   if (!self || self.isDead) return false;
 
   const playableHand = (self.hand || []).filter(c => !isBlackGoatYoung(c));
   if (playableHand.length !== 1) return false;
 
-  const plan = chooseAiCultistBewitchPlan(players, ti);
+  const plan = chooseAiCultistBewitchPlan(players, ti, context);
   return !!plan && (plan.card?.id === playableHand[0]?.id || plan.card === playableHand[0]);
 }
 
@@ -1324,21 +1466,15 @@ export function aiShouldNotRest(gs, ai, aiEffRole, players, ti) {
   if (ai.hp >= 9) return false;
 
   if (aiEffRole === ROLE_TREASURE && ai.hp <= 4) {
-    const winSwap = canTreasureHunterWinBySwap(players, ti);
-    if (winSwap) return { shouldNotRest: true, reason: 'swapWin', targetIdx: winSwap.targetIdx };
-
-    const regressionSwap = shouldTreasureHunterSwapToAvoidRegression(players, ti);
-    if (regressionSwap) return { shouldNotRest: true, reason: 'swapAvoidRegression', targetIdx: regressionSwap.targetIdx };
-
     return { shouldNotRest: false };
   }
 
   if (aiEffRole === ROLE_CULTIST && ai.hp <= 4) {
-    if (canCultistWinByBewitch(players, ti)) {
+    if (canCultistWinByBewitch(players, ti, { state: gs })) {
       return { shouldNotRest: true, reason: 'bewitchWin' };
     }
 
-    if (ai.hp > 3 && canCultistEmptyHandByBewitch(players, ti)) {
+    if (ai.hp > 3 && canCultistEmptyHandByBewitch(players, ti, { state: gs })) {
       return { shouldNotRest: true, reason: 'bewitchEmptyHand' };
     }
 

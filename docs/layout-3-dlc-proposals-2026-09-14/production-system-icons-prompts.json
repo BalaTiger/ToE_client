@@ -1,0 +1,15 @@
+{
+  "mode": "built-in image_gen",
+  "reference": "stars_call.png",
+  "purpose": "Dedicated raster pause/settings controls for coastal layout; reference used for style only.",
+  "prompts": [
+    {
+      "name": "system-pause",
+      "prompt": "Use case: ui-mockup. Create ONE production-ready raster UI button asset for the dark realistic Lovecraftian card game shown in the reference image. Reference is STYLE ONLY, do not reproduce the screen. A single perfectly frontal round antique bronze medallion button, isolated at the exact center of a square canvas, occupying 86% of width and height with transparent space outside. Real worn, finely pitted muted bronze double rim, dark desaturated blue-green oxidized metal inset, center has exactly TWO broad parallel vertical bars as solid engraved/raised ivory-bronze metal shapes: universally readable PAUSE pictogram. Bars are designed shapes, not typographic Roman numerals, no serifs, no letters or text anywhere. Clear silhouette legible when downscaled to a 40px diameter. Tasteful cinematic realistic metal craft, low brightness rim, medium bright central ivory symbol. Match the clock dial/buttons in the reference, no cartoon styling, no neon, no excessive ornament, no drop shadow beyond medallion. Symmetric two bars, balanced spacing, no third bar. Genuinely transparent background with alpha, not a painted checkerboard. Single asset only, square, flat straight-on camera."
+    },
+    {
+      "name": "system-settings",
+      "prompt": "Use case: ui-mockup. Create ONE production-ready raster UI button asset for the dark realistic Lovecraftian card game shown in the reference image. Reference is STYLE ONLY, do not reproduce the screen. A single perfectly frontal round antique bronze medallion button, isolated at the exact center of a square canvas, occupying 86% of width and height with transparent space outside. Real worn, finely pitted muted bronze double rim, dark desaturated blue-green oxidized metal inset, center has one broad simple eight-tooth GEAR with a dark circular hole, solid engraved/raised ivory-bronze metal shape: universally readable SETTINGS pictogram. Pictogram is a crafted geometric object, not text or a font glyph. Clear silhouette legible when downscaled to a 40px diameter. Tasteful cinematic realistic metal craft, low brightness rim, medium bright central ivory symbol. Match the clock dial/buttons in the reference, no cartoon styling, no neon, no excessive ornament, no drop shadow beyond medallion. Symmetric circular gear, no extra objects or decorative marks within. Genuinely transparent background with alpha, not a painted checkerboard. Single asset only, square, flat straight-on camera."
+    }
+  ]
+}

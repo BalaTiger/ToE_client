@@ -3,7 +3,7 @@ import { getBoardTheme, getReliefDisplayConfig } from '../../constants/theme';
 import { ThemeMaskOrnament } from '../ui/ThemeMaskOrnament';
 import { buildPublicUrl } from '../../utils/url';
 
-export function getThemeReliefMask(expansionKey = '地神的潜影', kind = 'panel_corner') {
+function getThemeReliefMask(expansionKey = '地神的潜影', kind = 'panel_corner') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
   return buildPublicUrl(`/img/ui/theme_relief/${kind}_${suffix}.webp`);
 }
@@ -25,6 +25,8 @@ export function ThemeCornerOrnament({
   inset = 4,
   style = {},
   useCssVars = false,
+  colors: colorOverrides = null,
+  layerOpacity: layerOpacityOverrides = null,
 }) {
   const theme = getBoardTheme(expansionKey);
   const reliefCfg = getReliefDisplayConfig(expansionKey).corner;
@@ -40,11 +42,13 @@ export function ThemeCornerOrnament({
         shadow: '#030201',
         glow: useCssVars ? 'var(--toe-glow,#c8a96e)' : theme.glow,
         line: useCssVars ? 'var(--toe-line,#3a2510)' : theme.line,
+        ...(colorOverrides || {}),
       }}
       layerOpacity={{
         shadow: reliefCfg.shadowOpacity,
         glow: reliefCfg.glowOpacity,
         line: reliefCfg.lineOpacity,
+        ...(layerOpacityOverrides || {}),
       }}
     />
   );

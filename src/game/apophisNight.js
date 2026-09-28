@@ -1,7 +1,8 @@
 import { GOD_DEFS } from '../constants/card';
-import { buildStatEvents } from './statEvents';
-import { clamp, copyPlayers, formatSanLoss } from './coreUtils';
+import { copyPlayers, formatSanLoss, makeInspectionMeta } from './coreUtils';
+import { applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
 import { hasGodPowerImmunity } from './godPowerImmunity';
+import { createApophisTargetVisualEvent } from './visualEvents';
 
 export function getApophisNightForLevel(level = 1) {
   const idx = Math.max(0, Math.min(2, (level || 1) - 1));
@@ -23,6 +24,7 @@ export function resolveApophisTarget({
   selectedIdx,
   legalTargets,
   label = '选中目标',
+  visualMeta = null,
 }) {
   const night = gs?.apophisNight;
   if (!night?.active || actorIdx == null || selectedIdx == null || !Array.isArray(legalTargets) || !legalTargets.includes(selectedIdx)) {
@@ -33,8 +35,8 @@ export function resolveApophisTarget({
   }
 
   let P = players;
-  const D = deck;
-  const Disc = discard;
+  let D = deck;
+  let Disc = discard;
   let L = log;
   const nextCount = (night.count || 0) + 1;
   let nextNight = { ...night, count: nextCount };
@@ -42,22 +44,72 @@ export function resolveApophisTarget({
   let targetIdx = selectedIdx;
   let statPatch = {};
   let statSeq = null;
+  let nightStatEvents = [];
+  let inspectionPatch = {};
+  let playersAfterNightSan = null;
   const alternatives = legalTargets.filter(i => i !== selectedIdx && P[i] && !P[i].isDead);
   const eventSeq = (gs?._apophisTargetSeq || 0) + 1;
   let eventLog = '';
 
   if (roll <= night.threshold && alternatives.length) {
     targetIdx = alternatives[Math.floor(Math.random() * alternatives.length)];
-    const beforePlayers = copyPlayers(P);
-    P[actorIdx].san = clamp((P[actorIdx].san || 0) - 1);
     eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标由 ${P[selectedIdx].name} 错乱为 ${P[targetIdx].name}，${formatSanLoss(1)}`;
-    L = [...L, eventLog];
     const statEventSeq = (gs?._statEventSeq || 0) + 1;
+    const damage = submitLossEvents({
+      players: P, deck: D, discard: Disc, log: L, currentTurn: gs?.currentTurn ?? actorIdx,
+      events: [{ targetIdx: actorIdx, lostSan: 1, source: '黑夜' }],
+      statEventSeq, statEventLogs: [eventLog],
+    });
+    L = [...L, eventLog];
     statSeq = statEventSeq;
-    const statEvents = buildStatEvents(beforePlayers, P, [L[L.length - 1]], { reason: '黑夜', seq: statEventSeq });
-    if (statEvents.length) {
-      statPatch = { _statEvents: [...(gs?._statEvents || []), ...statEvents], _statEventSeq: statEventSeq };
+    nightStatEvents = damage.statEvents;
+    if (nightStatEvents.length) {
+      statPatch = { _statEvents: [...(gs?._statEvents || []), ...nightStatEvents], _statEventSeq: statEventSeq };
     }
+    playersAfterNightSan = copyPlayers(P);
+    let inspectionMeta = {
+      ...makeInspectionMeta(gs),
+      ...statPatch,
+    };
+    if (damage.abilityData) {
+      inspectionMeta = {
+        ...inspectionMeta,
+        abilityData: {
+          ...damage.abilityData,
+          ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
+            pendingSanInspection: {
+              targetIndex: actorIdx,
+              startIndex: gs?.currentTurn ?? actorIdx,
+              reason: '黑夜',
+            },
+          } : {}),
+        },
+        ...(damage.phase ? { phase: damage.phase } : {}),
+      };
+    } else {
+      const inspected = applyInspectionForSanLoss(
+        actorIdx,
+        P[actorIdx]?.san,
+        gs?.currentTurn ?? actorIdx,
+        P,
+        D,
+        Disc,
+        L,
+        inspectionMeta,
+      );
+      P = inspected.P;
+      D = inspected.D;
+      Disc = inspected.Disc;
+      L = inspected.log;
+      inspectionMeta = inspected.inspectionMeta;
+    }
+    inspectionPatch = inspectionMeta;
+    statPatch = {
+      _statEvents: inspectionMeta._statEvents || statPatch._statEvents || [],
+      _statEventSeq: inspectionMeta._statEventSeq ?? statPatch._statEventSeq ?? (gs?._statEventSeq || 0),
+      ...(inspectionMeta.abilityData ? { abilityData: inspectionMeta.abilityData } : {}),
+      ...(inspectionMeta.phase ? { phase: inspectionMeta.phase } : {}),
+    };
   } else {
     eventLog = `【黑夜】${P[actorIdx].name} ${label}掷出 ${roll}，目标未偏移`;
     L = [...L, eventLog];
@@ -68,6 +120,42 @@ export function resolveApophisTarget({
     L = [...L, '【黑夜】选中目标累计12次，黑夜结束'];
   }
 
+  const apophisTargetEvent = {
+    seq: eventSeq,
+    actorIdx,
+    actorName: P[actorIdx]?.name || '',
+    selectedIdx,
+    selectedName: P[selectedIdx]?.name || '',
+    targetIdx,
+    targetName: P[targetIdx]?.name || '',
+    roll,
+    threshold: night.threshold,
+    changed: targetIdx !== selectedIdx,
+    label,
+    log: eventLog,
+    apophisNight: nextNight,
+    statSeq,
+    ...(visualMeta?.transactionId ? { transactionId: visualMeta.transactionId } : {}),
+    ...(visualMeta?.phaseGroupId ? { phaseGroupId: visualMeta.phaseGroupId } : {}),
+    ...(visualMeta?.order != null ? { order: visualMeta.order } : {}),
+    ...(visualMeta?.phaseOrder != null ? { phaseOrder: visualMeta.phaseOrder } : {}),
+  };
+  const apophisVisualEvent = createApophisTargetVisualEvent(apophisTargetEvent, {
+    playersAfter: playersAfterNightSan || P,
+    // The damage submission owns this batch. A legacy state's reused seq is
+    // insufficient to claim unrelated losses from the accumulated journal.
+    statEvents: nightStatEvents,
+  });
+  const priorVisualEvents = gs?._visualEvents || [];
+  const inspectionVisualEvents = (inspectionPatch._visualEvents || []).slice(priorVisualEvents.length);
+  const ownedInspectionVisualEvents = inspectionVisualEvents.map((event, index) => ({
+    ...event,
+    ...(visualMeta?.transactionId ? { transactionId: visualMeta.transactionId } : {}),
+    ...(visualMeta?.phaseGroupId ? { phaseGroupId: visualMeta.phaseGroupId } : {}),
+    ...(apophisVisualEvent?.id ? { causedByEventId: apophisVisualEvent.id } : {}),
+    ...(visualMeta?.order != null ? { order: visualMeta.order + 1 + index } : {}),
+    phaseOrder: (visualMeta?.phaseOrder ?? 0) + 10 + index,
+  }));
   return {
     players: P,
     deck: D,
@@ -75,42 +163,37 @@ export function resolveApophisTarget({
     log: L,
     targetIdx,
     apophisNight: nextNight,
-    apophisTargetEvent: {
-      seq: eventSeq,
-      actorIdx,
-      actorName: P[actorIdx]?.name || '',
-      selectedIdx,
-      selectedName: P[selectedIdx]?.name || '',
-      targetIdx,
-      targetName: P[targetIdx]?.name || '',
-      roll,
-      threshold: night.threshold,
-      changed: targetIdx !== selectedIdx,
-      label,
-      log: eventLog,
-      apophisNight: nextNight,
-      statSeq,
-    },
+    apophisTargetEvent,
+    apophisVisualEvent,
+    targetResolutionEventId: apophisVisualEvent?.id || null,
     statePatch: {
       apophisNight: nextNight,
       _apophisTargetSeq: eventSeq,
-      _apophisTargetEvent: {
-        seq: eventSeq,
-        actorIdx,
-        actorName: P[actorIdx]?.name || '',
-        selectedIdx,
-        selectedName: P[selectedIdx]?.name || '',
-        targetIdx,
-        targetName: P[targetIdx]?.name || '',
-        roll,
-        threshold: night.threshold,
-        changed: targetIdx !== selectedIdx,
-        label,
-        log: eventLog,
-        apophisNight: nextNight,
-        statSeq,
-      },
+      _apophisTargetEvent: apophisTargetEvent,
+      ...inspectionPatch,
       ...statPatch,
+      _visualEvents: [
+        ...priorVisualEvents,
+        ...(apophisVisualEvent ? [apophisVisualEvent] : []),
+        ...ownedInspectionVisualEvents,
+      ],
     },
   };
+}
+
+export function resolveApophisTargetWithStats(options) {
+  const result = resolveApophisTarget(options);
+  if (result.statePatch?._statEvents) {
+    result.apophisNight = {
+      ...(result.apophisNight || {}),
+      _statEvents: result.statePatch._statEvents,
+      _statEventSeq: result.statePatch._statEventSeq,
+    };
+  }
+  return result;
+}
+
+export function apophisNightPatch(nightResult) {
+  if (!nightResult) return {};
+  return nightResult.statePatch || { apophisNight: nightResult.apophisNight ?? null };
 }

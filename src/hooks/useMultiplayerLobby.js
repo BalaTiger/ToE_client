@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { isLocalTestHost } from '../utils/runtime';
 
 function useSyncedRef(value) {
   const ref = useRef(value);
@@ -6,30 +7,36 @@ function useSyncedRef(value) {
   return ref;
 }
 
-function isLocalTestHost() {
-  if (typeof window === 'undefined') return false;
-  const host = (window.location.hostname || '').toLowerCase();
-  return host === 'localhost' || host === '127.0.0.1' || host === '::1' || host === '[::1]';
-}
-
 export function getMultiplayerIdentityStorage() {
   if (typeof window === 'undefined') return null;
   return isLocalTestHost() ? window.sessionStorage : window.localStorage;
+}
+
+export function getStoredMultiplayerIdentity() {
+  try {
+    const storage = getMultiplayerIdentityStorage();
+    return {
+      uuid: storage?.getItem('cthulhu_player_uuid') || null,
+      identityToken: storage?.getItem('cthulhu_identity_token') || null,
+    };
+  } catch {
+    return { uuid: null, identityToken: null };
+  }
 }
 
 const RESERVED_ROLE_NAMES = new Set(['寻宝者', '追猎者', '邪祀者']);
 const RESERVED_ROLE_NAME_MESSAGE = '与游戏身份重复，请换一个名字';
 
 export function useMultiplayerLobby({ socketRef }) {
-  const [playerUUID, setPlayerUUID] = useState(() => {
-    try { return getMultiplayerIdentityStorage()?.getItem('cthulhu_player_uuid') || null; }
-    catch { return null; }
-  });
+  const [playerUUID, setPlayerUUID] = useState(() => getStoredMultiplayerIdentity().uuid);
   const playerUUIDRef = useSyncedRef(playerUUID);
+  const [identityToken, setIdentityToken] = useState(() => getStoredMultiplayerIdentity().identityToken);
+  const identityTokenRef = useSyncedRef(identityToken);
   const [multiLoading, setMultiLoading] = useState(false);
   const [toasts, setToasts] = useState([]);
   const [roomModal, setRoomModal] = useState(null);
   const roomModalRef = useSyncedRef(roomModal);
+  const leavingRoomRef = useRef(false);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -64,7 +71,8 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleCreateRoom() {
     if (!socketRef.current) return;
-    socketRef.current.emit('createRoom', { uuid: playerUUID });
+    leavingRoomRef.current = false;
+    socketRef.current.emit('createRoom');
     setMultiLoading(true);
   }
 
@@ -75,7 +83,8 @@ export function useMultiplayerLobby({ socketRef }) {
       addToast('请输入房间号');
       return;
     }
-    socketRef.current.emit('joinRoom', { uuid: playerUUID, roomId: rid });
+    leavingRoomRef.current = false;
+    socketRef.current.emit('joinRoom', { roomId: rid });
     setMultiLoading(true);
   }
 
@@ -112,7 +121,8 @@ export function useMultiplayerLobby({ socketRef }) {
 
   function handleJoinLobbyRoom(roomId) {
     if (!socketRef.current) return;
-    socketRef.current.emit('joinRoom', { uuid: playerUUID, roomId });
+    leavingRoomRef.current = false;
+    socketRef.current.emit('joinRoom', { roomId });
     setMultiLoading(true);
     setLobbyModal(false);
   }
@@ -169,7 +179,9 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeRoomModal() {
+    leavingRoomRef.current = true;
     setRoomModal(null);
+    roomModalRef.current = null;
     const socket = socketRef.current;
     const roomId = roomModalRef.current?.roomId;
     if (!socket) return;
@@ -203,6 +215,9 @@ export function useMultiplayerLobby({ socketRef }) {
     playerUUID,
     setPlayerUUID,
     playerUUIDRef,
+    identityToken,
+    setIdentityToken,
+    identityTokenRef,
     multiLoading,
     setMultiLoading,
     toasts,
@@ -210,6 +225,7 @@ export function useMultiplayerLobby({ socketRef }) {
     roomModal,
     setRoomModal,
     roomModalRef,
+    leavingRoomRef,
     connErrModal,
     setConnErrModal,
     onlineOptionsModal,

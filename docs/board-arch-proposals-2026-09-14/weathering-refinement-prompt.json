@@ -1,0 +1,10 @@
+{
+  "mode": "built-in image_gen",
+  "use_case": "precise-object-edit",
+  "status": "latest design mockup; no runtime changes",
+  "edit_target": "B-refined-weathered-hand.png",
+  "original_palette_and_composition_reference": "B-refined-seven-players.png",
+  "output": "B-refined-weathered-hand-v2.png",
+  "reason": "Reduce dense fractured-rock texture from the initial weathering edit; user requested only a little aging.",
+  "prompt": "Refine the FIRST image, the weathered game UI mockup. SECOND image is the earlier clean version, supplied to preserve its original teal palette and smooth surface character.\n\nChange ONLY the exposed teal hand-table surface at the bottom, inside the existing brass arc. The first image's weathering is too cracked and rocky. Reduce its weathering strength to about one third: remove most crack networks, jagged fractured-rock texture and sharp pale veins. Restore broad uninterrupted matte dark teal areas as in the second image, while keeping a gentle uneven patina: soft charcoal-green mottling, subtle worn cloudy spots and a few very faint shallow abrasions. The request is a little aging, not a broken or crumbling tabletop. Keep the surface visibly aged but quiet, low contrast and predominantly smooth. No new symbols, letters or objects.\n\nPreserve everything else in the FIRST image: exact framing, simple brass arc contour and thickness, all five card faces and their size/proportions/fan/overlap, all panels and text, active-turn highlight, hand-count badge, reliefs, cave background, and centered hint. Do not alter layout or UI shapes."
+}

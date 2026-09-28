@@ -1,0 +1,101 @@
+import { clamp, copyPlayers } from './coreUtils';
+import { buildStatEvents } from './statEvents';
+import { createStatEventsEvent } from './visualEvents';
+
+function normalizedRecoveryEvents(players = [], events = []) {
+  return (Array.isArray(events) ? events : [])
+    .map((event, index) => ({
+      ...event,
+      order: event?.order ?? index,
+      gainHp: Math.max(0, Number(event?.gainHp) || 0),
+      gainSan: Math.max(0, Number(event?.gainSan) || 0),
+    }))
+    .filter(event => (
+      event.targetIdx != null &&
+      players?.[event.targetIdx] &&
+      !players[event.targetIdx].isDead &&
+      (event.gainHp > 0 || event.gainSan > 0)
+    ))
+    .sort((left, right) => left.order - right.order);
+}
+
+export function submitRecoveryEvents({
+  players,
+  events = [],
+  statEventSeq = null,
+  reason = '恢复',
+  logs = [],
+} = {}) {
+  const P = players;
+  const beforePlayers = copyPlayers(P || []);
+  const normalized = normalizedRecoveryEvents(P, events);
+  const statEvents = [];
+
+  normalized.forEach(event => {
+    const eventBeforePlayers = copyPlayers(P || []);
+    const target = P[event.targetIdx];
+    if (event.gainHp > 0) target.hp = clamp((target.hp || 0) + event.gainHp);
+    if (event.gainSan > 0) target.san = clamp((target.san || 0) + event.gainSan);
+    const eventLogs = Array.isArray(event.logs)
+      ? event.logs
+      : event.logHint
+        ? [event.logHint]
+        : logs;
+    statEvents.push(...buildStatEvents(eventBeforePlayers, P, eventLogs, {
+      reason: event.source || reason,
+      ...(statEventSeq != null ? { seq: statEventSeq } : {}),
+      includeDefeat: false,
+    }).map(statEvent => ({
+      ...statEvent,
+      ...(event.phaseOrder != null ? { phaseOrder: event.phaseOrder } : {}),
+      ...(event.phaseGroupId ? { phaseGroupId: event.phaseGroupId } : {}),
+    })));
+  });
+
+  return {
+    players: P,
+    beforePlayers,
+    statEvents,
+    statEventSeq: statEvents.length ? statEventSeq : null,
+  };
+}
+
+export function appendStatChangeResult(meta = {}, result = {}) {
+  const statEvents = Array.isArray(result?.statEvents) ? result.statEvents : [];
+  if (!statEvents.length) return meta;
+  const nextSeq = result.statEventSeq ?? Math.max(
+    meta?._statEventSeq || 0,
+    ...statEvents.map(event => event?.seq || 0),
+  );
+  const statVisualEvent = createStatEventsEvent({
+    statEvents,
+    msgs: result.logs || [],
+    ...(result.turnStartStage ? { turnStartStage: result.turnStartStage } : {}),
+  });
+  const visualEvents = [
+    ...(meta?._visualEvents || []),
+    ...(result.visualEvents || []),
+    ...(statVisualEvent ? [statVisualEvent] : []),
+  ];
+  return {
+    ...meta,
+    _statEvents: [...(meta?._statEvents || []), ...statEvents],
+    _statEventSeq: nextSeq,
+    ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
+  };
+}
+
+// React/controller entry points often need to merge only the presentation
+// metadata produced by a stat transaction into a separately assembled state.
+// Returning a narrow patch avoids spreading the old authoritative players/log
+// snapshot back over the already-resolved state.
+export function buildStatChangeStatePatch(meta = {}, result = {}) {
+  const statEvents = Array.isArray(result?.statEvents) ? result.statEvents : [];
+  if (!statEvents.length) return {};
+  const merged = appendStatChangeResult(meta, result);
+  return {
+    _statEvents: merged._statEvents,
+    _statEventSeq: merged._statEventSeq,
+    ...(merged._visualEvents ? { _visualEvents: merged._visualEvents } : {}),
+  };
+}

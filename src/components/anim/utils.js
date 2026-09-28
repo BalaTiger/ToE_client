@@ -1,19 +1,25 @@
+import { getInspectionCardDescription } from '../../constants/card';
+
+const POSITIVE_INSPECTION_EFFECTS = new Set(['healSAN', 'drawCard']);
+
+const CARD_FLIP_GLOW_BY_POLARITY = Object.freeze({
+  positive: '#49d17d',
+  neutral: '#91a1c2',
+  negative: '#b24ad1',
+});
+
+export function getCardFlipGlowColor(polarity){
+  return CARD_FLIP_GLOW_BY_POLARITY[polarity] ?? CARD_FLIP_GLOW_BY_POLARITY.neutral;
+}
+
+export function getInspectionCardPolarity(card){
+  if(POSITIVE_INSPECTION_EFFECTS.has(card?.effect)) return 'positive';
+  if(card?.effect==='nothing') return 'neutral';
+  return 'negative';
+}
+
 export function getInspectionCardDesc(card){
-  switch(card?.effect){
-    case 'adjacentDamageHP': return '相邻角色失去 1 HP';
-    case 'selfDamageHP': return '失去 1 HP';
-    case 'disableRest': return '下一回合禁用“休息”';
-    case 'nothing': return '什么也不做';
-    case 'flip': return '翻面';
-    case 'discardRandom': return '随机弃一张牌';
-    case 'disableSkill': return '下一回合禁用技能';
-    case 'handLimitDecrease': return '下一回合手牌上限 -1';
-    case 'healSAN': return '恢复 1 SAN';
-    case 'drawCard': return '从牌堆摸一张牌';
-    case 'sealLoosening': return '连续翻出两次时邪神复活';
-    case 'houndsOfTindalos': return '首个超时超过 15 秒的回合失去 4 HP';
-    default: return '';
-  }
+  return getInspectionCardDescription(card);
 }
 
 // Feather path helper — BLADE shape.

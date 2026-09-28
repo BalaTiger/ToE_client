@@ -1,17 +1,51 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   applyHpDamageWithLink,
+  resolvePendingDamageLinkBreak,
+  submitLossEvents,
   applyInspectionForSanLoss,
   processInspectionTargets,
   getAdjacentTargets,
   getLivingAdjacentTargets,
   applyFx,
 } from '../effectEngine';
-import { makeInspectionMeta } from '../coreUtils';
+import { buildTsathogguaSlimeBalanceDecision, copyPlayers, makeInspectionMeta } from '../coreUtils';
 import { resetIds, makePlayer, makeStandardPlayers, makeZoneCard, makeGodCard, makeGs } from './factory';
 import { createTsathogguaSlimeCard } from '../../constants/card';
 import { VISUAL_EVENT } from '../visualEvents';
+import { buildGraveDigTransferStep } from '../animQueueHelpers';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
+import { assertCompleteThrowStoneTransactions } from '../animationStepSchema';
 import { makeProliferatingZState } from '../proliferatingZ';
+import { addDamageLink, getAllDamageLinks } from '../damageLinks';
+
+const inspectionEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.INSPECTION);
+const randomTargetEventsOf = state => (state?._visualEvents || [])
+  .filter(event => event?.type === VISUAL_EVENT.RANDOM_TARGET || event?.type === VISUAL_EVENT.THROW_STONE);
+
+describe('逆流回合结束时机', () => {
+  it('行动阶段打出时只登记，不立即反转方向', () => {
+    const players = [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
+    const gs = makeGs({ players, currentTurn: 0, turnDirection: 1, _turnFlowStage: 'action' });
+
+    const result = applyFx({ type: 'reverseTurnOrder', name: '逆流' }, 0, null, players, [], [], gs);
+
+    expect(result.P[0].pendingTurnDirectionReversals).toBe(1);
+    expect(result.statePatch?.turnDirection).toBeUndefined();
+    expect(result.msgs[0]).toContain('本回合结束时');
+  });
+
+  it('回合结束事件重播出的逆流在当前回合结束阶段立即生效', () => {
+    const players = [makePlayer({ name: '艾伦' }), makePlayer({ name: '贝拉' })];
+    const gs = makeGs({ players, currentTurn: 0, turnDirection: 1, _turnFlowStage: 'endTurn' });
+
+    const result = applyFx({ type: 'reverseTurnOrder', name: '逆流' }, 0, null, players, [], [], gs);
+
+    expect(result.statePatch.turnDirection).toBe(-1);
+    expect(result.P[0].pendingTurnDirectionReversals).toBeUndefined();
+  });
+});
 
 describe('applyHpDamageWithLink', () => {
   beforeEach(() => resetIds());
@@ -64,6 +98,101 @@ describe('applyHpDamageWithLink', () => {
     expect(L.some(s => s.includes('两人一绳'))).toBe(true);
   });
 
+  it('同一角色连接两条绳索时按创建顺序逐条断裂', () => {
+    const P = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(P, 0, 1, { createdSeq: 1 });
+    addDamageLink(P, 2, 1, { createdSeq: 2 });
+    const L = [];
+
+    applyHpDamageWithLink(P, 1, 1, [], L, 1, []);
+
+    expect(P.map(player => player.hp)).toEqual([7, 3, 7]);
+    expect(getAllDamageLinks(P).map(link => link.active)).toEqual([false, false]);
+    expect(L.filter(line => line.includes('绳索断裂'))).toEqual([
+      '【两人一绳】绳索断裂！贝拉 和 艾伦 各失去 3 HP',
+      '【两人一绳】绳索断裂！贝拉 和 卡洛斯 各失去 3 HP',
+    ]);
+  });
+
+  it('绳索伤害触发相邻链条时追加到断裂队列末尾', () => {
+    const P = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(P, 0, 1, { createdSeq: 1 });
+    addDamageLink(P, 1, 2, { createdSeq: 2 });
+    const L = [];
+
+    applyHpDamageWithLink(P, 0, 1, [], L, 0, []);
+
+    expect(P.map(player => player.hp)).toEqual([6, 4, 7]);
+    expect(L.filter(line => line.includes('绳索断裂'))).toEqual([
+      '【两人一绳】绳索断裂！艾伦 和 贝拉 各失去 3 HP',
+      '【两人一绳】绳索断裂！贝拉 和 卡洛斯 各失去 3 HP',
+    ]);
+  });
+
+  it('原始伤害先等待黏液，之后断绳伤害会再次产生黏液决策', () => {
+    const slime1 = createTsathogguaSlimeCard();
+    const slime2 = createTsathogguaSlimeCard();
+    const p0 = makePlayer({ hp: 10, san: 6, hand: [slime1, slime2], damageLink: { active: true, partner: 1 } });
+    const partnerSlime = createTsathogguaSlimeCard();
+    const p1 = makePlayer({ hp: 10, san: 8, hand: [partnerSlime], damageLink: { active: true, partner: 0 } });
+    const P = [p0, p1];
+    const beforeOriginal = copyPlayers(P);
+    const Disc = [];
+    const L = [];
+
+    applyHpDamageWithLink(P, 0, 2, Disc, L, 0, []);
+    const firstDecision = buildTsathogguaSlimeBalanceDecision(beforeOriginal, P, { _turnOwner: 0 });
+
+    expect(P[0].hp).toBe(8);
+    expect(P[1].hp).toBe(10);
+    expect(P[0].damageLink.active).toBe(true);
+    expect(firstDecision).toMatchObject({ targetIdx: 0, lostHp: 2, pendingDamageLinkBreak: { partnerIdx: 1 } });
+
+    P[0].hand.splice(P[0].hand.indexOf(slime1), 1);
+    const linkReaction = resolvePendingDamageLinkBreak(P, 0, Disc, L, 0, []);
+    const secondDecision = buildTsathogguaSlimeBalanceDecision(linkReaction.beforePlayers, P, { _turnOwner: 0 });
+
+    expect(P[0].hp).toBe(5);
+    expect(P[1].hp).toBe(7);
+    expect(P[0].damageLink.active).toBe(false);
+    expect(secondDecision).toMatchObject({ targetIdx: 0, lostHp: 3 });
+    expect(secondDecision.pendingSlimeBalanceDecisions).toEqual([
+      expect.objectContaining({ targetIdx: 1, lostHp: 3 }),
+    ]);
+  });
+
+  it('断绳伤害会先让回合外角色决定虚化，尚不实际扣血', () => {
+    const slime = createTsathogguaSlimeCard();
+    const p0 = makePlayer({ hp: 10, san: 6, hand: [slime], damageLink: { active: true, partner: 1 } });
+    const p1 = makePlayer({ hp: 10, etherealizeStacks: 1, damageLink: { active: true, partner: 0 } });
+    const p2 = makePlayer({ hp: 10 });
+    const P = [p0, p1, p2];
+
+    applyHpDamageWithLink(P, 0, 2, [], [], 0, []);
+    const reaction = resolvePendingDamageLinkBreak(P, 0, [], [], 0, [], { continueTurnStartDraw: true });
+
+    expect(reaction.applied).toBe(false);
+    expect(reaction.etherealizeDecision).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 3,
+      continueTurnStartDraw: true,
+      deferredDirectLosses: [expect.objectContaining({ targetIdx: 0, lostHp: 3 })],
+    });
+    expect(P[0].hp).toBe(8);
+    expect(P[1].hp).toBe(10);
+    expect(P[0].damageLink.active).toBe(false);
+    expect(P[1].damageLink.active).toBe(false);
+  });
+
   it('damageLink 未激活时不触发', () => {
     const p0 = makePlayer({ hp: 10, damageLink: { active: false, partner: 1 } });
     const p1 = makePlayer({ hp: 10 });
@@ -89,6 +218,116 @@ describe('applyHpDamageWithLink', () => {
     expect(p0.isDead).toBe(true);
     expect(p1.isDead).toBe(true);
     expect(L.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('投掷石块玩家收入回放', () => {
+  it('目标进入黏液决策并选择不牺牲时，仍保留骰子、转盘和飞石', () => {
+    const slime = createTsathogguaSlimeCard();
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8, hand: [slime] }),
+    ];
+    const oldGs = makeGs({ players: copyPlayers(players), currentTurn: 0, phase: 'DRAW_REVEAL', log: [] });
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.7) // 骰子 5
+      .mockReturnValueOnce(0); // 唯一合法目标：艾伦
+
+    const result = applyFx(
+      { type: 'throwStone', name: '投掷石块' },
+      0,
+      null,
+      copyPlayers(players),
+      [],
+      [],
+      oldGs,
+    );
+    random.mockRestore();
+    const resolutionLog = ['你 收入了 [B2] 投掷石块', ...result.msgs];
+    const decisionGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: resolutionLog,
+      phase: 'TSG_SLIME_BALANCE',
+      ...result.statePatch,
+    };
+    const queue = buildAnimQueue(oldGs, decisionGs);
+
+    expect(decisionGs.abilityData).toMatchObject({ type: 'tsgSlimeBalance', targetIdx: 1 });
+    expect(queue.map(step => step.type)).toEqual(expect.arrayContaining([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+      'HP_DAMAGE',
+    ]));
+    const throwEvent = result.statePatch._visualEvents.find(event => event.type === VISUAL_EVENT.THROW_STONE);
+    const stoneSteps = queue.filter(step => step.visualEventId === throwEvent.id);
+    expect(stoneSteps.slice(0, 3).map(step => step.type)).toEqual([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+    ]);
+    expect(() => assertCompleteThrowStoneTransactions(queue)).not.toThrow();
+
+    const declinedGs = {
+      ...decisionGs,
+      phase: 'ACTION',
+      abilityData: {},
+      log: [...decisionGs.log, '【撒托古亚的赐福黏液】艾伦 没有牺牲黏液'],
+    };
+    expect(declinedGs.players[1].hand).toContain(slime);
+    expect(queue.find(step => step.type === 'RANDOM_TARGET')).toBeTruthy();
+  });
+
+  it('致死投掷石块补发 PLAYER_DEFEATED，回放含断头台与死亡广播', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10 }),
+      makePlayer({ name: '艾伦', hp: 1 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+    ];
+    const oldGs = makeGs({ players: copyPlayers(players), currentTurn: 0, phase: 'DRAW_REVEAL', log: [] });
+    const random = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0.999) // 骰子 6
+      .mockReturnValueOnce(0); // 候选目标 [艾伦, 贝拉] 中的第 0 个：艾伦
+
+    const result = applyFx(
+      { type: 'throwStone', name: '投掷石块' },
+      0,
+      null,
+      copyPlayers(players),
+      [],
+      [],
+      oldGs,
+    );
+    random.mockRestore();
+
+    expect(result.P[1].isDead).toBe(true);
+    const statEvents = result.statePatch?._statEvents || [];
+    const defeat = statEvents.find(event => event?.type === 'PLAYER_DEFEATED');
+    expect(defeat).toMatchObject({ target: 1, cause: 'hpDepleted' });
+
+    const nextGs = {
+      ...oldGs,
+      players: result.P,
+      deck: result.D,
+      discard: result.Disc,
+      log: result.msgs,
+      ...result.statePatch,
+    };
+    const queue = buildAnimQueue(oldGs, nextGs);
+    const types = queue.map(step => step.type);
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const deathIdx = types.indexOf('DEATH');
+    expect(hpIdx).toBeGreaterThan(-1);
+    expect(guillotineIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBeGreaterThan(guillotineIdx);
+    expect(queue[guillotineIdx].msgs).toEqual(
+      expect.arrayContaining([expect.stringContaining('倒下了')]),
+    );
+    expect(() => assertCompleteThrowStoneTransactions(queue)).not.toThrow();
   });
 });
 
@@ -246,14 +485,53 @@ describe('applyFx', () => {
     const res = applyFx({ id: 'night-wind', name: '夜风呼啸', type: 'allDamageBoth', val: 1 }, 2, 2, players, [], [], gs);
     randomSpy.mockRestore();
 
-    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['失忆', '自残', '超人意志']);
+    expect(inspectionEventsOf(res.statePatch).map(event => event.card.name)).toEqual(['失忆', '自残', '超人意志']);
     expect(res.statePatch._statEventSeq).toBe(3);
     expect(res.statePatch._statEvents.map(event => event.seq)).toEqual([1, 1, 1, 1, 1, 1, 2, 3]);
     expect(res.statePatch._statEvents.at(-2)).toMatchObject({ type: 'HP_LOSS', target: 1, reason: '自残' });
     expect(res.statePatch._statEvents.at(-1)).toMatchObject({ type: 'SAN_GAIN', target: 2, reason: '超人意志' });
   });
 
-  it('allDamageSAN: 虚化决策会暂停后续 SAN 检定', () => {
+  it('adjDamageHP: 相邻有虚化角色时，无虚化角色的伤害也延迟归并（亡者军团场景）', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 7 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8, etherealizeStacks: 1 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 8 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    // 你（idx 0）的相邻角色是艾伦（1）和黛安娜（3）；规避后自身不受伤害
+    const res = applyFx({ id: 'undead-legion', name: '亡者军团', type: 'adjDamageHP', val: 4 }, 0, null, players, [], [], gs, true, [], false);
+
+    // 艾伦有虚化 → 进入决策；黛安娜的直接伤害同样延迟，不在 res.P 中结算
+    expect(res.P.map(p => p.hp)).toEqual([10, 10, 10, 10]);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 4,
+    });
+    expect(res.statePatch.abilityData.deferredDirectLosses).toEqual([
+      expect.objectContaining({ targetIdx: 3, lostHp: 4, lostSan: 0 }),
+    ]);
+  });
+
+  it('adjDamageHP: 相邻均无虚化时伤害立即结算，行为不变', () => {
+    const players = [
+      makePlayer({ name: '你', hp: 10, san: 7 }),
+      makePlayer({ name: '艾伦', hp: 10, san: 8 }),
+      makePlayer({ name: '贝拉', hp: 10, san: 8 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 7 }),
+    ];
+    const gs = makeGs({ players, currentTurn: 0, log: [] });
+
+    const res = applyFx({ id: 'undead-legion', name: '亡者军团', type: 'adjDamageHP', val: 4 }, 0, null, players, [], [], gs, true, [], false);
+
+    expect(res.P.map(p => p.hp)).toEqual([10, 6, 10, 6]);
+    expect(res.statePatch?.abilityData?.type).toBeFalsy();
+  });
+
+  it('allDamageSAN: 存在虚化候选时全部伤害延迟到决策链结束后归并结算', () => {
     const players = [
       makePlayer({ name: '艾伦', hp: 10, san: 7 }),
       makePlayer({ name: '贝拉', hp: 10, san: 8 }),
@@ -277,14 +555,20 @@ describe('applyFx', () => {
     const res = applyFx({ id: 'rats', name: '鼠群', type: 'allDamageSAN', val: 1 }, 3, null, players, [], [], gs);
     randomSpy.mockRestore();
 
-    expect(res.statePatch._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    // 伤害前置事件（虚化）检查完成前，任何伤害都不实际结算
+    expect(res.P.map(p => p.san)).toEqual([7, 8, 7, 7]);
+    expect(res.statePatch._inspectionEvents || []).toEqual([]);
     expect(res.statePatch.abilityData).toMatchObject({
       type: 'etherealizeRedirect',
       targetIdx: 2,
       lostSan: 1,
-      pendingInspectionContinuation: { targets: [0], startIndex: 3 },
     });
-    expect(res.P[2].san).toBe(7);
+    // 非虚化目标的直接伤害被归并延迟，待决策链结束后统一结算
+    expect(res.statePatch.abilityData.deferredDirectLosses).toEqual([
+      expect.objectContaining({ targetIdx: 0, lostHp: 0, lostSan: 1 }),
+      expect.objectContaining({ targetIdx: 1, lostHp: 0, lostSan: 1 }),
+      expect.objectContaining({ targetIdx: 3, lostHp: 0, lostSan: 1 }),
+    ]);
   });
 
   it('igniteTorch: 玩家有手牌时进入弃牌选择', () => {
@@ -311,15 +595,27 @@ describe('applyFx', () => {
     expect(res.msgs.at(-1)).toContain('本回合不受邪神之力影响');
   });
 
+  it('igniteTorch: 空手时跳过弃牌选择并获得免疫', () => {
+    const players = makeStandardPlayers(3);
+    const res = applyFx({ type: 'igniteTorch', name: '引燃火把' }, 0, null, players, [], [], makeGs({ players }));
+
+    expect(res.P[0].hand).toEqual([]);
+    expect(res.P[0].godPowerImmuneThisTurn).toBe(true);
+    expect(res.statePatch?.abilityData?.type).not.toBe('igniteTorchDiscard');
+    expect(res.Disc).toEqual([]);
+  });
+
   it('swapDeckDiscard: 交换牌堆和弃牌堆', () => {
     const players = makeStandardPlayers(3);
     const deck = [{ id: 'deck-1' }, { id: 'deck-2' }];
     const discard = [{ id: 'disc-1' }];
-    const gs = makeGs({ players, deck, discard });
+    const zhuLight = { ownerIdx: 1, level: 2, cardIds: ['deck-1', 'deck-2'], lightNonce: 7 };
+    const gs = makeGs({ players, deck, discard, zhuLight });
     const res = applyFx({ type: 'swapDeckDiscard', name: '地底天空' }, 0, null, players, deck, discard, gs);
 
     expect(res.D).toEqual(discard);
     expect(res.Disc).toEqual(deck);
+    expect(res.statePatch.zhuLight).toEqual({ ...zhuLight, cardIds: [] });
     expect(res.msgs[0]).toContain('牌堆和弃牌堆交换了');
   });
 
@@ -350,18 +646,90 @@ describe('applyFx', () => {
     expect(res.P[3].hp).toBe(10);
     expect(res.msgs[0]).toContain('掷出 6 点');
     expect(res.msgs[0]).toContain('距离1');
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
       sourceIdx: 0,
       targetIdx: 1,
       roll: 6,
       distance: 1,
       damage: 5,
-      label: '投掷石块',
-      diceBefore: true,
-      phaseOrder: 1,
     });
     expect(res.statEvents[0]).toMatchObject({ target: 1, phaseOrder: 2 });
+    expect(res.statePatch._visualEvents.find(event => event.type === VISUAL_EVENT.THROW_STONE)).toMatchObject({
+      type: 'throwStone',
+      sourceIdx: 0,
+      targetIdx: 1,
+      roll: 6,
+      damage: 5,
+      statEvents: [expect.objectContaining({ target: 1, phaseOrder: 2 })],
+    });
     randomSpy.mockRestore();
+  });
+
+  it('sameAbyssChoice: 触发者自己最多手牌时不计入尚未收入的同归深渊', () => {
+    const players = [
+      makePlayer({
+        name: '你',
+        hp: 10,
+        hand: [
+          { id: 'h1', name: '手牌1' },
+          { id: 'h2', name: '手牌2' },
+          { id: 'h3', name: '手牌3' },
+          { id: 'h4', name: '手牌4' },
+        ],
+      }),
+      makePlayer({
+        name: '贝拉',
+        hp: 10,
+        hand: [
+          { id: 'b1', name: '手牌1' },
+          { id: 'b2', name: '手牌2' },
+          { id: 'b3', name: '手牌3' },
+        ],
+      }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+    const gs = makeGs({ players, currentTurn: 0 });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.P[0].hp).toBe(8);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'sameAbyssChoice',
+      actorIdx: 0,
+      targetIdx: 0,
+      actorHandCount: 4,
+      targetHandCount: 4,
+      discardCount: 0,
+    });
+    expect(res.msgs).toContain('【同归深渊】你 手牌最多（4 张），须做出选择');
+  });
+
+  it('sameAbyssChoice: 触发者与他人并列手牌最多时触发者目标优先级最低', () => {
+    const players = [
+      makePlayer({
+        name: '你',
+        hp: 10,
+        hand: [{ id: 'a1' }, { id: 'a2' }, { id: 'a3' }],
+      }),
+      makePlayer({
+        name: '贝拉',
+        hp: 10,
+        hand: [{ id: 'b1' }],
+      }),
+      makePlayer({ name: '卡洛斯', hp: 10, hand: [{ id: 'c1' }, { id: 'c2' }, { id: 'c3' }] }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+    const gs = makeGs({ players, currentTurn: 2 });
+
+    const res = applyFx(card, 2, null, players, [], [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      actorIdx: 2,
+      targetIdx: 0,
+      actorHandCount: 3,
+      targetHandCount: 3,
+    });
+    expect(res.msgs).toContain('【同归深渊】你 手牌最多（3 张），须做出选择');
   });
 
   it('allDamageHPRandomExtra: 全场伤害和随机额外伤害分为两个动画阶段', () => {
@@ -374,7 +742,25 @@ describe('applyFx', () => {
     const gs = makeGs({ players, currentTurn: 0 });
     const res = applyFx({ type: 'allDamageHPRandomExtra', name: '钻地魔虫', val: 2 }, 0, null, players, [], [], gs);
 
-    expect(res.statePatch._randomTargetEvents[0]).toMatchObject({ targetIdx: 1, phaseOrder: 1 });
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
+      targetIdx: 1,
+      phaseOrder: 1,
+      phaseGroupId: expect.any(String),
+    });
+    const phaseGroupId = randomTargetEventsOf(res.statePatch)[0].phaseGroupId;
+    expect(res.statePatch._visualEvents[0]).toMatchObject({
+      type: VISUAL_EVENT.CARD_EFFECT,
+      effectKey: 'burrowingWorm',
+      actorIdx: 0,
+      phaseGroupId,
+      phaseOrder: -1,
+    });
+    expect(res.statePatch._visualEvents[1]).toMatchObject({
+      type: VISUAL_EVENT.RANDOM_TARGET,
+      phaseGroupId,
+      phaseOrder: 1,
+    });
+    expect(res.statEvents.every(event => event.phaseGroupId === phaseGroupId)).toBe(true);
     expect(res.statEvents.filter(ev => ev.phaseOrder === 0).map(ev => ev.target)).toEqual([0, 1, 2]);
     expect(res.statEvents.filter(ev => ev.phaseOrder === 2)).toMatchObject([{ target: 1 }]);
     expect(res.P[1].hp).toBe(6);
@@ -387,8 +773,8 @@ describe('applyFx', () => {
     const gs = makeGs({ players });
     const res = applyFx({ id: 'eth-1', type: 'etherealize', name: '半物质化' }, 0, null, players, [], [], gs);
 
-    expect(res.P[0].etherealizeStacks).toBe(4);
-    expect(res.msgs[0]).toContain('获得 4 层虚化');
+    expect(res.P[0].etherealizeStacks).toBe(3);
+    expect(res.msgs[0]).toContain('获得 3 层虚化');
   });
 
   it('snakePoisonTrap: 按存活人数随机分配中毒层数且可重复命中', () => {
@@ -494,6 +880,69 @@ describe('applyFx', () => {
     randomSpy.mockRestore();
   });
 
+  it('albinoCreature: 没有火牌时可在伤害落地前规避', () => {
+    const players = makeStandardPlayers(3);
+    const res = applyFx({ type: 'albinoCreature', name: '白化生物' }, 0, null, players, [], [], makeGs({ players }), true, []);
+
+    expect(res.P[0]).toMatchObject({ hp: 10, san: 10 });
+    expect(res.msgs).toContain('【白化生物】测试角色1 没有带"火"字的手牌，失去 2 HP 和 2 SAN');
+  });
+
+  it('albinoCreature: AI 亮出火牌后先转盘选定目标，再播放 HP/SAN 扣减', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', hand: [{ id: 'fire', name: '活火山' }] }),
+      makePlayer({ name: '贝拉' }),
+    ];
+    const gs = makeGs({ players: copyPlayers(players), currentTurn: 1, _randomTargetSeq: 0, _statEventSeq: 0 });
+    const randomSpy = vi.spyOn(Math, 'random')
+      .mockReturnValueOnce(0) // 选择唯一火牌
+      .mockReturnValueOnce(0.8); // 目标贝拉
+
+    const res = applyFx({ type: 'albinoCreature', name: '白化生物' }, 1, null, copyPlayers(players), [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+    const newGs = {
+      ...gs,
+      players: res.P,
+      log: res.msgs,
+      ...res.statePatch,
+    };
+    const queue = buildAnimQueue(gs, newGs);
+    const types = queue.map(step => step.type);
+    const randomIdx = types.indexOf('RANDOM_TARGET');
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const sanIdx = types.indexOf('SAN_DAMAGE');
+
+    expect(randomTargetEventsOf(res.statePatch)[0]).toMatchObject({
+      sourceIdx: 1,
+      targetIdx: 2,
+      label: '白化生物',
+      phaseOrder: 0,
+    });
+    expect(randomIdx).toBeGreaterThanOrEqual(0);
+    expect(hpIdx).toBeGreaterThan(randomIdx);
+    expect(sanIdx).toBeGreaterThan(randomIdx);
+  });
+
+  it('albinoCreature: 无尽通道重播时不把正在结算的白化生物当作火牌', () => {
+    const albino = { id: 'albino-1', type: 'albinoCreature', name: '白化生物', desc: '亮出带有"火"字的一张手牌' };
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '卡洛斯', hand: [albino, { id: 'plain', name: '无尽通道' }] }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const gs = makeGs({ players: copyPlayers(players), currentTurn: 1, _randomTargetSeq: 0, _statEventSeq: 0 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0);
+
+    const res = applyFx(albino, 1, null, copyPlayers(players), [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.msgs).toContain('【白化生物】卡洛斯 没有带"火"字的手牌，失去 2 HP 和 2 SAN');
+    expect(res.msgs.some(msg => msg.includes('亮出了') && msg.includes('白化生物'))).toBe(false);
+    expect(res.P[1]).toMatchObject({ hp: 8, san: 8 });
+    expect(res.statePatch._randomTargetEvent).toBeUndefined();
+  });
+
   it('decipherStoneCarving: 玩家收入后进入解读阶段', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0), makeZoneCard('B2', 0), makeGodCard('NYA')];
@@ -533,6 +982,36 @@ describe('applyFx', () => {
     ]);
   });
 
+  it('decipherStoneCarving: AI 回合外选择邪神牌时先进入虚化决策', () => {
+    const players = [
+      makePlayer({ name: '当前回合玩家' }),
+      makePlayer({ name: '解读者', san: 8, etherealizeStacks: 1 }),
+    ];
+    const godCard = makeGodCard('NYA');
+    const gs = makeGs({ players, deck: [godCard], currentTurn: 0 });
+
+    const res = applyFx(
+      { type: 'decipherStoneCarving', name: '解读石刻', key: 'A1', val: 1 },
+      1,
+      null,
+      players,
+      [godCard],
+      [],
+      gs,
+      false,
+      [],
+      true,
+    );
+
+    expect(res.P[1].san).toBe(8);
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostSan: 1,
+      source: '解读石刻',
+    });
+  });
+
   it('selfDamageHP: 失去HP', () => {
     const players = makeStandardPlayers(3);
     // A1 variant 1 is selfDamageDiscardHP which includes selfDamageHP
@@ -544,6 +1023,35 @@ describe('applyFx', () => {
     expect(res.statePatch._statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 7 } },
     ]);
+  });
+
+  it('坠落强制弃牌会生成显式视觉事件，避免收入牌抵消手牌数量变化', () => {
+    const fallCard = { ...makeZoneCard('A1', 0), id: 'fall-card' };
+    const discardedCard = { ...makeZoneCard('B2', 0), id: 'forced-discard' };
+    const players = makeStandardPlayers(3);
+    players[1].hand = [fallCard, discardedCard];
+    const gs = makeGs({ players, currentTurn: 1 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx(fallCard, 1, null, players, [], [], gs);
+    randomSpy.mockRestore();
+
+    expect(res.P[1].hand).toEqual([fallCard]);
+    expect(res.Disc).toEqual([discardedCard]);
+    expect(res.statePatch._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: VISUAL_EVENT.CARD_EFFECT,
+        effectKey: 'forcedRandomDiscard',
+        actorIdx: 1,
+        discardEvents: [
+          expect.objectContaining({
+            playerIndex: 1,
+            card: discardedCard,
+          }),
+        ],
+      }),
+      expect.objectContaining({ type: VISUAL_EVENT.STAT_EVENTS }),
+    ]));
   });
 
   it('失去 HP 且手中有撒托古亚黏液时进入平分选择', () => {
@@ -676,6 +1184,33 @@ describe('applyFx', () => {
     expect(res.P[1]).toMatchObject({ godPowerImmuneThisTurn: true, godPowerImmuneTurnOwner: 0 });
   });
 
+  it('igniteTorch: AI 自动弃牌会生成显式视觉事件', () => {
+    const torchCard = { id: 'torch-card', key: 'C3', name: '引燃火把', type: 'igniteTorch' };
+    const discardedCard = { ...makeZoneCard('B2', 0), id: 'torch-discard' };
+    const players = makeStandardPlayers(3);
+    players[1].hand = [torchCard, discardedCard];
+    const gs = makeGs({ players, currentTurn: 1 });
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.99);
+
+    const res = applyFx(torchCard, 1, null, players, [], [], gs, false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.P[1].hand).toEqual([torchCard]);
+    expect(res.statePatch._visualEvents).toEqual([
+      expect.objectContaining({
+        type: VISUAL_EVENT.CARD_EFFECT,
+        effectKey: 'forcedRandomDiscard',
+        actorIdx: 1,
+        discardEvents: [
+          expect.objectContaining({
+            playerIndex: 1,
+            card: discardedCard,
+          }),
+        ],
+      }),
+    ]);
+  });
+
   it('allDiscard: 全体随机弃1张牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hand = [makeZoneCard('A1', 0)];
@@ -693,6 +1228,22 @@ describe('applyFx', () => {
     expect(event.discardEvents).toHaveLength(2);
     expect(event.discardEvents[0].afterPlayers[0].hand).toHaveLength(0);
     expect(res.statePatch._earthquakeSeq).toBeUndefined();
+  });
+
+  it('allDiscard: 衍生牌销毁但仍进入地震弃牌动画事件', () => {
+    const derived = { id: 'quake-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const players = makeStandardPlayers(2);
+    players[0].hand = [derived];
+    players[1].hand = [];
+    const card = { type: 'allDiscard', name: '地动山摇', key: 'QUAKE' };
+
+    const res = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(res.P[0].hand).toEqual([]);
+    expect(res.Disc).toEqual([]);
+    expect(res.statePatch._visualEvents?.[0]?.discardEvents).toEqual([
+      expect.objectContaining({ playerIndex: 0, card: derived, afterDiscard: [] }),
+    ]);
   });
 
   it('selfHealAdjDamageHP: 治疗自己并伤害相邻', () => {
@@ -729,6 +1280,7 @@ describe('applyFx', () => {
 
   it('caveDuel: 设置状态补丁', () => {
     const players = makeStandardPlayers(3);
+    players[0].hand = [makeZoneCard('B1', 0)];
     players[1].hand = [makeZoneCard('A1', 0)];
     const card = { type: 'caveDuel', name: '穴居人战争', key: 'DUEL' };
     const gs = makeGs({ players });
@@ -745,13 +1297,24 @@ describe('applyFx', () => {
     expect(res.statePatch.globalOnlySwapOwner).toBe(0);
   });
 
-  it('selfRevealHandHP: 回满HP并公开手牌', () => {
+  it('selfRevealHandHP: HP不足8时恢复至8并公开手牌', () => {
     const players = makeStandardPlayers(3);
     players[0].hp = 3;
     const card = makeZoneCard('A3', 0); // selfRevealHandHP
     const gs = makeGs({ players });
     const res = applyFx(card, 0, null, players, [], [], gs);
-    expect(res.P[0].hp).toBe(10);
+    expect(res.P[0].hp).toBe(8);
+    expect(res.P[0].revealHand).toBe(true);
+    expect(res.P[0].pickInsteadOfRandom).toBe(true);
+  });
+
+  it('selfRevealHandHP: HP不低于8时不降血但仍公开手牌', () => {
+    const players = makeStandardPlayers(3);
+    players[0].hp = 9;
+    const card = makeZoneCard('A3', 0); // selfRevealHandHP
+    const gs = makeGs({ players });
+    const res = applyFx(card, 0, null, players, [], [], gs);
+    expect(res.P[0].hp).toBe(9);
     expect(res.P[0].revealHand).toBe(true);
     expect(res.P[0].pickInsteadOfRandom).toBe(true);
   });
@@ -779,6 +1342,27 @@ describe('applyFx', () => {
     expect(res.P[0].godLevel).toBe(0);
     expect(res.P[0].godZone).toHaveLength(0);
     expect(res.Disc).toHaveLength(1);
+    const renounceEvent = res.statePatch._visualEvents.find(event => event?.effectKey === 'selfRenounceGod');
+    expect(renounceEvent).toMatchObject({
+      actorIdx: 0,
+      payload: { cards: [expect.objectContaining({ godKey: 'NYA' })] },
+    });
+    const queue = buildAnimQueue(gs, {
+      ...gs,
+      players: res.P,
+      discard: res.Disc,
+      log: res.msgs,
+      ...res.statePatch,
+    });
+    expect(queue).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'CARD_TRANSFER',
+        effect: 'godRenounce',
+        dest: 'discard',
+        faceUp: true,
+        cards: [expect.objectContaining({ godKey: 'NYA' })],
+      }),
+    ]));
   });
 
   it('firstComePick: 翻开牌并设置状态', () => {
@@ -791,7 +1375,7 @@ describe('applyFx', () => {
     expect(res.statePatch.abilityData.revealedCards).toHaveLength(3);
   });
 
-  it('sphinxGuess: 玩家规避成功时把负面规避状态带入猜测阶段', () => {
+  it('sphinxGuess: 玩家收入时不再提前携带规避结果', () => {
     const players = makeStandardPlayers(3);
     const deck = [makeZoneCard('A1', 0)];
     const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
@@ -801,13 +1385,14 @@ describe('applyFx', () => {
 
     expect(res.statePatch.abilityData).toMatchObject({
       type: 'sphinxGuess',
-      sphinxAvoidNegative: true,
       topCard: deck[0],
     });
+    expect(res.statePatch.abilityData.sphinxAvoidNegative).toBeUndefined();
   });
 
-  it('sphinxGuess: AI 规避成功后猜错不失去 HP', () => {
+  it('sphinxGuess: AI 寻宝者猜错后才掷骰规避且不失去 HP', () => {
     const players = makeStandardPlayers(3);
+    players[0].role = '寻宝者';
     const deck = [makeZoneCard('A1', 0)];
     const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
     const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, top card is zone => wrong
@@ -817,8 +1402,44 @@ describe('applyFx', () => {
 
     expect(res.P[0].hp).toBe(10);
     expect(res.Disc).toHaveLength(1);
-    expect(res.msgs).toContain('猜测错误！测试角色1 负面效果已规避');
-    expect(res.statePatch._animSphinxReveal).toMatchObject({ guessCorrect: false, actorIdx: 0 });
+    expect(res.msgs).toContain('猜测错误！测试角色1 即将失去 3 HP');
+    expect(res.msgs).toContain('测试角色1（寻宝者）掷出 5 点，成功规避负面效果！');
+    expect(res.statePatch._animSphinxReveal).toBeUndefined();
+    expect(res.statePatch._visualEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'sphinxResult', guessCorrect: false, actorIdx: 0 }),
+    ]));
+    randomSpy.mockRestore();
+  });
+
+  it('sphinxGuess: AI 普通角色猜错只记录一条最终伤害结果', () => {
+    const players = makeStandardPlayers(3);
+    players[0].role = '追猎者';
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.8); // guessYes = false, top card is zone => wrong
+
+    const res = applyFx(card, 0, null, players, deck, [], makeGs({ players }), false, [], true);
+    randomSpy.mockRestore();
+
+    expect(res.P[0].hp).toBe(7);
+    expect(res.msgs.filter(line => line.includes('猜测错误！'))).toEqual([
+      '猜测错误！测试角色1 失去 3 HP',
+    ]);
+  });
+
+  it('sphinxGuess: AI 寻宝者猜对时不掷规避骰', () => {
+    const players = makeStandardPlayers(3);
+    players[0].role = '寻宝者';
+    const deck = [makeZoneCard('A1', 0)];
+    const card = { type: 'sphinxGuess', name: '斯芬克斯', key: 'D4' };
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.1); // guessYes = true, top card is zone => correct
+
+    const res = applyFx(card, 0, null, players, deck, [], makeGs({ players }), false, [], true);
+
+    expect(res.msgs.some(line => line.includes('规避负面效果'))).toBe(false);
+    expect(res.msgs.filter(line => line.includes('猜测正确！'))).toHaveLength(1);
+    expect(res.msgs.some(line => line.includes('猜测错误！'))).toBe(false);
+    expect(randomSpy).toHaveBeenCalledTimes(1);
     randomSpy.mockRestore();
   });
 
@@ -872,6 +1493,29 @@ describe('applyFx', () => {
     const res = applyFx(card, 0, null, players, [], discard, gs, false, [], true);
     expect(res.P[0].hand.map(c => c.godKey)).toEqual(['SHU']);
     expect(res.Disc.map(c => c.godKey).filter(Boolean)).toEqual(['NYA']);
+  });
+
+  it('graveDigGod: AI 取回时产生 graveDig 视觉事件并可编译为弃牌堆起点的飞牌步骤', () => {
+    const players = makeStandardPlayers(3);
+    const shu = makeGodCard('SHU');
+    const discard = [makeZoneCard('A1', 0), shu];
+    const card = { type: 'graveDigGod', name: '掘墓', key: 'A4' };
+    const gs = makeGs({ players, discard });
+    const res = applyFx(card, 0, null, players, [], discard, gs, false, [], true);
+    const event = (res.statePatch?._visualEvents || []).find(ev => ev?.type === 'graveDig');
+    expect(event).toMatchObject({ playerIdx: 0, card: expect.objectContaining({ godKey: 'SHU' }) });
+    expect(event.beforeDiscard.some(c => c?.godKey === 'SHU')).toBe(true);
+    expect(event.afterDiscard.some(c => c?.godKey === 'SHU')).toBe(false);
+    const step = buildGraveDigTransferStep(event);
+    expect(step).toMatchObject({
+      type: 'CARD_TRANSFER',
+      sourceAnchor: 'discard',
+      dest: 'player',
+      toPid: 0,
+      faceUp: true,
+      visualEventId: event.id,
+    });
+    expect(step.cards[0].godKey).toBe('SHU');
   });
 
   it('buryAlive: 玩家触发时设置多目标手牌选择状态', () => {
@@ -1059,10 +1703,32 @@ describe('applyFx', () => {
       accomplices: [],
     });
     expect(res.statEvents).toEqual(expect.arrayContaining([
-      expect.objectContaining({ type: 'PETRIFY_DEATH', target: 1 }),
+      expect.objectContaining({ type: 'PLAYER_DEFEATED', cause: 'petrification', target: 1 }),
       expect.objectContaining({ type: 'SAN_LOSS', target: 0 }),
       expect.objectContaining({ type: 'SAN_LOSS', target: 2 }),
     ]));
+  });
+});
+
+describe('秤心仪式的信仰历史', () => {
+  it('玩家曾信仰邪神但已被抛弃时仍失去3HP', () => {
+    const card = makeZoneCard('D1', 0);
+    const players = [makePlayer({ hp: 10, san: 6, godName: null, godLevel: 0, godZone: [], hasBelievedGod: true })];
+
+    const result = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(result.P[0]).toMatchObject({ hp: 7, san: 8, hasBelievedGod: true });
+    expect(result.msgs).toContain(`${players[0].name} 失去 3 HP`);
+  });
+
+  it('玩家本局从未信仰邪神时只恢复SAN', () => {
+    const card = makeZoneCard('D1', 0);
+    const players = [makePlayer({ hp: 10, san: 6, hasBelievedGod: false })];
+
+    const result = applyFx(card, 0, null, players, [], [], makeGs({ players }));
+
+    expect(result.P[0]).toMatchObject({ hp: 10, san: 8, hasBelievedGod: false });
+    expect(result.msgs.some(line => line.includes('失去 3 HP'))).toBe(false);
   });
 });
 
@@ -1121,8 +1787,8 @@ describe('applyInspectionForSanLoss', () => {
 
     expect(res.P[0].hp).toBe(9);
     expect(res.inspectionMeta._statEventSeq).toBe(5);
-    expect(res.inspectionMeta._inspectionEvents[0].statEventSeq).toBe(5);
-    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEventSeq).toBe(5);
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 0, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
     ]);
   });
@@ -1151,7 +1817,12 @@ describe('applyInspectionForSanLoss', () => {
 
     expect(res.P[0].hand).toMatchObject([{ id: 'truth-draw' }]);
     expect(res.P[0].san).toBe(6);
-    expect(res.log.at(-1)).toBe('你 揭开真相，摸到 [A1] 霉变食物，选择收入手牌（不触发效果）');
+    expect(res.log.at(-1)).toBe('你 揭开真相，直接摸1张牌收入手牌（不触发效果）');
+    expect(inspectionEventsOf(res.inspectionMeta).at(-1)).toMatchObject({
+      gainedCard: { hiddenDraw: true },
+      gainedCardLog: '你 揭开真相，直接摸1张牌收入手牌（不触发效果）',
+    });
+    expect(inspectionEventsOf(res.inspectionMeta).at(-1).gainedCard).not.toHaveProperty('name');
   });
 
   it('批量 SAN 检定遇到任意待结算决策都会暂停后续检定', () => {
@@ -1180,7 +1851,7 @@ describe('applyInspectionForSanLoss', () => {
       },
     );
 
-    expect(res.inspectionMeta._inspectionEvents.map(event => event.card.name)).toEqual(['自残']);
+    expect(inspectionEventsOf(res.inspectionMeta).map(event => event.card.name)).toEqual(['自残']);
     expect(res.inspectionMeta.abilityData).toMatchObject({
       type: 'tsgSlimeBalance',
       pendingInspectionContinuation: { targets: [1], startIndex: 0 },
@@ -1213,8 +1884,240 @@ describe('applyInspectionForSanLoss', () => {
     expect(res.P[0].hp).toBe(10);
     expect(res.P[1].hp).toBe(9);
     expect(res.log.filter(line => line.includes('贝拉 被乱抓'))).toHaveLength(1);
-    expect(res.inspectionMeta._inspectionEvents[0].statEvents).toMatchObject([
+    expect(inspectionEventsOf(res.inspectionMeta)[0].statEvents).toMatchObject([
       { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 } },
     ]);
+  });
+
+  it('buryAlive: 联机模式为所有目标初始化并行暗选槽', () => {
+    const players = makeStandardPlayers(3);
+    players.forEach((player, idx) => { player.hand = [makeZoneCard(`A${idx + 1}`, 0)]; });
+    const card = { type: 'buryAlive', name: '活埋', key: 'A4' };
+    const gs = makeGs({ players, _isMP: true });
+
+    const res = applyFx(card, 0, null, players, [], [], gs);
+
+    expect(res.statePatch.abilityData).toMatchObject({
+      type: 'buryAliveSelect',
+      source: 0,
+      targets: [0, 2, 1],
+      buryAliveChoices: [null, null, null],
+    });
+  });
+
+  it('检定乱抓会在回合外目标扣血前进入虚化决策', () => {
+    const players = [
+      makePlayer({ name: '当前玩家', hp: 10, san: 6 }),
+      makePlayer({ name: '相邻玩家', hp: 10, san: 10, etherealizeStacks: 1 }),
+      makePlayer({ name: '另一相邻玩家', hp: 10, san: 10 }),
+    ];
+    const inspectionCard = { name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' };
+    const gs = makeGs({ players, currentTurn: 0, inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const res = applyInspectionForSanLoss(0, 6, 0, players, [], [], [], makeInspectionMeta(gs));
+
+    expect(res.P[1].hp).toBe(10);
+    expect(res.P[2].hp).toBe(10);
+    expect(res.inspectionMeta.abilityData).toMatchObject({
+      type: 'etherealizeRedirect',
+      targetIdx: 1,
+      lostHp: 1,
+      deferredDirectLosses: [expect.objectContaining({ targetIdx: 2, lostHp: 1 })],
+    });
+  });
+});
+
+describe('inspection and AI decision regressions', () => {
+  it('does not crash when both inspection piles are empty', () => {
+    const players = [makePlayer({ name: '检定者', san: 5 })];
+    const meta = makeInspectionMeta({ inspectionDeck: [], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+
+    expect(result.P[0]).toMatchObject({ name: '检定者', hp: 10, san: 5, hand: [] });
+    expect(result.inspectionMeta.inspectionDeck).toEqual([]);
+  });
+
+  it('does not mutate caller-owned players or discard during inspection', () => {
+    const card = { id: 'discard-random', name: '迫害妄想', effect: 'discardRandom' };
+    const handCard = { id: 'hand-card', name: '手牌' };
+    const players = [makePlayer({ name: '检定者', hand: [handCard] })];
+    const discard = [];
+    const meta = makeInspectionMeta({ inspectionDeck: [card], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], discard, [], meta);
+
+    expect(players[0].hand).toEqual([handCard]);
+    expect(discard).toEqual([]);
+    expect(result.P[0].hand).toEqual([]);
+    expect(result.Disc).toEqual([handCard]);
+  });
+
+  it('迫害妄想销毁衍生牌但保留标准弃牌动画事件', () => {
+    const inspectionCard = { id: 'discard-derived', name: '迫害妄想', effect: 'discardRandom' };
+    const derived = { id: 'inspection-derived', name: '赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const players = [makePlayer({ name: '检定者', hand: [derived] })];
+    const meta = makeInspectionMeta({ inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+
+    expect(result.P[0].hand).toEqual([]);
+    expect(result.Disc).toEqual([]);
+    const event = result.inspectionMeta._visualEvents?.find(item => item.type === VISUAL_EVENT.INSPECTION);
+    expect(event?.discardEvents).toEqual([
+      expect.objectContaining({ playerIndex: 0, card: derived, afterDiscard: [] }),
+    ]);
+  });
+
+  it('迫害妄想弃置生命天平时结算惩罚并生成 HP 事件', () => {
+    const inspectionCard = { id: 'discard-life-balance', name: '迫害妄想', effect: 'discardRandom' };
+    const lifeBalance = { id: 'life-balance', name: '生命天平', type: 'lifeBalance' };
+    const players = [makePlayer({ name: '检定者', hp: 8, hand: [lifeBalance] })];
+    const meta = makeInspectionMeta({ inspectionDeck: [inspectionCard], inspectionDiscard: [] });
+
+    const result = processInspectionTargets([0], 0, players, [], [], [], meta);
+    const event = result.inspectionMeta._visualEvents?.find(item => item.type === VISUAL_EVENT.INSPECTION);
+
+    expect(result.P[0].hp).toBe(5);
+    expect(result.Disc).toEqual([lifeBalance]);
+    expect(event?.statEvents).toEqual([
+      expect.objectContaining({ type: 'HP_LOSS', target: 0, from: expect.objectContaining({ hp: 8 }), to: expect.objectContaining({ hp: 5 }) }),
+    ]);
+    expect(event?.discardEvents[0].afterPlayers[0].hp).toBe(8);
+  });
+
+  it('auto-resolves same abyss for AI-controlled seat zero', () => {
+    const derived = { id: 'same-abyss-derived', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const discardedNormal = { id: 'a' };
+    const players = [
+      makePlayer({ name: 'AI-0', hp: 5, hand: [derived, discardedNormal, { id: 'c' }, { id: 'd' }] }),
+      makePlayer({ name: '触发者', hand: [{ id: 'x' }] }),
+    ];
+    const card = { id: 'same-abyss', type: 'sameAbyssChoice', name: '同归深渊', hpVal: 2 };
+
+    const result = applyFx(card, 1, null, players, [], [], makeGs({ players }), false, [], true);
+
+    expect(result.statePatch.abilityData).toBeUndefined();
+    expect(result.P[0].hand).toHaveLength(1);
+    expect(result.Disc).toEqual([discardedNormal, { id: 'c' }]);
+    const discardEvents = result.statePatch._visualEvents?.filter(event => (
+      event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard'
+    ));
+    expect(discardEvents?.flatMap(event => event.discardEvents.map(discard => discard.card))).toEqual([
+      derived,
+      discardedNormal,
+      { id: 'c' },
+    ]);
+  });
+});
+
+describe('submitLossEvents', () => {
+  it('致死伤害不再触发受伤者的黏液响应', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 2, san: 8, hand: [slime] })];
+
+    const result = submitLossEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true });
+  });
+
+  it('组合伤害先结算 HP，致死时不再落实后续 SAN 损失', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 1, san: 1, hand: [slime] })];
+
+    const result = submitLossEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 1, lostSan: 1, source: '组合致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, san: 1, isDead: true });
+  });
+
+  it('原伤害致死时断绳只伤害仍存活的另一端', () => {
+    const P = [
+      makePlayer({ hp: 10 }),
+      makePlayer({ hp: 2, damageLink: { active: true, partner: 2 } }),
+      makePlayer({ hp: 10, damageLink: { active: true, partner: 1 } }),
+    ];
+
+    const result = submitLossEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, source: '致死伤害' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true, damageLink: { active: false } });
+    expect(P[2]).toMatchObject({ hp: 7, isDead: false, damageLink: { active: false } });
+  });
+
+  it('无待处理响应的致死伤害会立即落实死亡且不写入表现层标记', () => {
+    const targetCard = makeZoneCard('A1', 0);
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 3, hand: [targetCard] })];
+    const discard = [];
+    const log = [];
+
+    const result = submitLossEvents({
+      players: P,
+      discard,
+      log,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '追捕' }],
+    });
+
+    expect(result.abilityData).toBeNull();
+    expect(P[1]).toMatchObject({ hp: 0, isDead: true, roleRevealed: true });
+    expect(P[1]).not.toHaveProperty('_pendingAnimDeath');
+    expect(P[1].hand).toEqual([]);
+    expect(discard).toContain(targetCard);
+    expect(log.some(line => line.includes('倒下了'))).toBe(true);
+  });
+
+  it('统一入口在任一目标可虚化时延迟整批伤害', () => {
+    const P = [
+      makePlayer({ hp: 10 }),
+      makePlayer({ hp: 10, etherealizeStacks: 1 }),
+      makePlayer({ hp: 10 }),
+    ];
+    const result = submitLossEvents({
+      players: P,
+      currentTurn: 0,
+      events: [
+        { targetIdx: 1, lostHp: 2, source: '批量伤害', order: 0 },
+        { targetIdx: 2, lostHp: 1, source: '批量伤害', order: 1 },
+      ],
+    });
+
+    expect(P.map(player => player.hp)).toEqual([10, 10, 10]);
+    expect(result).toMatchObject({
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: {
+        targetIdx: 1,
+        deferredDirectLosses: [expect.objectContaining({ targetIdx: 2, lostHp: 1 })],
+      },
+    });
+  });
+
+  it('统一入口落实伤害后生成黏液决策', () => {
+    const slime = createTsathogguaSlimeCard();
+    const P = [makePlayer({ hp: 10 }), makePlayer({ hp: 8, san: 8, hand: [slime] })];
+    const result = submitLossEvents({
+      players: P,
+      currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 2, lostSan: 1, source: '组合伤害' }],
+    });
+
+    expect(P[1]).toMatchObject({ hp: 6, san: 7 });
+    expect(result).toMatchObject({
+      phase: 'TSG_SLIME_BALANCE',
+      abilityData: { targetIdx: 1, lostHp: 2, lostSan: 1 },
+    });
   });
 });

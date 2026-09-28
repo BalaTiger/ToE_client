@@ -8,9 +8,14 @@ export function markBlindZoneCard(card, blindZoneIdentity) {
   return blindZoneIdentity ? { ...card, blindZoneIdentity: true } : card;
 }
 
+export function shouldHideBlindZoneIdentity(drawOrCard, isLocalDrawer) {
+  if (!isLocalDrawer) return false;
+  return !!(drawOrCard?.blindZoneIdentity || drawOrCard?.card?.blindZoneIdentity);
+}
+
 export function revealBlindDrawCard(card) {
   if (!card?.blindZoneIdentity) return card;
-  const { blindZoneIdentity, ...rest } = card;
+  const { blindZoneIdentity: _blindZoneIdentity, ...rest } = card;
   return rest;
 }
 

@@ -1,13 +1,23 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildPlayerTurnDrawQueue,
   buildSinglePlayerAiTurnStartReplayContext,
+  buildSkippedTurnReplayQueue,
+  buildTsathogguaSlimeGrantQueue,
   buildTurnStartDrawReplayQueue,
+  buildUnconsumedTurnBannerStep,
+  buildZhuHideReplacementDrawQueue,
+  insertBlackGoatDamagePreludeSteps,
+  TURN_START_ANIMATION_STAGE,
   shouldReplaySinglePlayerAiTurnStart,
   withClearedReplayAnimFields,
 } from '../turnAnimState';
 import { startNextTurn } from '../turnEngine';
-import { ROLE_CULTIST } from '../coreUtils';
+import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../coreUtils';
+import { applyFx } from '../effectEngine';
+import { applyStatEventsToDisplayStats, primeDisplayStatsForStatQueue } from '../statEvents';
+import { buildFreshStatVisualEvents, buildTurnStartDrawVisualEvents, createDiceResultVisualEvent, createGodPowerBlockedEvent, createGodStatusChangedEvent, createInspectionVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createTsathogguaSlimeGrantEvent, createTurnDrawVisualEvents, getTurnBannerVisualEventId, VISUAL_EVENT } from '../visualEvents';
+import { compileFreshVisualEventQueue as buildAnimQueue } from '../visualEventTransactionCompiler';
 import { makeGodCard, makeGs, makePlayer, makeZoneCard } from './factory';
 
 function player(name) {
@@ -28,9 +38,273 @@ describe('withClearedReplayAnimFields', () => {
     expect(cleaned._apophisTargetEvent).toBeNull();
     expect(cleaned._statEvents).toEqual(state._statEvents);
   });
+
+  it('开始下个回合时清掉已播放的黑夜目标事件但保留序号水位', () => {
+    const players = [
+      makePlayer({ name: '黛安娜' }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const nextCard = makeZoneCard('A1', 0, { id: 'next-turn-card' });
+    const state = makeGs({
+      players,
+      currentTurn: 0,
+      deck: [nextCard],
+      log: ['黛安娜 尝试了所有目标，仍无法追捕'],
+      _apophisTargetSeq: 3,
+      _apophisTargetEvent: {
+        seq: 3,
+        actorIdx: 0,
+        actorName: '黛安娜',
+        targetIdx: 1,
+        roll: 5,
+        label: '选择【追捕】目标',
+      },
+    });
+
+    const next = startNextTurn(state);
+
+    expect(next._apophisTargetSeq).toBe(3);
+    expect(next._apophisTargetEvent).toBeNull();
+    const replayBaseline = { ...state, _apophisTargetSeq: 2 };
+    expect(buildAnimQueue(replayBaseline, next).some(step => (
+      step.type === 'DICE_ROLL' && step.diceMode === 'apophisNight'
+    ))).toBe(false);
+  });
+});
+
+describe('black-goat damage presentation boundary', () => {
+  it('默认保持幼仔跳动与 HP/SAN 相邻，并允许显式伤害前置步骤占据插槽', () => {
+    const base = [
+      { type: 'BLACK_GOAT_PULSE' },
+      { type: 'HP_DAMAGE' },
+      { type: 'SAN_DAMAGE' },
+    ];
+    expect(insertBlackGoatDamagePreludeSteps(base)).toEqual(base);
+    expect(insertBlackGoatDamagePreludeSteps(base, [{ type: 'DAMAGE_PRELUDE' }]).map(step => step.type))
+      .toEqual(['BLACK_GOAT_PULSE', 'DAMAGE_PRELUDE', 'HP_DAMAGE', 'SAN_DAMAGE']);
+  });
+});
+
+describe('烛九阴藏牌续抽的回合横幅所有权', () => {
+  function makeZhuContinuationState() {
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 3 }),
+      makePlayer({ name: '艾伦' }),
+      makePlayer({ name: '卡洛斯', godName: 'TSG', godLevel: 1 }),
+    ];
+    const base = makeGs({
+      players,
+      currentTurn: 2,
+      _turnKey: 37,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _playersBeforeThisDraw: players,
+      phase: 'ZHU_HIDE_AI_DRAW',
+    });
+    return { ...base, _visualEvents: buildTurnStartDrawVisualEvents(base) };
+  }
+
+  it('同一 _turnKey 重建状态时使用相同的横幅事件 ID', () => {
+    const state = makeZhuContinuationState();
+    const first = buildUnconsumedTurnBannerStep(state, new Set());
+    const rebuilt = buildUnconsumedTurnBannerStep({ ...state, abilityData: {} }, new Set());
+
+    expect(first.visualEventId).toBe(getTurnBannerVisualEventId(state));
+    expect(rebuilt.visualEventId).toBe(first.visualEventId);
+  });
+
+  it('选择不藏时只播放弗栗多翻牌，不重播回合横幅', () => {
+    const state = makeZhuContinuationState();
+    const vritra = { ...makeGodCard('VRI'), id: 'lit-vritra' };
+    const consumed = new Set([getTurnBannerVisualEventId(state)]);
+
+    const queue = buildZhuHideReplacementDrawQueue({
+      state,
+      consumedVisualEventIds: consumed,
+      hide: false,
+      hiddenCard: vritra,
+      drawnCard: vritra,
+      drawerIdx: 2,
+      drawerName: '卡洛斯',
+      drawMsgs: ['卡洛斯 遭遇邪神 弗栗多！'],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['DRAW_CARD']);
+    expect(queue[0]).toMatchObject({ card: vritra, targetPid: 2, triggerName: '卡洛斯' });
+    expect(queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+    expect(queue.some(step => step.type === 'ZHU_HIDE_CARD')).toBe(false);
+  });
+
+  it('选择藏牌时先藏弗栗多再播放替代牌，不重播回合横幅', () => {
+    const state = makeZhuContinuationState();
+    const vritra = { ...makeGodCard('VRI'), id: 'lit-vritra' };
+    const replacement = { ...makeZoneCard('A1'), id: 'replacement-card' };
+    const consumed = new Set([getTurnBannerVisualEventId(state)]);
+
+    const queue = buildZhuHideReplacementDrawQueue({
+      state,
+      consumedVisualEventIds: consumed,
+      hide: true,
+      hiddenCard: vritra,
+      drawnCard: replacement,
+      drawerIdx: 2,
+      drawerName: '卡洛斯',
+      drawMsgs: ['卡洛斯 摸到替代牌'],
+    });
+
+    expect(queue.map(step => step.type)).toEqual(['ZHU_HIDE_CARD', 'DRAW_CARD']);
+    expect(queue[0]).toMatchObject({ card: vritra });
+    expect(queue[1]).toMatchObject({ card: replacement, targetPid: 2, triggerName: '卡洛斯' });
+    expect(queue.some(step => step.type === 'YOUR_TURN')).toBe(false);
+  });
 });
 
 describe('buildPlayerTurnDrawQueue', () => {
+  it('牌堆耗尽时先完整播放弃牌堆重洗，再开始摸牌动画', () => {
+    const card = makeZoneCard('D3', 0, { id: 'reshuffled-card', name: '偷吃龙蛋' });
+    const beforePlayers = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const oldGs = makeGs({ players: beforePlayers, currentTurn: 0, deck: [], discard: [card], log: [] });
+    const newGs = makeGs({
+      players: beforePlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      deck: [],
+      discard: [],
+      _drawnCard: card,
+      _aiDrawnCard: card,
+      _playersBeforeThisDraw: beforePlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['牌堆耗尽，重洗弃牌堆', '艾伦 摸到 [D3] 偷吃龙蛋'],
+      _visualEvents: createTurnDrawVisualEvents({
+        playerIdx: 1,
+        playerName: '艾伦',
+        card,
+        sourcePile: 'deck',
+        reshuffleLog: '牌堆耗尽，重洗弃牌堆',
+        msgs: ['艾伦 摸到 [D3] 偷吃龙蛋'],
+      }),
+      log: ['── 艾伦 的回合开始 ──', '牌堆耗尽，重洗弃牌堆', '艾伦 摸到 [D3] 偷吃龙蛋'],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    expect(replay.queue.slice(0, 4).map(step => step.type)).toEqual([
+      'YOUR_TURN',
+      'DECK_RESHUFFLE',
+      'STATE_PATCH',
+      'DRAW_CARD',
+    ]);
+    expect(replay.queue[1].msgs).toEqual(['牌堆耗尽，重洗弃牌堆']);
+    expect(replay.queue[2]).toMatchObject({ deck: [card], discard: [] });
+    expect(replay.queue[3].msgs).not.toContain('牌堆耗尽，重洗弃牌堆');
+    expect(replay.queue[1].visualEventId).toBe(newGs._visualEvents[0].id);
+    expect(replay.queue[3].visualEventId).toBe(newGs._visualEvents[1].id);
+    // The canonical staged transaction compiles the same reshuffle event again;
+    // the draw-step assembler's explicit step must remain the only playback.
+    expect(replay.queue.filter(step => step.type === 'DECK_RESHUFFLE')).toHaveLength(1);
+  });
+
+  it('canonical multiple draws preserve drawOrder without fallback duplicates', () => {
+    const extra = makeZoneCard('B2', 0, { id: 'extra-draw' });
+    const fixed = makeZoneCard('D3', 0, { id: 'fixed-draw' });
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const playersAfterExtra = [players[0], { ...players[1], hand: [extra] }];
+    const playersAfterFixed = [players[0], { ...players[1], hand: [extra, fixed] }];
+    const oldGs = makeGs({ players, currentTurn: 0, phase: 'ACTION' });
+    const newGs = makeGs({
+      players: playersAfterFixed,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: fixed,
+      _aiDrawnCard: fixed,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [
+        ...createTurnDrawVisualEvents({
+          playerIdx: 1,
+          playerName: '艾伦',
+          card: extra,
+          drawOrder: 0,
+          fromTsathogguaSlime: true,
+          keptInHand: true,
+          playersBefore: players,
+          playersAfterKeep: playersAfterExtra,
+          playersAfterResolution: playersAfterExtra,
+        }),
+        ...createTurnDrawVisualEvents({
+          playerIdx: 1,
+          playerName: '艾伦',
+          card: fixed,
+          drawOrder: 1,
+          keptInHand: true,
+          playersBefore: playersAfterExtra,
+          playersAfterKeep: playersAfterFixed,
+          playersAfterResolution: playersAfterFixed,
+        }),
+      ],
+    });
+
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const drawSteps = queue
+      .filter(step => step.type === 'DRAW_CARD');
+    expect(drawSteps.map(step => step.card)).toEqual([extra, fixed]);
+    expect(drawSteps.map(step => step.visualEventId)).toEqual(newGs._visualEvents.map(event => event.id));
+    const drawAndKeepSteps = queue.filter(step => (
+      step.type === 'DRAW_CARD' ||
+      (step.type === 'CARD_TRANSFER' && step.effect === 'draw') ||
+      (step.type === 'STATE_PATCH' && step.players)
+    ));
+    expect(drawAndKeepSteps.map(step => step.type)).toEqual([
+      'DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH',
+      'DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH',
+    ]);
+    expect(drawAndKeepSteps[2].players[1].hand).toEqual([extra]);
+    expect(drawAndKeepSteps[5].players[1].hand).toEqual([extra, fixed]);
+  });
+
+  it('does not replay discard for an AI god worshipped after a previous player abandoned a god', () => {
+    const zhu = makeGodCard('ZHU');
+    const beforePlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, san: 10 }),
+    ];
+    const oldGs = makeGs({
+      players: beforePlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['你放弃了邪神的馈赠'],
+    });
+    const newGs = makeGs({
+      players: [
+        beforePlayers[0],
+        makePlayer({ name: '艾伦', role: ROLE_CULTIST, san: 9, godName: zhu.godKey, godLevel: 1, godZone: [zhu] }),
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: zhu,
+      _aiDrawnCard: zhu,
+      _playersBeforeThisDraw: beforePlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['[调试] 艾伦（邪祀者）起手摸到 烛九阴'],
+      log: [
+        '你放弃了邪神的馈赠',
+        '── 艾伦 的回合开始 ──',
+        '[调试] 艾伦（邪祀者）起手摸到 烛九阴',
+        '艾伦 遭遇邪神 烛九阴！（第1次）失去 1 SAN',
+        '艾伦 信仰了 烛九阴，获得衔烛照幽(Lv.1)',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const highlight = replay.queue.find(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 1);
+
+    expect(replay.queue.some(step => step.type === 'DISCARD' && step.card === zhu)).toBe(false);
+    expect(highlight?.visualSetupPatch?.players?.[1]).toMatchObject({
+      godName: 'ZHU',
+      godLevel: 1,
+      godZone: [zhu],
+    });
+    expect(highlight?.visualSetupPatch?.players?.[1]?.hand).toEqual(beforePlayers[1].hand);
+  });
+
   it('adds turn banner and draw flip even when the next turn belongs to another player', () => {
     const card = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
     const oldGs = {
@@ -58,6 +332,531 @@ describe('buildPlayerTurnDrawQueue', () => {
 });
 
 describe('buildTurnStartDrawReplayQueue', () => {
+  it('连续摸牌逐张完成效果和收入，后续牌不会越过前一张的结算', () => {
+    const before = [player('你'), { ...player('艾伦'), hp: 6 }];
+    const cards = [makeZoneCard('A1', 0, { id: 'heal-one' }), makeZoneCard('B1', 0, { id: 'heal-two' })];
+    const visualEvents = [];
+    const snapshots = [before];
+    cards.forEach((card, index) => {
+      const after = [before[0], { ...before[1], hp: 7 + index, hand: cards.slice(0, index + 1) }];
+      const effect = createStatEventsEvent({
+        statEvents: [{ type: 'HP_GAIN', target: 1, from: { hp: 6 + index, san: 10 }, to: { hp: 7 + index, san: 10 }, seq: index + 1 }],
+        turnStartStage: 'draw',
+      });
+      const [draw] = createTurnDrawVisualEvents({
+        playerIdx: 1, playerName: '艾伦', card, drawOrder: index,
+        keptInHand: true, playersBefore: snapshots[index], playersAfterKeep: after,
+        playersAfterResolution: after, effectVisualEventIds: [effect.id],
+      });
+      visualEvents.push(draw, effect);
+      snapshots.push(after);
+    });
+    const oldGs = makeGs({ players: before, currentTurn: 0 });
+    const newGs = makeGs({
+      players: snapshots.at(-1), currentTurn: 1, phase: 'AI_TURN',
+      _drawnCard: cards[1], _aiDrawnCard: cards[1], _playersBeforeThisDraw: before,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'], _visualEvents: visualEvents,
+      _statEvents: visualEvents.flatMap(event => event.statEvents || []),
+    });
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const firstHeal = queue.findIndex(step => step.type === 'HP_HEAL');
+    const firstIncome = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.cards?.[0]?.id === cards[0].id);
+    const secondDraw = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === cards[1].id);
+    const secondHeal = queue.findLastIndex(step => step.type === 'HP_HEAL');
+    const secondIncome = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.cards?.[0]?.id === cards[1].id);
+    expect(firstHeal).toBeGreaterThan(0);
+    expect(firstIncome).toBeGreaterThan(firstHeal);
+    expect(secondDraw).toBeGreaterThan(firstIncome);
+    expect(secondHeal).toBeGreaterThan(secondDraw);
+    expect(secondIncome).toBeGreaterThan(secondHeal);
+    expect(queue[firstIncome + 1].players[1].hand).toEqual([cards[0]]);
+  });
+
+  it('下家斯芬克斯结果只在其摸牌阶段由规则事件编译一次', () => {
+    const players = [player('艾伦'), player('贝拉')];
+    const sphinx = makeZoneCard('D4', 0, { id: 'bella-sphinx', name: '斯芬克斯', type: 'sphinxGuess' });
+    const reward = makeGodCard('CTH', { id: 'sphinx-reward' });
+    const turnLog = '── 贝拉 的回合开始 ──';
+    const drawLog = '贝拉 摸到 [D4] 斯芬克斯，选择收入手牌并触发效果';
+    const guessLog = '贝拉 猜测牌堆顶的牌不是区域牌';
+    const resultLog = '猜测正确！贝拉 收入了 拉莱耶之主';
+    const playersAfterKeep = [players[0], { ...players[1], hand: [sphinx] }];
+    const drawEvents = createTurnDrawVisualEvents({
+      playerIdx: 1,
+      playerName: '贝拉',
+      card: sphinx,
+      drawOrder: 0,
+      keptInHand: true,
+      playersBefore: players,
+      playersAfterKeep,
+      playersAfterResolution: [players[0], { ...players[1], hand: [sphinx, reward] }],
+      msgs: [drawLog],
+    });
+    const event = {
+      ...createSphinxResultEvent({
+        actorIdx: 1,
+        card: reward,
+        sourceCard: sphinx,
+        guessCorrect: true,
+        msgs: [guessLog, resultLog],
+        playersBefore: players,
+        playersAfter: [players[0], { ...players[1], hand: [reward] }],
+      }),
+      turnStartStage: 'draw',
+      turnStartStageOrder: 2,
+    };
+    const oldGs = makeGs({ players, currentTurn: 0, log: ['艾伦 结束回合'] });
+    const newGs = makeGs({
+      players: [players[0], { ...players[1], hand: [sphinx, reward] }],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: sphinx,
+      _aiDrawnCard: sphinx,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: [turnLog],
+      _drawLogs: [drawLog, guessLog, resultLog],
+      _statLogs: [],
+      _visualEvents: [...drawEvents, event],
+      log: ['艾伦 结束回合', turnLog, drawLog, guessLog, resultLog],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const sphinxSteps = replay.queue.filter(step => step.visualEventId === event.id);
+    const mainDrawIndex = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === sphinx.id);
+    const sphinxKeepIndex = replay.queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' && step.effect === 'draw' && step.cards?.[0]?.id === sphinx.id
+    ));
+
+    expect(sphinxSteps.map(step => step.type)).toEqual(['DRAW_CARD', 'CARD_TRANSFER', 'STATE_PATCH']);
+    expect(replay.queue.indexOf(sphinxSteps[0])).toBeGreaterThan(mainDrawIndex);
+    expect(sphinxKeepIndex).toBeGreaterThan(mainDrawIndex);
+    expect(sphinxKeepIndex).toBeGreaterThan(replay.queue.indexOf(sphinxSteps.at(-1)));
+    const keepPatch = replay.queue[sphinxKeepIndex + 1];
+    const rewardPatch = sphinxSteps.at(-1);
+    expect(keepPatch).toMatchObject({ type: 'STATE_PATCH' });
+    expect(keepPatch.players[1].hand).toEqual([sphinx, reward]);
+    expect(rewardPatch.players[1].hand).toEqual([reward]);
+    expect(sphinxSteps.every(step => step.turnStartStage === 'draw')).toBe(true);
+  });
+
+  it('AI 寻宝者斯芬克斯猜错按揭示、规避骰、伤害的顺序播放', () => {
+    const players = [player('你'), { ...player('贝拉'), role: '寻宝者' }];
+    const sphinx = makeZoneCard('D4', 0, { id: 'treasure-sphinx', name: '斯芬克斯', type: 'sphinxGuess' });
+    const topCard = makeZoneCard('A1', 0, { id: 'wrong-top-card' });
+    const drawLog = '贝拉 摸到 [D4] 斯芬克斯，选择收入手牌并触发效果';
+    const guessLog = '贝拉 猜测牌堆顶的牌不是区域牌';
+    const wrongLog = '猜测错误！贝拉 即将失去 3 HP';
+    const diceLog = '贝拉（寻宝者）掷出 2 点，未能规避，触发负面效果！';
+    const playersAfterKeep = [players[0], { ...players[1], hand: [sphinx] }];
+    const drawEvents = createTurnDrawVisualEvents({
+      playerIdx: 1,
+      playerName: '贝拉',
+      card: sphinx,
+      keptInHand: true,
+      playersBefore: players,
+      playersAfterKeep,
+      playersAfterResolution: [players[0], { ...playersAfterKeep[1], hp: 7 }],
+      msgs: [drawLog],
+    });
+    const resultEvent = {
+      ...createSphinxResultEvent({
+        actorIdx: 1,
+        card: topCard,
+        sourceCard: sphinx,
+        guessCorrect: false,
+        msgs: [guessLog, wrongLog, diceLog],
+        playersBefore: players,
+        playersAfter: [players[0], { ...players[1], hp: 7 }],
+      }),
+      statEvents: [{
+        type: 'HP_LOSS',
+        target: 1,
+        from: { hp: 10, san: 10 },
+        to: { hp: 7, san: 10 },
+        seq: 1,
+        logHint: wrongLog,
+      }],
+      turnStartStage: 'draw',
+      turnStartStageOrder: 2,
+    };
+    const oldGs = makeGs({ players, currentTurn: 0, log: [] });
+    const newGs = makeGs({
+      players: [players[0], { ...playersAfterKeep[1], hp: 7 }],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: sphinx,
+      _aiDrawnCard: sphinx,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: [drawLog, guessLog, wrongLog, diceLog],
+      _statLogs: [wrongLog],
+      _visualEvents: [...drawEvents, resultEvent],
+      log: [drawLog, guessLog, wrongLog, diceLog],
+    });
+
+    const queue = buildTurnStartDrawReplayQueue({ oldGs, newGs }).queue;
+    const keepIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+    const revealIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.triggerName === '斯芬克斯');
+    const wrongResultIdx = queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'sphinxResult');
+    const diceIdx = queue.findIndex(step => step.type === 'DICE_ROLL' && step.d1 === 2);
+    const damageIdx = queue.findIndex(step => step.type === 'HP_DAMAGE');
+
+    expect(keepIdx).toBeGreaterThan(damageIdx);
+    expect(revealIdx).toBeLessThan(wrongResultIdx);
+    expect(wrongResultIdx).toBeLessThan(diceIdx);
+    expect(diceIdx).toBeLessThan(damageIdx);
+  });
+
+  it('上家回合结束的火把护罩只在下家回合悬浮文字前播放一次', () => {
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', godName: 'TSG', godLevel: 1 }),
+      makePlayer({ name: '卡洛斯' }),
+    ];
+    const drawnCard = makeGodCard('CTH', { id: 'carlos-cth-draw' });
+    const blockedLog = '【引燃火把】贝拉 本回合不受邪神之力影响';
+    const turnStartLog = '── 卡洛斯 的回合开始 ──';
+    const drawLog = '卡洛斯 摸到 拉莱耶之主';
+    const blockedEvent = createGodPowerBlockedEvent({
+      playerIdx: 1,
+      playerName: '贝拉',
+      msgs: [blockedLog],
+    });
+    const oldGs = makeGs({
+      players,
+      currentTurn: 1,
+      log: [blockedLog],
+    });
+    const newGs = makeGs({
+      players,
+      currentTurn: 2,
+      phase: 'AI_GOD_CHOICE',
+      _aiDrawnCard: drawnCard,
+      _drawnCard: drawnCard,
+      _preTurnPlayers: players,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: [turnStartLog],
+      _drawLogs: [drawLog],
+      _statLogs: [],
+      _visualEvents: [blockedEvent],
+      log: [blockedLog, blockedLog, turnStartLog, drawLog],
+    });
+
+    const boundaryQueue = buildTsathogguaSlimeGrantQueue(newGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const combinedQueue = [...boundaryQueue, ...replay.queue];
+    const blockedSteps = combinedQueue.filter(step => step.type === 'GOD_POWER_BLOCKED');
+
+    expect(blockedSteps).toHaveLength(1);
+    expect(blockedSteps[0]).toMatchObject({
+      targetPid: 1,
+      visualEventId: blockedEvent.id,
+    });
+    expect(combinedQueue.indexOf(blockedSteps[0])).toBeLessThan(
+      combinedQueue.findIndex(step => step.type === 'YOUR_TURN')
+    );
+  });
+
+  it('黏液发放只编译规范视觉事件', () => {
+    const beforePlayers = [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })];
+    const slime = { id: 'grant-slime', name: '撒托古亚的赐福黏液', isTsathogguaSlime: true };
+    const afterPlayers = [beforePlayers[0], { ...beforePlayers[1], hand: [slime] }];
+    const grant = {
+      ownerIdx: 1,
+      count: 1,
+      cards: [slime],
+      playersBefore: beforePlayers,
+      playersAfter: afterPlayers,
+      msgs: ['艾伦 获得1张撒托古亚的赐福黏液'],
+    };
+    const visualEvent = createTsathogguaSlimeGrantEvent(grant);
+
+    const queue = buildTsathogguaSlimeGrantQueue({
+      players: afterPlayers,
+      _visualEvents: [visualEvent],
+    });
+    const transfers = queue.filter(step => step.type === 'CARD_TRANSFER' && step.effect === 'tsgSlime');
+
+    expect(transfers).toHaveLength(1);
+    expect(transfers[0]).toMatchObject({ visualEventId: visualEvent.id, toPid: 1, cards: [slime] });
+  });
+
+  it('上回合蛊惑产生的 GOD_STATUS_CHANGED 不会在下家回合开始重播', () => {
+    const apoCard = makeGodCard('APO');
+    const players = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', godName: 'APO', godLevel: 1, godZone: [apoCard], hasBelievedGod: true }),
+      makePlayer({ name: '卡洛斯' }),
+    ];
+    const drawnCard = makeZoneCard('B2', 0, { id: 'carlos-next-draw' });
+    const godStatusEvent = createGodStatusChangedEvent({
+      playerIdx: 1,
+      playerName: '贝拉',
+      godKey: 'APO',
+      godLevel: 1,
+      msgs: ['贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+      playersBefore: players.map(p => ({ ...p, godName: null, godLevel: 0, godZone: [] })),
+      playersAfter: players,
+    });
+    const oldGs = makeGs({
+      players,
+      currentTurn: 1,
+      log: ['贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)'],
+    });
+    const newGs = makeGs({
+      players,
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      _aiDrawnCard: drawnCard,
+      _drawnCard: drawnCard,
+      _preTurnPlayers: players,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [B2] 新鲜空气'],
+      _visualEvents: [godStatusEvent],
+      log: [
+        '贝拉 信仰了 阿波菲斯，获得噬日灭世(Lv.1)',
+        '── 卡洛斯 的回合开始 ──',
+        '卡洛斯 摸到 [B2] 新鲜空气',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.some(step => step.type === 'GOD_HIGHLIGHT')).toBe(false);
+  });
+
+  it('keeps a bespoke draw effect before the kept-card transfer on every client', () => {
+    const snakeTrap = { id: 'snake-trap', key: 'D2', name: '群蛇陷阱', type: 'zone' };
+    const beforePlayers = [player('林恩'), player('诺亚')];
+    const afterPlayers = [player('林恩'), { ...player('诺亚'), hand: [snakeTrap] }];
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs: { players: beforePlayers, log: [] },
+      newGs: {
+        players: afterPlayers,
+        currentTurn: 1,
+        phase: 'ACTION',
+        drawReveal: null,
+        _drawnCard: snakeTrap,
+        _playersBeforeThisDraw: beforePlayers,
+        _turnStartLogs: ['── 诺亚 的回合开始 ──'],
+        _drawLogs: ['诺亚 摸到 [D2] 群蛇陷阱'],
+        _statLogs: ['【群蛇陷阱】分配了 2 层中毒：诺亚+1、林恩+1'],
+        log: ['── 诺亚 的回合开始 ──', '诺亚 摸到 [D2] 群蛇陷阱', '你 收入了 [D2] 群蛇陷阱', '【群蛇陷阱】分配了 2 层中毒：诺亚+1、林恩+1'],
+      },
+      buildQueue: () => [
+        { type: 'CARD_TRANSFER', effect: 'draw', fromPid: 1, toPid: 1, cards: [snakeTrap] },
+        { type: 'SNAKE_TRAP', card: snakeTrap },
+      ],
+    });
+
+    const effectIdx = replay.queue.findIndex(step => step.type === 'SNAKE_TRAP');
+    const transferIndices = replay.queue
+      .map((step, index) => (step.type === 'CARD_TRANSFER' && step.effect === 'draw' ? index : -1))
+      .filter(index => index >= 0);
+    expect(effectIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(transferIndices).toHaveLength(1);
+    expect(transferIndices[0]).toBeGreaterThan(effectIdx);
+  });
+
+  it('uses the latest AI turn visual events instead of replaying the previous AI draw', () => {
+    const spring = { id: 'spring', name: '地下泉', key: 'C2', type: 'allHealHP', isZone: true };
+    const bounce = { id: 'bounce', name: '触底反弹', key: 'C4', type: 'swapAllHands', isZone: true };
+    const oldHeal = { type: 'HP_GAIN', target: 0, from: { hp: 6, san: 10 }, to: { hp: 8, san: 10 }, logHint: '全体存活角色回复 2 HP', seq: 1 };
+    const players = [makePlayer({ name: '你' }), makePlayer({ name: '贝拉' }), makePlayer({ name: '卡洛斯' })];
+    const oldGs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN', _statEventSeq: 1 });
+    const newGs = makeGs({
+      players,
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      _drawnCard: bounce,
+      _aiDrawnCard: bounce,
+      _playersBeforeThisDraw: players,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [C4] 触底反弹，选择收入手牌并触发效果'],
+      _statEvents: [oldHeal],
+      _statEventSeq: 1,
+      _visualEvents: [
+        { type: 'turnStart', playerIdx: 1, playerName: '贝拉', msgs: ['── 贝拉 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 1, playerName: '贝拉', card: spring, msgs: ['贝拉 摸到 [C2] 地下泉'] },
+        { type: 'statEvents', statEvents: [oldHeal], msgs: ['全体存活角色回复 2 HP'] },
+        { type: 'turnStart', playerIdx: 2, playerName: '卡洛斯', msgs: ['── 卡洛斯 的回合开始 ──'] },
+        { type: 'drawCard', playerIdx: 2, playerName: '卡洛斯', card: bounce, msgs: ['卡洛斯 摸到 [C4] 触底反弹，选择收入手牌并触发效果'] },
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.find(step => step.type === 'DRAW_CARD')?.card).toBe(bounce);
+    expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
+    expect(replay.queue.find(step => step.type === 'YOUR_TURN')).toMatchObject({ name: '卡洛斯' });
+  });
+
+  it('玩家休息提交后 AI 摸邪神不会按旧 gs 水位重播上一回合回血', () => {
+    const vritra = makeGodCard('VRI');
+    const restLog = '你选择【休息】，掷骰 6、2，取高值回复 6HP，翻面休息中';
+    const restHeal = {
+      seq: 1,
+      type: 'HP_GAIN',
+      target: 0,
+      from: { hp: 4, san: 10, isDead: false },
+      to: { hp: 10, san: 10, isDead: false },
+      reason: '休息',
+      logHint: restLog,
+    };
+    const beforeRestPlayers = [
+      makePlayer({ name: '你', hp: 4 }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+    const committedPlayers = [
+      makePlayer({ name: '你', hp: 10, isResting: true }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+    ];
+    const oldGs = makeGs({
+      players: beforeRestPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      _statEventSeq: 0,
+      _statEvents: [],
+      _visualEvents: [],
+      log: [],
+    });
+    const turnLog = '── 贝拉 的回合开始 ──';
+    const drawLog = '[调试] 贝拉（邪祀者）起手摸到 弗栗多';
+    const newGs = makeGs({
+      players: committedPlayers,
+      currentTurn: 1,
+      phase: 'AI_GOD_CHOICE',
+      abilityData: { godCard: vritra, drawerIdx: 1 },
+      _drawnCard: vritra,
+      _aiDrawnCard: vritra,
+      _preTurnPlayers: committedPlayers,
+      _playersBeforeThisDraw: committedPlayers,
+      _turnStartLogs: [turnLog],
+      _drawLogs: [drawLog],
+      _statLogs: [],
+      _statEventSeq: 1,
+      _statEvents: [restHeal],
+      _visualEvents: [
+        { id: 'bella-turn', type: 'turnStart', turnStartStage: 'turnBanner', playerIdx: 1, playerName: '贝拉', msgs: [turnLog] },
+        { id: 'bella-vritra', type: 'drawCard', turnStartStage: 'draw', playerIdx: 1, playerName: '贝拉', card: vritra, msgs: [drawLog] },
+      ],
+      log: [restLog, turnLog, drawLog],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const committedDisplayStats = committedPlayers.map(player => ({ hp: player.hp, san: player.san }));
+
+    expect(replay.queue.map(step => step.type)).toEqual(['YOUR_TURN', 'DRAW_CARD']);
+    expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
+    expect(primeDisplayStatsForStatQueue(committedDisplayStats, replay.queue)).toEqual(committedDisplayStats);
+  });
+
+  it('休息角色保留回合视觉边界，但不执行任何回合开始效果', () => {
+    const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '艾伦', isResting: true, hp: 8, san: 8, hand: [goat('a1'), goat('a2')] }),
+        makePlayer({ name: '贝拉', hp: 8, san: 8, hand: [goat('b1'), goat('b2')] }),
+      ],
+      currentTurn: 0,
+      deck: [makeZoneCard('D3')],
+      inspectionDeck: [{ id: 'seal', name: '封印松动', effect: 'sealLoose', value: 0, type: 'negative' }],
+      inspectionDiscard: [],
+      log: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+      _inspectionSeq: 0,
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const skippedQueue = buildSkippedTurnReplayQueue(newGs);
+    const bellaReplay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const combined = [...skippedQueue, ...bellaReplay.queue];
+    const allenTurnIdx = combined.findIndex(step => step.type === 'YOUR_TURN' && step.name === '艾伦');
+    const allenGoatIdx = combined.findIndex(step => step.type === 'BLACK_GOAT_PULSE' && step.targetPid === 1);
+    const bellaTurnIdx = combined.findIndex(step => step.type === 'YOUR_TURN' && step.name === '贝拉');
+    const bellaGoatIdx = combined.findIndex(step => step.type === 'BLACK_GOAT_PULSE' && step.targetPid === 2);
+
+    expect(newGs._skippedTurnReplays).toHaveLength(1);
+    expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
+    expect(allenGoatIdx).toBe(-1);
+    expect(bellaTurnIdx).toBeGreaterThan(allenTurnIdx);
+    expect(bellaGoatIdx).toBeGreaterThan(bellaTurnIdx);
+    expect(combined.some(step => (step.msgs || []).some(msg => msg.includes('艾伦 从休息中醒来')))).toBe(true);
+  });
+
+  it('AI 开场死亡的视觉事务只播放致死结算，不播放摸牌或后续检定', () => {
+    const goat = id => ({ id, name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true });
+    const forcedGod = makeGodCard('VRI');
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '存活追猎者', role: ROLE_HUNTER }),
+        makePlayer({ name: '黛安娜', role: ROLE_HUNTER, hp: 2, san: 5, hand: [goat('g1'), goat('g2')] }),
+        makePlayer({ name: '邪祀者', role: ROLE_CULTIST }),
+        makePlayer({ name: '寻宝者', role: ROLE_TREASURE }),
+      ],
+      currentTurn: 0,
+      deck: [forcedGod],
+      log: [],
+      inspectionDeck: [{ id: 'self-harm', name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }],
+      inspectionDiscard: [],
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+
+    expect(types).toContain('YOUR_TURN');
+    expect(types).toContain('BLACK_GOAT_PULSE');
+    expect(types).toContain('HP_DAMAGE');
+    expect(types).toContain('DEATH');
+    expect(types).not.toContain('DRAW_CARD');
+    expect(types).not.toContain('INSPECTION_REVEAL');
+    expect(replay.drawnCard).toBeNull();
+    expect(newGs.deck).toEqual([forcedGod]);
+  });
+
+  it('翻面跳过只保留回合悬浮文字，不执行克苏鲁摸牌或任何阶段效果', () => {
+    const dreamCard = {
+      id: 'dream-heal',
+      name: '猎获穴兽',
+      key: 'B3',
+      type: 'selfHealAdjHealHP',
+      val: 3,
+      adjVal: 2,
+      isZone: true,
+    };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 6 }),
+        makePlayer({ name: '艾伦', isResting: true, godName: 'CTH', godLevel: 1, hp: 5 }),
+        makePlayer({ name: '贝拉', hp: 6 }),
+      ],
+      currentTurn: 0,
+      deck: [dreamCard, makeZoneCard('D3')],
+      log: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const queue = buildSkippedTurnReplayQueue(newGs);
+    const allenTurnIdx = queue.findIndex(step => step.type === 'YOUR_TURN' && step.name === '艾伦');
+    const wakeIdx = queue.findIndex(step => step.type === 'STATE_PATCH' && step.players?.[1]?.isResting === false);
+    const dreamIdx = queue.findIndex(step => step.type === 'CTH_RLYEH_DREAM');
+    const drawIdx = queue.findIndex(step => step.type === 'DRAW_CARD' && step.card === dreamCard);
+    const effectIdx = queue.findIndex((step, idx) => idx > drawIdx && ['HP_HEAL', 'HP_SAN_HEAL'].includes(step.type));
+
+    expect(newGs._skippedTurnReplays?.[0]?.cthReplay).toBeNull();
+    expect(allenTurnIdx).toBeGreaterThanOrEqual(0);
+    expect(wakeIdx).toBeGreaterThan(allenTurnIdx);
+    expect(dreamIdx).toBe(-1);
+    expect(drawIdx).toBe(-1);
+    expect(effectIdx).toBe(-1);
+  });
+
   it('plays black goat turn-start damage before the draw flip', () => {
     const goat = { id: 'goat-1', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
     const card = { id: 'next-card', name: '下一张牌', key: 'B2', type: 'zone' };
@@ -74,7 +873,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
       currentTurn: 0,
       phase: 'ACTION',
       log: [],
-      _statEventSeq: 0,
+      _statEventSeq: 1,
     };
     const goatLog = '【黑山羊幼仔】艾伦 失去 1 HP 和 1 SAN';
     const newGs = {
@@ -101,6 +900,318 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.slice(0, 5)).toEqual(['YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'STATE_PATCH']);
     expect(types.indexOf('DRAW_CARD')).toBeGreaterThan(types.indexOf('STATE_PATCH'));
     expect(replay.queue.find(step => step.type === 'BLACK_GOAT_PULSE')).toMatchObject({ targetPid: 1, count: 1 });
+    expect(replay.stageQueues.turnBanner.map(step => step.type)).toEqual(['YOUR_TURN']);
+    expect(replay.stageQueues.turnStart.map(step => step.type)).toEqual(types.slice(1, 5));
+    expect(replay.stageQueues.draw[0]).toMatchObject({
+      type: 'DRAW_CARD',
+      turnStartStage: TURN_START_ANIMATION_STAGE.DRAW,
+    });
+    expect(replay.stageQueues.turnStart.every(step => (
+      step.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START
+    ))).toBe(true);
+  });
+
+  it('黑山羊幼仔统计块始终紧邻跳动，即使同一快照含有黏液破裂事件', () => {
+    const goat = { id: 'goat-adjacent', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const slime = { id: 'slime-adjacent', name: '撒托古亚的赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true };
+    const card = { id: 'after-adjacent', name: '下一张牌', key: 'B2', type: 'zone' };
+    const preTurnPlayers = [player('你'), { ...player('卡洛斯'), hand: [goat, slime], hp: 10, san: 10 }];
+    const beforeDrawPlayers = [player('你'), { ...player('卡洛斯'), hand: [goat], hp: 9, san: 9 }];
+    const goatLog = '【黑山羊幼仔】卡洛斯 失去 1 HP 和 1 SAN';
+    const slimeLog = '【无定形体】卡洛斯 的1张撒托古亚的赐福黏液消失';
+    const oldGs = {
+      players: preTurnPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: [],
+      _statEventSeq: 0,
+    };
+    const newGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 卡洛斯 的回合开始 ──'],
+      _drawLogs: ['卡洛斯 摸到 [B2] 下一张牌'],
+      _statLogs: [],
+      _statEventSeq: 1,
+      _statEvents: [
+        { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+        { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      ],
+      _visualEvents: [
+        {
+          id: 'goat-adjacent-stats',
+          type: VISUAL_EVENT.STAT_EVENTS,
+          turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START,
+          statEvents: [
+            { type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+            { type: 'SAN_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+          ],
+          msgs: [goatLog],
+        },
+        {
+          id: 'slime-adjacent-pop',
+          type: VISUAL_EVENT.TSG_SLIME_POP,
+          playerIdx: 1,
+          cards: [slime],
+          msgs: [slimeLog],
+          playersBefore: preTurnPlayers,
+          playersAfter: beforeDrawPlayers,
+          turnStartStage: TURN_START_ANIMATION_STAGE.DRAW,
+        },
+      ],
+      log: ['── 卡洛斯 的回合开始 ──', goatLog, slimeLog, '卡洛斯 摸到 [B2] 下一张牌'],
+      drawReveal: { card, drawerIdx: 1 },
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+    const pulseIdx = types.indexOf('BLACK_GOAT_PULSE');
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const sanIdx = types.indexOf('SAN_DAMAGE');
+    const slimeIdx = types.indexOf('TSG_SLIME_POP');
+
+    expect([types[pulseIdx], types[hpIdx], types[sanIdx]]).toEqual([
+      'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE',
+    ]);
+    expect(hpIdx).toBe(pulseIdx + 1);
+    expect(sanIdx).toBe(pulseIdx + 2);
+    expect(slimeIdx).toBeGreaterThan(sanIdx);
+  });
+
+  it('黑山羊检定为揭开真相时只翻一次检定牌，再播放固定摸牌翻牌', () => {
+    const goat = { id: 'truth-goat', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const truth = { id: 'truth-check', name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' };
+    const hiddenDraw = makeZoneCard('A1', 0, { id: 'truth-hidden-draw', name: '暗抽牌' });
+    const spikeTrap = makeZoneCard('B4', 0, {
+      id: 'truth-fixed-draw', name: '地刺陷阱', type: 'adjDamageHP', val: 3,
+    });
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 10, san: 7, hand: [goat] }),
+        makePlayer({ name: '艾伦' }),
+        makePlayer({ name: '黛安娜' }),
+      ],
+      currentTurn: 2,
+      deck: [hiddenDraw, spikeTrap],
+      inspectionDeck: [truth],
+      inspectionDiscard: [],
+      log: [],
+      _inspectionSeq: 0,
+      _statEventSeq: 0,
+    });
+
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const inspectionEvent = newGs._visualEvents.find(event => event.type === 'inspection');
+    const inspectionDraws = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.inspectionSeq === 1);
+    const hiddenTravels = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.inspectionGainSeq === 1);
+    const spikeDraws = replay.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spikeTrap.id);
+
+    expect(inspectionEvent).toMatchObject({
+      legacySeq: 1,
+      turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START,
+      turnStartStageOrder: 2,
+    });
+    expect(inspectionDraws).toHaveLength(1);
+    expect(hiddenTravels).toHaveLength(1);
+    expect(spikeDraws).toHaveLength(1);
+    expect(replay.queue.indexOf(inspectionDraws[0])).toBeLessThan(replay.queue.indexOf(hiddenTravels[0]));
+    expect(replay.queue.indexOf(hiddenTravels[0])).toBeLessThan(replay.queue.indexOf(spikeDraws[0]));
+
+    const consumedReplay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      consumedVisualEventIds: new Set([inspectionEvent.id]),
+    });
+    expect(consumedReplay.queue.some(step => step.inspectionSeq === 1)).toBe(false);
+    expect(consumedReplay.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spikeTrap.id)).toHaveLength(1);
+  });
+
+  it('keeps black-goat HP/SAN damage before a following underground-spring heal event', () => {
+    const goat = { id: 'goat-spring', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const spring = { id: 'spring-after-goat', name: '地下泉', key: 'C2', type: 'allHealHP', isZone: true };
+    const preTurnPlayers = [player('你'), { ...player('黛安娜'), hand: [goat], hp: 10, san: 10 }];
+    const beforeDrawPlayers = [player('你'), { ...player('黛安娜'), hand: [goat], hp: 9, san: 9 }];
+    const finalPlayers = [player('你'), { ...player('黛安娜'), hand: [goat, spring], hp: 10, san: 9 }];
+    const goatLog = '【黑山羊幼仔】黛安娜 失去 1 HP 和 1 SAN';
+    const healLog = '全体存活角色回复 1 HP';
+    const goatEvents = [
+      { id: 'goat-hp', type: 'HP_LOSS', target: 1, from: { hp: 10, san: 10 }, to: { hp: 9, san: 10 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+      { id: 'goat-san', type: 'SAN_LOSS', target: 1, from: { hp: 9, san: 10 }, to: { hp: 9, san: 9 }, reason: '黑山羊幼仔', logHint: goatLog, seq: 1 },
+    ];
+    const healEvents = [
+      { id: 'spring-heal', type: 'HP_GAIN', target: 1, from: { hp: 9, san: 9 }, to: { hp: 10, san: 9 }, reason: '地下泉', logHint: healLog, seq: 2 },
+    ];
+    const oldGs = { players: preTurnPlayers, currentTurn: 0, phase: 'ACTION', log: [], _statEventSeq: 0 };
+    const newGs = {
+      players: finalPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _preTurnPlayers: preTurnPlayers,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _drawnCard: spring,
+      _aiDrawnCard: spring,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 [C2] 地下泉，选择收入手牌并触发效果'],
+      _statLogs: [healLog],
+      _statEvents: healEvents,
+      _statEventSeq: 2,
+      _visualEvents: [
+        { id: 'goat-stats', type: 'statEvents', statEvents: goatEvents, msgs: [goatLog] },
+        { id: 'spring-stats', type: 'statEvents', statEvents: healEvents, msgs: [healLog] },
+      ],
+      log: ['── 黛安娜 的回合开始 ──', goatLog, '黛安娜 摸到 [C2] 地下泉，选择收入手牌并触发效果', healLog],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const types = replay.queue.map(step => step.type);
+
+    expect(types.indexOf('BLACK_GOAT_PULSE')).toBeLessThan(types.indexOf('HP_DAMAGE'));
+    expect(types.indexOf('HP_DAMAGE')).toBeLessThan(types.indexOf('SAN_DAMAGE'));
+    expect(types.indexOf('SAN_DAMAGE')).toBeLessThan(types.indexOf('DRAW_CARD'));
+    expect(types.indexOf('DRAW_CARD')).toBeLessThan(types.indexOf('HP_HEAL'));
+    expect(replay.queue.find(step => step.type === 'SAN_DAMAGE')?.statEvents).toEqual(goatEvents.slice(1));
+  });
+
+  it('中毒数值动画属于回合开始阶段，不会泄露到摸牌翻牌之前', () => {
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你' }),
+        makePlayer({ name: '贝拉', poisonStacks: 1 }),
+      ],
+      currentTurn: 0,
+      deck: [makeZoneCard('B3', 0, { id: 'after-poison' })],
+      log: [],
+    });
+    const newGs = startNextTurn(oldGs);
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const poisonStep = replay.queue.find(step => step.type === 'HP_DAMAGE' && step.statEvents?.some(event => event.reason === '中毒'));
+    const drawIndex = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+
+    expect(poisonStep).toMatchObject({ turnStartStage: TURN_START_ANIMATION_STAGE.TURN_START });
+    expect(replay.queue.indexOf(poisonStep)).toBeLessThan(drawIndex);
+    expect(replay.stageQueues.turnBanner.map(step => step.type)).toEqual(['YOUR_TURN']);
+    expect(replay.stageQueues.turnStart).toContain(poisonStep);
+  });
+
+  it('replays real AI black-goat damage before an underground-spring draw', () => {
+    const goat = { id: 'goat-real-spring', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const spring = { id: 'spring-real-goat', name: '地下泉', key: 'C2', type: 'allHealHP', val: 1, isZone: true };
+    const oldGs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 8 }),
+        makePlayer({ name: '黛安娜', role: 'treasure', hp: 10, san: 10, hand: [goat] }),
+      ],
+      currentTurn: 0,
+      deck: [spring],
+      log: [],
+      _statEventSeq: 0,
+      _statEvents: [],
+    });
+
+    const newGs = startNextTurn(oldGs, { isDebugMode: true });
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const visibleTypes = replay.queue
+      .filter(step => step.type !== 'VISUAL_LOCK' && step.type !== 'STATE_PATCH')
+      .map(step => step.type);
+
+    expect(newGs.log).toContain('【黑山羊幼仔】黛安娜 失去 1 HP 和 1 SAN');
+    expect(visibleTypes.slice(0, 5)).toEqual([
+      'YOUR_TURN',
+      'BLACK_GOAT_PULSE',
+      'HP_DAMAGE',
+      'SAN_DAMAGE',
+      'DRAW_CARD',
+    ]);
+    expect(visibleTypes.indexOf('DRAW_CARD')).toBeLessThan(visibleTypes.indexOf('HP_HEAL'));
+
+    const statTimeline = replay.queue
+      .filter(step => ['HP_DAMAGE', 'SAN_DAMAGE', 'HP_HEAL', 'SAN_HEAL'].includes(step.type))
+      .map(step => ({ type: step.type, statEvents: step.statEvents }));
+    let displayed = oldGs.players.map(player => ({ hp: player.hp, san: player.san }));
+    const displayedTimeline = statTimeline.map(step => {
+      displayed = applyStatEventsToDisplayStats(displayed, step.statEvents, step.type);
+      return { type: step.type, hp: displayed[1].hp, san: displayed[1].san };
+    });
+    expect(displayedTimeline).toEqual([
+      { type: 'HP_DAMAGE', hp: 9, san: 10 },
+      { type: 'SAN_DAMAGE', hp: 9, san: 9 },
+      { type: 'HP_HEAL', hp: 10, san: 9 },
+    ]);
+
+    const goatEvent = newGs._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.STAT_EVENTS &&
+      event.turnStartStage === TURN_START_ANIMATION_STAGE.TURN_START &&
+      event.statEvents?.some(statEvent => statEvent.reason === '黑山羊幼仔')
+    ));
+    expect(goatEvent?.id).toBeTruthy();
+    expect(replay.queue.filter(step => step.visualEventId === goatEvent.id).map(step => step.type))
+      .toEqual(['BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE']);
+
+    const replayAfterConsumption = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      consumedVisualEventIds: new Set([goatEvent.id]),
+    });
+    expect(replayAfterConsumption.queue.some(step => (
+      step.type === 'BLACK_GOAT_PULSE' ||
+      step.statEvents?.some(statEvent => statEvent.reason === '黑山羊幼仔')
+    ))).toBe(false);
+    expect(replayAfterConsumption.queue.filter(step => step.type === 'DRAW_CARD' && step.card?.id === spring.id))
+      .toHaveLength(1);
+  });
+
+  it('keeps consecutive Diana goat and local god-encounter transactions disjoint by event id', () => {
+    const goat = { id: 'goat-consecutive', name: '黑山羊幼仔', type: 'blackGoatYoung', isBlackGoatYoung: true };
+    const dianaCard = makeZoneCard('B3', 0, { id: 'diana-fixed-draw' });
+    const godCard = makeGodCard('NYA', { id: 'local-god-draw' });
+    const calm = { id: 'calm-check', name: '平静', effect: 'nothing', value: 0, type: 'positive' };
+    const initial = makeGs({
+      players: [
+        makePlayer({ name: '你', san: 6 }),
+        makePlayer({ name: '卡洛斯' }),
+        makePlayer({ name: '贝拉' }),
+        makePlayer({ name: '黛安娜', hp: 10, san: 10, hand: [goat] }),
+      ],
+      currentTurn: 2,
+      deck: [dianaCard, godCard],
+      inspectionDeck: [calm],
+      inspectionDiscard: [],
+      log: [],
+    });
+
+    const dianaState = startNextTurn(initial, { isDebugMode: true });
+    const dianaReplay = buildTurnStartDrawReplayQueue({ oldGs: initial, newGs: dianaState });
+    const dianaIds = new Set(dianaState._visualEvents.map(event => event.id).filter(Boolean));
+    const dianaVisible = dianaReplay.queue
+      .filter(step => !['VISUAL_LOCK', 'STATE_PATCH'].includes(step.type))
+      .map(step => step.type);
+    expect(dianaVisible.slice(0, 5)).toEqual([
+      'YOUR_TURN', 'BLACK_GOAT_PULSE', 'HP_DAMAGE', 'SAN_DAMAGE', 'DRAW_CARD',
+    ]);
+
+    const localState = startNextTurn({ ...dianaState, currentTurn: 3 });
+    const localReplay = buildTurnStartDrawReplayQueue({
+      oldGs: dianaState,
+      newGs: localState,
+      consumedVisualEventIds: dianaIds,
+    });
+    const localVisible = localReplay.queue.filter(step => !['VISUAL_LOCK', 'STATE_PATCH'].includes(step.type));
+    const localTypes = localVisible.map(step => step.type);
+    const godDrawIdx = localVisible.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === godCard.id);
+    const sanIdx = localVisible.findIndex(step => step.type === 'SAN_DAMAGE');
+    const inspectionIdx = localVisible.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === calm.id);
+
+    expect(localTypes[0]).toBe('YOUR_TURN');
+    expect(godDrawIdx).toBeGreaterThan(0);
+    expect(sanIdx).toBeGreaterThan(godDrawIdx);
+    expect(inspectionIdx).toBeGreaterThan(sanIdx);
+    expect(localVisible.some(step => step.type === 'BLACK_GOAT_PULSE')).toBe(false);
+    expect(localVisible.flatMap(step => step.statEvents || []).some(event => event.reason === '黑山羊幼仔')).toBe(false);
+    expect(localVisible.flatMap(step => step.visualEventId ? [step.visualEventId] : []).some(id => dianaIds.has(id))).toBe(false);
   });
 
   it('地磁反转摸牌动画从弃牌堆起飞', () => {
@@ -195,6 +1306,98 @@ describe('buildTurnStartDrawReplayQueue', () => {
 
     expect(discardIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
     expect(drawTransferIdx).toBe(-1);
+  });
+
+  it('AI 寻宝者弃置回合开始摸牌时由动画队列延迟刷新弃牌堆', () => {
+    const previousDiscard = makeZoneCard('A1', 0);
+    const volcano = { ...makeZoneCard('C1', 0), name: '活火山' };
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '黛安娜', role: 'treasureHunter' }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      discard: [previousDiscard],
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      discard: [previousDiscard, volcano],
+      _drawnCard: volcano,
+      _aiDrawnCard: volcano,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _discardedDrawnCard: true,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 [C1] 活火山，评估后选择弃置'],
+      log: [
+        '旧日志',
+        '── 黛安娜 的回合开始 ──',
+        '黛安娜 摸到 [C1] 活火山，评估后选择弃置',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const banner = replay.queue.find(step => step.type === 'YOUR_TURN');
+    const discardIdx = replay.queue.findIndex(step => step.type === 'DISCARD');
+    const discardCommit = replay.queue.slice(discardIdx + 1).find(step => step.type === 'STATE_PATCH');
+
+    expect(banner).toMatchObject({
+      visualSetupTiming: 'queueStart',
+      visualSetupPatch: { discard: [previousDiscard] },
+    });
+    expect(discardIdx).toBeGreaterThan(replay.queue.findIndex(step => step.type === 'DRAW_CARD'));
+    expect(discardCommit?.discard).toEqual([previousDiscard, volcano]);
+  });
+
+  it('已揭示邪祀者将摸到的邪神牌收入手牌时播放收入飞牌动画', () => {
+    const godCard = makeGodCard('TSG');
+    const beforeDrawPlayers = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '艾伦', role: ROLE_CULTIST, roleRevealed: true, hand: [] }),
+    ];
+    const oldGs = makeGs({
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+    });
+    const newGs = makeGs({
+      players: [
+        beforeDrawPlayers[0],
+        { ...beforeDrawPlayers[1], hand: [godCard], godEncounters: 2 },
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: godCard,
+      _aiDrawnCard: godCard,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦（邪祀者）遭遇邪神 蟾蜍之神！（第2次）免疫SAN损耗'],
+      _statLogs: [],
+      log: [
+        '旧日志',
+        '── 艾伦 的回合开始 ──',
+        '艾伦（邪祀者）遭遇邪神 蟾蜍之神！（第2次）免疫SAN损耗',
+        '艾伦（邪祀者）将邪神牌收入手牌',
+      ],
+    });
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+    const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
+
+    expect(transferIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[transferIdx]).toMatchObject({
+      fromPid: 1,
+      dest: 'player',
+      toPid: 1,
+      sourceAnchor: 'playerArea',
+      cards: [godCard],
+    });
   });
 
   it('本地回合开始摸到邪神时先播放 SAN 扣减和检定翻牌再进入邪神抉择', () => {
@@ -292,6 +1495,13 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _statLogs: ['贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
       _statEvents: [allenSanLoss, bellaSanLoss],
       _statEventSeq: 2,
+      _visualEvents: [{
+        ...createStatEventsEvent({
+          statEvents: [bellaSanLoss],
+          msgs: ['贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
+        }),
+        turnStartStage: 'draw',
+      }],
       log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 遭遇邪神 阿波菲斯！（第1次）失去1SAN'],
     });
 
@@ -376,10 +1586,23 @@ describe('buildTurnStartDrawReplayQueue', () => {
       effectOldGs: { ...oldGs, players: beforeDrawPlayers },
     });
     const sanSteps = replay.queue.filter(step => step.type === 'SAN_DAMAGE');
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === tsg.id);
+    const highlightIdx = replay.queue.findIndex(step => step.type === 'GOD_HIGHLIGHT' && step.targetPid === 2);
 
     expect(sanSteps).toHaveLength(1);
     expect(sanSteps[0].hitIndices).toEqual([2]);
     expect(sanSteps[0].statEvents).toMatchObject([{ seq: 2, target: 2 }]);
+    expect(sanSteps[0].turnStartStage).toBe(TURN_START_ANIMATION_STAGE.DRAW);
+    expect(drawIdx).toBeGreaterThan(-1);
+    expect(highlightIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[drawIdx].visualSetupPatch.players[2]).toMatchObject({
+      godName: null,
+      godLevel: 0,
+    });
+    expect(replay.queue[highlightIdx].visualSetupPatch.players[2]).toMatchObject({
+      godName: 'TSG',
+      godLevel: 1,
+    });
   });
 
   it('AI 回合开始区域牌伤害只播放本次 HP 扣减，不重播上个 AI 的 HP 回复', () => {
@@ -428,6 +1651,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _statLogs: [damageLog],
       _statEvents: [...healEvents, ...damageEvents],
       _statEventSeq: 2,
+      _visualEvents: [{
+        ...createStatEventsEvent({ statEvents: damageEvents, msgs: [damageLog] }),
+        turnStartStage: 'draw',
+      }],
       log: ['旧日志', '── 贝拉 的回合开始 ──', '贝拉 摸到 [A2] 亡者军团，选择收入手牌并触发效果', damageLog],
     });
 
@@ -440,6 +1667,123 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(replay.queue.some(step => step.type === 'HP_HEAL')).toBe(false);
     const hpDamage = replay.queue.find(step => step.type === 'HP_DAMAGE');
     expect(hpDamage).toMatchObject({ hitIndices: [1, 2, 3] });
+  });
+
+  it('权威回合开始事务中，AI 摸到亡者军团击杀本地玩家时补播断头台与死亡广播', () => {
+    const legion = makeZoneCard('A2', 2); // 亡者军团 adjDamageHP val 4
+    const gs = makeGs({
+      players: [
+        makePlayer({ name: '你', hp: 4, role: '追猎者' }),
+        makePlayer({ name: '黛安娜', hp: 10, role: '追猎者' }),
+      ],
+      deck: [legion],
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      log: ['旧日志'],
+      debugForceCardKeepPending: 'keep',
+      debugForceCardKeepTarget: 1,
+    });
+
+    const nextGs = startNextTurn(gs, { isDebugMode: true });
+
+    expect(nextGs.gameOver).toMatchObject({ winner: 'LOSE' });
+    expect(nextGs.players[0].isDead).toBe(true);
+    // startNextTurn emits the staged turn-start transaction; the replay must
+    // derive the death broadcast even though the staged compiler only emits
+    // the HP/SAN steps.
+    expect((nextGs._visualEvents || []).some(event => !!event?.turnStartStage)).toBe(true);
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs: gs, newGs: nextGs });
+    const types = replay.queue.map(step => step.type);
+    const hpIdx = types.indexOf('HP_DAMAGE');
+    const guillotineIdx = types.indexOf('GUILLOTINE');
+    const deathIdx = types.indexOf('DEATH');
+
+    expect(hpIdx).toBeGreaterThan(-1);
+    expect(guillotineIdx).toBeGreaterThan(hpIdx);
+    expect(deathIdx).toBeGreaterThan(guillotineIdx);
+    const guillotine = replay.queue[guillotineIdx];
+    expect(guillotine).toMatchObject({ hitIndices: [0] });
+    expect(guillotine.msgs).toEqual(['☠ 你（追猎者）倒下了！']);
+    expect(replay.queue[deathIdx]).toMatchObject({ hitIndices: [0] });
+  });
+
+  it('幽闭恐惧先结算 SAN，再逐张结算自残并同步 HP 数值', () => {
+    const card = { id: 'claustrophobia', name: '幽闭恐惧', key: 'B1', type: 'adjDamageSAN', isZone: true };
+    const oldPlayers = [
+      makePlayer({ name: '你', hp: 10, san: 6 }),
+      makePlayer({ name: '卡洛斯', hp: 10, san: 6 }),
+      makePlayer({ name: '黛安娜', hp: 10, san: 6 }),
+    ];
+    const clonePlayers = players => players.map(player => ({ ...player, hand: [...(player.hand || [])], godZone: [...(player.godZone || [])] }));
+    const afterSan = clonePlayers(oldPlayers);
+    afterSan.forEach(player => { player.san = 4; });
+    const afterDiana = clonePlayers(afterSan); afterDiana[2].hp = 8;
+    const afterYou = clonePlayers(afterDiana); afterYou[0].hp = 8;
+    const afterCarlos = clonePlayers(afterYou); afterCarlos[1].isResting = true;
+    const drawLog = '黛安娜 摸到 [B1] 幽闭恐惧，选择收入手牌并触发效果';
+    const sanLog = '黛安娜 与相邻角色各失去 2 SAN';
+    const dianaReveal = '黛安娜 的SAN检定结果为"自残"';
+    const dianaDamage = '黛安娜 自残，失去 2 HP';
+    const youReveal = '你 的SAN检定结果为"自残"';
+    const youDamage = '你 自残，失去 2 HP';
+    const carlosReveal = '卡洛斯 的SAN检定结果为"昏睡"';
+    const carlosSleep = '卡洛斯 昏睡，翻面';
+    const statEvent = (seq, type, target, before, after, reason, logHint) => ({
+      seq, type, target,
+      from: { hp: before[target].hp, san: before[target].san, isDead: false },
+      to: { hp: after[target].hp, san: after[target].san, isDead: false },
+      reason, logHint,
+    });
+    const sanEvents = oldPlayers.map((_, target) => statEvent(1, 'SAN_LOSS', target, oldPlayers, afterSan, '幽闭恐惧', sanLog));
+    const dianaHp = statEvent(2, 'HP_LOSS', 2, afterSan, afterDiana, '自残', dianaDamage);
+    const youHp = statEvent(3, 'HP_LOSS', 0, afterDiana, afterYou, '自残', youDamage);
+    const prefix = ['旧日志', '── 黛安娜 的回合开始 ──', drawLog, sanLog];
+    const events = [
+      { seq: 1, card: { name: '自残', effect: 'selfDamageHP' }, target: 2, beforePlayers: afterSan, beforeLog: prefix, afterPlayers: afterDiana, afterLog: [...prefix, dianaReveal, dianaDamage], revealMsgs: [dianaReveal], effectMsgs: [dianaDamage], statEvents: [dianaHp], statEventSeq: 2 },
+      { seq: 2, card: { name: '自残', effect: 'selfDamageHP' }, target: 0, beforePlayers: afterDiana, beforeLog: [...prefix, dianaReveal, dianaDamage], afterPlayers: afterYou, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], revealMsgs: [youReveal], effectMsgs: [youDamage], statEvents: [youHp], statEventSeq: 3 },
+      { seq: 3, card: { name: '昏睡', effect: 'flip' }, target: 1, beforePlayers: afterYou, beforeLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage], afterPlayers: afterCarlos, afterLog: [...prefix, dianaReveal, dianaDamage, youReveal, youDamage, carlosReveal, carlosSleep], revealMsgs: [carlosReveal], effectMsgs: [carlosSleep], statEvents: [], statEventSeq: null },
+    ];
+    const oldGs = makeGs({ players: oldPlayers, currentTurn: 1, log: ['旧日志'], _statEventSeq: 0, _inspectionSeq: 0 });
+    const newGs = makeGs({
+      players: afterCarlos, currentTurn: 2, phase: 'AI_TURN', log: events[2].afterLog,
+      _drawnCard: card, _aiDrawnCard: card, _playersBeforeThisDraw: oldPlayers,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'], _drawLogs: [drawLog], _statLogs: [sanLog, dianaReveal, dianaDamage, youReveal, youDamage, carlosReveal, carlosSleep],
+      _statEvents: [...sanEvents, dianaHp, youHp], _statEventSeq: 3, _inspectionSeq: 3,
+    });
+    newGs._visualEvents = [
+      { id: 'turn:claustrophobia', type: VISUAL_EVENT.TURN_START, turnStartStage: 'turnBanner', playerIdx: 2, playerName: '黛安娜', msgs: newGs._turnStartLogs },
+      ...createTurnDrawVisualEvents({ playerIdx: 2, playerName: '黛安娜', card, msgs: [drawLog] }),
+      createStatEventsEvent({ statEvents: sanEvents, msgs: [sanLog], turnStartStage: 'draw' }),
+      ...events.map((event, index) => ({
+        ...createInspectionVisualEvent(event),
+        turnStartStage: 'draw',
+        turnStartStageOrder: 3 + index,
+      })),
+    ].filter(Boolean);
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs, effectOldGs: oldGs });
+    const visible = replay.queue.filter(step => step.type !== 'VISUAL_LOCK' && step.type !== 'STATE_PATCH');
+    const sanIdx = visible.findIndex(step => step.type === 'SAN_DAMAGE');
+    const reveals = visible.map((step, idx) => ({ step, idx })).filter(({ step }) => step.type === 'DRAW_CARD' && step.triggerName === '检定牌');
+    const hpSteps = visible.map((step, idx) => ({ step, idx })).filter(({ step }) => step.type === 'HP_DAMAGE');
+    expect(sanIdx).toBeLessThan(reveals[0].idx);
+    expect(visible[sanIdx].msgs).toContain(sanLog);
+    expect(reveals.map(({ step }) => step._logChunk)).toEqual([[dianaReveal], [youReveal], [carlosReveal]]);
+    expect(hpSteps[0].idx).toBeGreaterThan(reveals[0].idx);
+    expect(hpSteps[0].idx).toBeLessThan(reveals[1].idx);
+    expect(hpSteps[0].step.msgs).toEqual([dianaDamage]);
+    expect(hpSteps[0].step.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 2, to: expect.objectContaining({ hp: 8 }) }),
+    ]));
+    expect(hpSteps[1].idx).toBeGreaterThan(reveals[1].idx);
+    expect(hpSteps[1].idx).toBeLessThan(reveals[2].idx);
+    expect(hpSteps[1].step.msgs).toEqual([youDamage]);
+    expect(hpSteps[1].step.statEvents).toEqual(expect.arrayContaining([
+      expect.objectContaining({ target: 0, to: expect.objectContaining({ hp: 8 }) }),
+    ]));
+    const carlosPatch = replay.queue.find(step => step.type === 'STATE_PATCH' && step._logChunk?.includes(carlosSleep));
+    expect(carlosPatch?._logChunk).toEqual([carlosSleep]);
   });
 
   it('黏液额外摸牌会按摸牌阶段事件逐张翻牌', () => {
@@ -465,9 +1809,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
         '【无定形体】艾伦 额外摸到 [B2] 投掷石块',
         '艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN',
       ],
-      _turnDrawEvents: [
-        { card: stone, drawerIdx: 1, drawerName: '艾伦', msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true },
-        { card: god, drawerIdx: 1, drawerName: '艾伦', msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true },
+      _visualEvents: [
+        { id: 'turn:slime-draws', type: VISUAL_EVENT.TURN_START, turnStartStage: 'turnBanner', playerIdx: 1, playerName: '艾伦', msgs: ['── 艾伦 的回合开始 ──'] },
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: stone, msgs: ['【无定形体】艾伦 额外摸到 [B2] 投掷石块'], fromTsathogguaSlime: true, drawOrder: 0 }),
+        ...createTurnDrawVisualEvents({ playerIdx: 1, playerName: '艾伦', card: god, msgs: ['艾伦 遭遇邪神 烛九阴！（第3次）失去 3 SAN'], fromTsathogguaSlime: true, drawOrder: 1 }),
       ],
       _statLogs: ['艾伦 的SAN检定结果为"自残"', '艾伦 自残，失去 1 HP'],
       log: [
@@ -534,6 +1879,72 @@ describe('buildTurnStartDrawReplayQueue', () => {
     expect(types.findIndex(type => type === 'CARD_TRANSFER')).toBeGreaterThan(types.indexOf('DRAW_CARD'));
   });
 
+  it('黏液额外摸到烤盲鱼时在后续触底反弹换手前结算且只播放一次回血', () => {
+    const fish = makeZoneCard('C1', 4); // 烤盲鱼
+    const bounce = makeZoneCard('C4', 0); // 触底反弹
+    const filler = () => makeZoneCard('A3', 0);
+    const players = [
+      makePlayer({ name: '你', role: ROLE_HUNTER, hand: [filler(), filler(), filler(), filler()] }),
+      makePlayer({ name: '艾伦', role: ROLE_HUNTER, hand: [filler(), filler(), filler(), filler()] }),
+      makePlayer({ name: '贝拉', role: ROLE_CULTIST }),
+      makePlayer({
+        name: '卡洛斯',
+        role: ROLE_TREASURE,
+        hp: 6,
+        godName: 'TSG',
+        godLevel: 1,
+        hand: [
+          { id: 'slime', name: '撒托古亚的赐福黏液', type: 'tsathogguaSlime', isTsathogguaSlime: true },
+          filler(),
+          filler(),
+          filler(),
+        ],
+      }),
+    ];
+    const oldGs = makeGs({
+      players,
+      deck: [fish, bounce],
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      log: [],
+    });
+
+    const randomSpy = vi.spyOn(Math, 'random').mockReturnValue(0.2);
+    let newGs;
+    try {
+      newGs = startNextTurn(oldGs, { allAi: true, isDebugMode: true });
+    } finally {
+      randomSpy.mockRestore();
+    }
+    const fishDrawEvent = newGs._visualEvents.find(event => (
+      event.type === VISUAL_EVENT.DRAW_CARD && event.card?.id === fish.id
+    ));
+    const replay = buildTurnStartDrawReplayQueue({
+      oldGs,
+      newGs,
+      effectOldGs: { ...oldGs, players: newGs._playersBeforeThisDraw, log: [] },
+    });
+    const healSteps = replay.queue.filter(step => step.type === 'HP_HEAL');
+    const fishDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === fish.id);
+    const healIdx = replay.queue.findIndex(step => step.type === 'HP_HEAL');
+    const bounceDrawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD' && step.card?.id === bounce.id);
+    const fullHandSwapIdx = replay.queue.findIndex(step => (
+      step.type === 'CARD_TRANSFER' && (step.msgs || []).some(msg => msg.includes('交换了全部手牌'))
+    ));
+
+    expect(fishDrawEvent?.statEventIds).toEqual(
+      newGs._statEvents.filter(event => event.reason === '烤盲鱼').map(event => event.id),
+    );
+    expect(fishDrawEvent?.statEventIds).toHaveLength(1);
+    expect(fishDrawEvent?.statVisualEventIds).toHaveLength(1);
+    expect(healSteps).toHaveLength(1);
+    expect(healSteps[0].statEvents).toMatchObject([{ seq: 1, reason: '烤盲鱼' }]);
+    expect(fishDrawIdx).toBeGreaterThan(-1);
+    expect(healIdx).toBeGreaterThan(fishDrawIdx);
+    expect(healIdx).toBeLessThan(bounceDrawIdx);
+    expect(bounceDrawIdx).toBeLessThan(fullHandSwapIdx);
+  });
+
   it('AI 回合开始收入霉变食物时保留专用掷骰动画', () => {
     const moldyFood = makeZoneCard('A1', 0);
     const beforeDrawPlayers = [player('你'), player('贝拉')];
@@ -562,6 +1973,15 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1 },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '贝拉',
+          d1: 1,
+        }),
+        turnStartStage: 'draw',
+      }],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
@@ -570,6 +1990,114 @@ describe('buildTurnStartDrawReplayQueue', () => {
 
     expect(diceIdx).toBeGreaterThan(drawIdx);
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
+  });
+
+  it('AI 霉变食物掷骰不会重播上回合钻地魔虫的随机目标转盘', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), player('艾伦'), player('黛安娜')];
+    const afterPlayers = [
+      player('你'),
+      { ...player('艾伦'), hp: 10, hand: [moldyFood] },
+      player('黛安娜'),
+    ];
+    // 模拟跨回合展示清理后的旧基线：日志仍在，但一次性事件水位未被带入。
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['全体存活角色失去 2 HP', '艾伦 额外失去 2 HP'],
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      log: [
+        ...oldGs.log,
+        '── 艾伦 的回合开始 ──',
+        '艾伦 摸到 [A1] 霉变食物，选择收入手牌并触发效果',
+        '【霉变食物】艾伦 掷出 4 点（双数），恢复 2 HP',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _drawLogs: ['艾伦 摸到 [A1] 霉变食物，选择收入手牌并触发效果'],
+      _statLogs: ['【霉变食物】艾伦 掷出 4 点（双数），恢复 2 HP'],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '艾伦',
+          d1: 4,
+        }),
+        turnStartStage: 'draw',
+      }],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue).toContainEqual(expect.objectContaining({
+      type: 'DICE_ROLL',
+      diceMode: 'moldyFood',
+      d1: 4,
+    }));
+    expect(replay.queue.some(step => step.type === 'RANDOM_TARGET')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'BURROWING_WORM')).toBe(false);
+  });
+
+  it('AI 收入霉变食物掷出双数后立即追捕时仍播放专用掷骰动画', () => {
+    const moldyFood = makeZoneCard('A1', 0);
+    const beforeDrawPlayers = [player('你'), { ...player('黛安娜'), hp: 7 }];
+    const afterPlayers = [player('你'), { ...player('黛安娜'), hp: 9, hand: [moldyFood] }];
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 0,
+      phase: 'ACTION',
+      log: ['旧日志'],
+      // The real AI hunt-wait presentation builds its baseline from the
+      // already-resolved turn state, which still carries this watermark.
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
+    };
+    const newGs = {
+      players: afterPlayers,
+      currentTurn: 1,
+      phase: 'HUNT_AI_REVEAL',
+      log: [
+        '旧日志',
+        '── 黛安娜 的回合开始 ──',
+        '黛安娜 摸到 [A1] 霉变食物，选择收入手牌并触发效果',
+        '【霉变食物】黛安娜 掷出 4 点（双数），恢复 2 HP',
+        '【黑夜】黛安娜 选择【追捕】目标掷出 5，目标未偏移',
+        '黛安娜（追猎者）向你发动【追捕】！请选择亮出一张手牌',
+      ],
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 黛安娜 的回合开始 ──'],
+      _drawLogs: ['黛安娜 摸到 [A1] 霉变食物，选择收入手牌并触发效果'],
+      _statLogs: ['【霉变食物】黛安娜 掷出 4 点（双数），恢复 2 HP'],
+      _drawnCard: moldyFood,
+      _aiDrawnCard: moldyFood,
+      _moldyFoodDiceSeq: 1,
+      _moldyFoodDiceRoll: { d1: 4, isEven: true, actorIdx: 1, seq: 1 },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '黛安娜',
+          d1: 4,
+        }),
+        turnStartStage: 'draw',
+      }],
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs, effectOldGs: oldGs });
+    const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'moldyFood');
+    const drawIdx = replay.queue.findIndex(step => step.type === 'DRAW_CARD');
+
+    expect(diceIdx).toBeGreaterThan(drawIdx);
+    expect(replay.queue[diceIdx]).toMatchObject({ d1: 4, rollerName: '黛安娜' });
   });
 
   it('AI 回合开始收入区域牌时在效果后播放收入手牌飞牌', () => {
@@ -614,7 +2142,7 @@ describe('buildTurnStartDrawReplayQueue', () => {
   });
 
   it('AI 回合开始收入投掷石块即使造成 0 伤害也播放骰子和转盘', () => {
-    const stone = makeZoneCard('B2', 0);
+    const stone = makeZoneCard('B2', 3);
     const limitDiscard = makeZoneCard('A1', 0);
     const beforeDrawPlayers = [
       player('你'),
@@ -640,6 +2168,10 @@ describe('buildTurnStartDrawReplayQueue', () => {
       log: ['旧日志'],
       _randomTargetSeq: 0,
     };
+    const throwStoneEvent=createThrowStoneEvent({
+      sourceIdx:1,targetIdx:0,roll:1,distance:2,damage:0,resultText:'你 被选中',
+      playersBefore:beforeDrawPlayers,playersAfter:afterPlayers,
+    });
     const newGs = {
       players: afterPlayers,
       currentTurn: 1,
@@ -652,18 +2184,11 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _drawnCard: stone,
       _aiDrawnCard: stone,
       _randomTargetSeq: 1,
-      _randomTargetEvents: [{
-        seq: 1,
-        sourceIdx: 1,
-        targetIdx: 0,
-        label: '投掷石块',
-        roll: 1,
-        distance: 2,
-        damage: 0,
-        resultText: '你 被选中',
-        diceBefore: true,
-        phaseOrder: 1,
-      }],
+      _visualEvents: [
+        {id:'turn:throw-stone',type:VISUAL_EVENT.TURN_START,turnStartStage:'turnBanner',playerIdx:1,playerName:'贝拉',msgs:['── 贝拉 的回合开始 ──']},
+        ...createTurnDrawVisualEvents({playerIdx:1,playerName:'贝拉',card:stone,msgs:['贝拉 摸到 [B2] 投掷石块，选择收入手牌并触发效果'],keptInHand:true,playersBefore:beforeDrawPlayers,playersAfterKeep:afterPlayers}),
+        {...throwStoneEvent,turnStartStage:'draw',turnStartStageOrder:2},
+      ],
     };
 
     const replay = buildTurnStartDrawReplayQueue({
@@ -677,13 +2202,135 @@ describe('buildTurnStartDrawReplayQueue', () => {
     });
     const diceIdx = replay.queue.findIndex(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone');
     const randomIdx = replay.queue.findIndex(step => step.type === 'RANDOM_TARGET');
+    const throwIdx = replay.queue.findIndex(step => step.type === 'THROW_STONE');
     const transferIdx = replay.queue.findIndex(step => step.type === 'CARD_TRANSFER' && step.effect === 'draw');
 
     expect(diceIdx).toBeGreaterThan(-1);
     expect(randomIdx).toBeGreaterThan(diceIdx);
-    expect(transferIdx).toBeGreaterThan(randomIdx);
+    expect(throwIdx).toBeGreaterThan(randomIdx);
+    expect(transferIdx).toBeGreaterThan(throwIdx);
     expect(replay.queue[diceIdx]).toMatchObject({ d1: 1, rollerName: '贝拉' });
     expect(replay.queue[randomIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, roll: 1, damage: 0 });
+    expect(replay.queue[throwIdx]).toMatchObject({ sourceIdx: 1, targetIdx: 0, damage: 0 });
+
+    const resolvedBaselineReplay = buildTurnStartDrawReplayQueue({
+      oldGs: {
+        ...newGs,
+        players: beforeDrawPlayers,
+        log: ['旧日志', '── 贝拉 的回合开始 ──'],
+      },
+      newGs,
+      effectOldGs: {
+        ...newGs,
+        players: beforeDrawPlayers,
+        log: ['旧日志', '── 贝拉 的回合开始 ──'],
+      },
+    });
+    expect(resolvedBaselineReplay.queue.map(step => step.type)).not.toEqual(expect.arrayContaining([
+      'DICE_ROLL',
+      'RANDOM_TARGET',
+      'THROW_STONE',
+    ]));
+  });
+
+  it('摸到邪神翻牌后不重播上一回合残留的投掷石块动画', () => {
+    const nya = makeGodCard('NYA');
+    const beforeDrawPlayers = [player('你'), player('贝拉'), player('艾伦')];
+    // 上一回合投石日志可以保留，但没有 fresh 规范事件时不得重播。
+    const oldGs = {
+      players: beforeDrawPlayers,
+      currentTurn: 2,
+      phase: 'ACTION',
+      log: ['艾伦 掷出 1 点，随机砸向 贝拉（距离1），造成 0 HP 伤害'],
+      _randomTargetSeq: 1,
+    };
+    const newGs = {
+      players: [
+        beforeDrawPlayers[0],
+        { ...player('贝拉'), san: 9, godName: nya.godKey, godLevel: 1, godZone: [nya] },
+        beforeDrawPlayers[2],
+      ],
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _drawnCard: nya,
+      _aiDrawnCard: nya,
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['[调试] 贝拉（邪祀者）起手摸到 伏行之混沌'],
+      _statLogs: [],
+      log: [
+        '艾伦 掷出 1 点，随机砸向 贝拉（距离1），造成 0 HP 伤害',
+        '── 贝拉 的回合开始 ──',
+        '[调试] 贝拉（邪祀者）起手摸到 伏行之混沌',
+        '贝拉 遭遇邪神 伏行之混沌！（第1次）失去 1 SAN',
+      ],
+      _randomTargetSeq: 1,
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+
+    expect(replay.queue.some(step => step.type === 'DRAW_CARD')).toBe(true);
+    expect(replay.queue.some(step => step.type === 'DICE_ROLL' && step.diceMode === 'throwStone')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'RANDOM_TARGET')).toBe(false);
+    expect(replay.queue.some(step => step.type === 'THROW_STONE')).toBe(false);
+  });
+
+  it('AI 摸到惊扰蝙蝠时先播放蝙蝠专属动画再扣 HP', () => {
+    const bats = { id: 'bats', name: '惊扰蝙蝠', key: 'C2', type: 'adjDamageHP', val: 2 };
+    const beforeDrawPlayers = [player('你'), player('贝拉'), player('艾伦')];
+    const oldGs = {
+      players: beforeDrawPlayers.map(p => ({ ...p, hand: [] })),
+      deck: [],
+      discard: [],
+      log: ['旧日志'],
+      currentTurn: 0,
+      phase: 'ACTION',
+      _statEventSeq: 0,
+    };
+    // 通过真实 applyFx 产生 statePatch（cardEffect 视觉事件 + _statEvents 水位），
+    // 再按 App startNextTurn 包装方式叠加 statEvents 视觉事件，避免手工拼状态漏字段
+    const res = applyFx(bats, 1, null, oldGs.players.map(p => ({ ...p })), [], [], oldGs);
+    const base = {
+      ...oldGs,
+      players: res.P,
+      ...(res.statePatch || {}),
+      currentTurn: 1,
+      phase: 'AI_TURN',
+      _playersBeforeThisDraw: beforeDrawPlayers,
+      _turnStartLogs: ['── 贝拉 的回合开始 ──'],
+      _drawLogs: ['贝拉 摸到 [C2] 惊扰蝙蝠，选择收入手牌并触发效果'],
+      _statLogs: res.msgs || [],
+      _drawnCard: bats,
+      _aiDrawnCard: bats,
+      log: [
+        '旧日志',
+        '── 贝拉 的回合开始 ──',
+        '贝拉 摸到 [C2] 惊扰蝙蝠，选择收入手牌并触发效果',
+        ...(res.msgs || []),
+      ],
+    };
+    const newGs = {
+      ...base,
+      _visualEvents: [
+        ...buildFreshStatVisualEvents(base, 0),
+        ...(base._visualEvents || []).map(event => ({
+          ...event,
+          turnStartStage: 'draw',
+          turnStartStageOrder: 2,
+        })),
+      ].filter(Boolean),
+    };
+
+    const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
+    const batsIdx = replay.queue.findIndex(step => step.type === 'STARTLED_BATS');
+    const hpDamageIndices = replay.queue
+      .map((step, idx) => ({ step, idx }))
+      .filter(({ step }) => step.type === 'HP_DAMAGE')
+      .map(({ idx }) => idx);
+
+    expect(batsIdx).toBeGreaterThan(-1);
+    expect(hpDamageIndices).toHaveLength(1);
+    expect(hpDamageIndices[0]).toBeGreaterThan(batsIdx);
   });
 
   it('AI 寻宝者回合开始规避霉变食物时先播放规避骰再播放霉变食物骰', () => {
@@ -714,6 +2361,19 @@ describe('buildTurnStartDrawReplayQueue', () => {
       _aiDrawnCard: moldyFood,
       _moldyFoodDiceSeq: 1,
       _moldyFoodDiceRoll: { d1: 1, isEven: false, actorIdx: 1, seq: 1, negativeAvoided: true },
+      _visualEvents: [{
+        ...createDiceResultVisualEvent({ mode: 'treasureDodge', actorIdx: 1, actorName: '贝拉', d1: 5 }),
+        turnStartStage: 'draw',
+      }, {
+        ...createDiceResultVisualEvent({
+          mode: 'moldyFood',
+          actorIdx: 1,
+          actorName: '贝拉',
+          d1: 1,
+          negativeAvoided: true,
+        }),
+        turnStartStage: 'draw',
+      }],
     };
 
     const replay = buildTurnStartDrawReplayQueue({ oldGs, newGs });
@@ -727,19 +2387,26 @@ describe('buildTurnStartDrawReplayQueue', () => {
 });
 
 describe('shouldReplaySinglePlayerAiTurnStart', () => {
-  it('only matches single-player AI turn-start replay states with logs', () => {
+  it('matches canonical single-player AI turn-start transactions regardless of pause phase', () => {
     const baseState = {
       players: [player('你'), player('艾伦')],
       currentTurn: 1,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [{
+        id: 'turn-start:ai',
+        type: VISUAL_EVENT.TURN_START,
+        turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+        playerIdx: 1,
+      }],
     };
 
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN' })).toBe(true);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_GOD_CHOICE' })).toBe(true);
+    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'TSG_SLIME_BALANCE' })).toBe(true);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _isMP: true })).toBe(false);
-    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'ACTION' })).toBe(false);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', currentTurn: 0 })).toBe(false);
     expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _turnStartLogs: [] })).toBe(false);
+    expect(shouldReplaySinglePlayerAiTurnStart({ ...baseState, phase: 'AI_TURN', _visualEvents: [] })).toBe(false);
   });
 });
 
@@ -759,6 +2426,12 @@ describe('buildSinglePlayerAiTurnStartReplayContext', () => {
       phase: 'AI_GOD_CHOICE',
       _playersBeforeThisDraw: beforeDrawPlayers,
       _turnStartLogs: ['── 艾伦 的回合开始 ──'],
+      _visualEvents: [{
+        id: 'turn-start:ai-context',
+        type: VISUAL_EVENT.TURN_START,
+        turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+        playerIdx: 1,
+      }],
     };
 
     const context = buildSinglePlayerAiTurnStartReplayContext(currentGs, nextGs);
@@ -767,6 +2440,30 @@ describe('buildSinglePlayerAiTurnStartReplayContext', () => {
     expect(context.oldGs).toBe(currentGs);
     expect(context.effectOldGs.players).toBe(beforeDrawPlayers);
     expect(context.effectOldGs.zhuLight).toEqual(currentGs.zhuLight);
+  });
+
+  it('reduces skipped turns to banners only before a decision gate', () => {
+    const state = makeGs({
+      players: [makePlayer({ name: '你' }), makePlayer({ name: '艾伦' })],
+      _skippedTurnReplays: [{
+        playerIdx: 1,
+        playerName: '艾伦',
+        restingSkip: true,
+        turnStartLogs: ['turn start'],
+        beforePlayers: [],
+        afterPlayers: [],
+        beforeLog: [],
+        afterLog: ['turn skipped'],
+        cthReplay: { draws: [{ id: 'must-not-replay', name: 'card' }] },
+      }],
+    });
+
+    expect(buildSkippedTurnReplayQueue(state, { bannersOnly: true })).toEqual([{
+      type: 'YOUR_TURN',
+      name: '艾伦',
+      msgs: ['turn start'],
+      turnStartStage: TURN_START_ANIMATION_STAGE.TURN_BANNER,
+    }]);
   });
 
   it('returns null for states that should not replay AI turn start', () => {

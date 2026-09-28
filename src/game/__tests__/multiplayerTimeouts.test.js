@@ -57,6 +57,19 @@ describe('resolveMpTimeoutToAction', () => {
     expect(next.log.at(-1)).toBe('(超时) 放弃了邪神的馈赠');
   });
 
+  it('强制收入的活埋等待埋牌结束，不把自身加入选择手牌', () => {
+    const card = makeZoneCard('A4', 0, { type: 'buryAlive', id: 'timeout-bury' });
+    const oldCard = makeZoneCard('B1', 0);
+    const player = makePlayer({ hand: [oldCard] });
+    const next = resolveMpTimeoutToAction(makeGs({
+      players: [player], phase: 'DRAW_REVEAL',
+      drawReveal: { card, needsDecision: true, forcedKeep: true, drawerIdx: 0 },
+    }));
+    expect(next.phase).toBe('BURY_ALIVE_SELECT');
+    expect(next.players[0].hand).toEqual([oldCard]);
+    expect(next.abilityData.pendingZoneIncome).toEqual({ card, ownerId: player.id });
+  });
+
   it('奈亚借身超时会跳过借身并处理后续摸牌决策', () => {
     const drawn = makeZoneCard('B2', 0);
     const gs = makeGs({

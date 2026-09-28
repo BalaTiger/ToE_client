@@ -5,6 +5,37 @@ export const SOFT_GUIDE_IDS = {
   FLIP: 'flip',
 };
 
+// A soft guide has an explicit lifecycle.  Keeping preparation separate from
+// presentation prevents a missing spotlight target from becoming an
+// unbounded global pause.
+export const SOFT_GUIDE_STAGE = Object.freeze({
+  IDLE: 'idle',
+  PREPARING: 'preparing',
+  PRESENTING: 'presenting',
+  PAUSED: 'paused',
+});
+
+export function resolveSoftGuideStage({
+  pendingId = null,
+  preparingId = null,
+  doneMap = {},
+  userPaused = false,
+} = {}) {
+  if (userPaused) {
+    return { stage: SOFT_GUIDE_STAGE.PAUSED, blocking: true };
+  }
+  // The overlay must remain actionable even though it is marked as seen as
+  // soon as it opens.  Therefore pending/presenting takes precedence over the
+  // persisted done flag.
+  if (pendingId) {
+    return { stage: SOFT_GUIDE_STAGE.PRESENTING, blocking: true };
+  }
+  if (preparingId && !doneMap?.[preparingId]) {
+    return { stage: SOFT_GUIDE_STAGE.PREPARING, blocking: true };
+  }
+  return { stage: SOFT_GUIDE_STAGE.IDLE, blocking: false };
+}
+
 export const SOFT_GUIDE_DEFS = {
   [SOFT_GUIDE_IDS.REST]: {
     title: '',

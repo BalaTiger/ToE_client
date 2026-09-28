@@ -1,0 +1,137 @@
+{
+  "runtime": [
+    {
+      "path": "public/img/ui/hand-table/skill.webp",
+      "sourceCell": [
+        0,
+        0,
+        887,
+        443
+      ],
+      "trim": [
+        50,
+        140,
+        837,
+        374
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15418,
+      "sha256": "1fbefe8adbee50f40176e9b51b8481e9455fd9b1e4478b24b13b41ddc742cab3"
+    },
+    {
+      "path": "public/img/ui/hand-table/rest.webp",
+      "sourceCell": [
+        887,
+        0,
+        1774,
+        443
+      ],
+      "trim": [
+        50,
+        139,
+        837,
+        373
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15314,
+      "sha256": "d00286448411ddc5c843516d6139229710109d1e673338dff74066bbd750d7c2"
+    },
+    {
+      "path": "public/img/ui/hand-table/multiply.webp",
+      "sourceCell": [
+        0,
+        443,
+        887,
+        887
+      ],
+      "trim": [
+        50,
+        72,
+        837,
+        306
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15498,
+      "sha256": "9322602b5ed59847b3add12948bbfc72777e542baf713af7ce27cf7e7f264163"
+    },
+    {
+      "path": "public/img/ui/hand-table/end.webp",
+      "sourceCell": [
+        887,
+        443,
+        1774,
+        887
+      ],
+      "trim": [
+        50,
+        73,
+        837,
+        306
+      ],
+      "size": [
+        396,
+        132
+      ],
+      "bytes": 15150,
+      "sha256": "96d1ab5991203a9f9f1852acd2feba8b4e5709aca355253e1bd43e907485518a"
+    },
+    {
+      "path": "public/img/ui/hand-table/table.webp",
+      "size": [
+        970,
+        490
+      ],
+      "bytes": 20724,
+      "sha256": "1e7e2629edf5d16ef71d630b6fdc6522ab8e0654a51855a225321d51d1aa48be"
+    },
+    {
+      "path": "public/img/ui/hand-table/relief-left.webp",
+      "trim": [
+        44,
+        6,
+        1211,
+        1242
+      ],
+      "size": [
+        604,
+        640
+      ],
+      "bytes": 107960,
+      "sha256": "34abc645ccb4ed8fb474f6112f7a6ce4c46f4c1ac05a10c79e802a8d9ccc4298"
+    },
+    {
+      "path": "public/img/ui/hand-table/relief-right.webp",
+      "trim": [
+        20,
+        11,
+        1226,
+        1242
+      ],
+      "size": [
+        627,
+        640
+      ],
+      "bytes": 106184,
+      "sha256": "af0cb117fa0007defc5a7cefdfaa83bd38d4ddf0096df4b3292384165d420de2"
+    },
+    {
+      "path": "public/img/ui/hand-table/table-weathered.webp",
+      "source": "docs/board-arch-proposals-2026-09-14/table-weathered-master.png",
+      "size": [
+        1536,
+        1024
+      ],
+      "bytes": 487656,
+      "sha256": "42a6462be03ce36acea74b103e115f6740cf535ccaca15d625e0d3282fd1a515"
+    }
+  ]
+}

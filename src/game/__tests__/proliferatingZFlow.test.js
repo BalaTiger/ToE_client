@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildProliferatingZDrawFlow } from '../proliferatingZFlow';
+import { createStatEventsEvent } from '../visualEvents';
 import { makePlayer, makeZoneCard, makeGodCard } from './factory';
 
 const baseDeps = overrides => ({
@@ -82,6 +83,13 @@ describe('proliferatingZFlow', () => {
   it('无需抉择时会组装摸牌、状态动画并要求继续队列', () => {
     const card = makeZoneCard('B1', 0);
     const playersAfter = [makePlayer({ name: '你', hp: 9 }), makePlayer({ name: '艾伦' })];
+    const hpLoss = {
+      seq: 1,
+      type: 'HP_LOSS',
+      target: 0,
+      from: { hp: 10, san: 10, isDead: false },
+      to: { hp: 9, san: 10, isDead: false },
+    };
     const deps = baseDeps({
       playerDrawCard: vi.fn(() => ({
         P: playersAfter,
@@ -89,9 +97,12 @@ describe('proliferatingZFlow', () => {
         Disc: [card],
         drawnCard: card,
         effectMsgs: ['你 失去 1 HP'],
-        statePatch: {},
+        statePatch: {
+          _statEvents: [hpLoss],
+          _statEventSeq: 1,
+          _visualEvents: [createStatEventsEvent({ statEvents: [hpLoss], msgs: ['你 失去 1 HP'] })],
+        },
       })),
-      buildAnimQueue: () => [{ type: 'HP_DAMAGE', hitIndices: [0] }],
     });
 
     const flow = buildProliferatingZDrawFlow(makeState(), deps);
@@ -100,5 +111,28 @@ describe('proliferatingZFlow', () => {
     expect(flow.queue.map(step => step.type)).toEqual(['DRAW_CARD', 'HP_DAMAGE', 'STATE_PATCH']);
     expect(flow.state.phase).toBe('ACTION');
     expect(flow.state.log.at(-1)).toBe('你 失去 1 HP');
+  });
+
+  it('增殖摸牌在移出牌堆前进入烛九阴决策', () => {
+    const litCard = makeZoneCard('A1', 0, { id: 'proliferating-zhu-lit' });
+    const players = [
+      makePlayer({ name: '你', godName: 'ZHU', godLevel: 3 }),
+      makePlayer({ name: '艾伦' }),
+    ];
+    const deps = baseDeps({ playerDrawCard: vi.fn() });
+    const flow = buildProliferatingZDrawFlow(makeState({
+      players,
+      deck: [litCard],
+      zhuLight: { ownerIdx: 0, level: 3, cardIds: [litCard.id], lightNonce: 1 },
+    }), deps);
+
+    expect(deps.playerDrawCard).not.toHaveBeenCalled();
+    expect(flow.action).toBe('setState');
+    expect(flow.state.phase).toBe('ZHU_HIDE_AI_DRAW');
+    expect(flow.state.abilityData.zhuDecision).toMatchObject({
+      drawerIdx: 0,
+      cardId: litCard.id,
+      source: 'proliferatingZ',
+    });
   });
 });

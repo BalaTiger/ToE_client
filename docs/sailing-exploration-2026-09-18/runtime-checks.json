@@ -1,0 +1,177 @@
+{
+  "viewports": [
+    {
+      "board": {
+        "bottom": 1000,
+        "height": 1000,
+        "left": 0,
+        "right": 1600,
+        "top": 0,
+        "width": 1600,
+        "x": 0,
+        "y": 0
+      },
+      "mask": "url(\"http://127.0.0.1:5180/img/ui/coastal/self-sidebar-neutral-rail.webp\")",
+      "origin": "800px 320px",
+      "pageScroll": [
+        1000,
+        1000
+      ],
+      "rootScroll": [
+        1000,
+        1000
+      ],
+      "size": [
+        1600,
+        1000
+      ]
+    },
+    {
+      "origin": "950px 289.061px",
+      "pageScroll": [
+        1000,
+        1000
+      ],
+      "rootScroll": [
+        1000,
+        1000
+      ],
+      "size": [
+        1900,
+        1000
+      ],
+      "sprayChildren": 10
+    },
+    {
+      "origin": "370.5px 112.734px",
+      "pageScroll": [
+        390,
+        390
+      ],
+      "root": {
+        "bottom": 390,
+        "height": 390,
+        "left": 51.5,
+        "right": 792.5,
+        "top": 0,
+        "width": 741,
+        "x": 51.5,
+        "y": 0
+      },
+      "rootScroll": [
+        390,
+        390
+      ],
+      "size": [
+        844,
+        390
+      ],
+      "wet": [
+        {
+          "display": "block",
+          "surface": "torch"
+        },
+        {
+          "display": "flex",
+          "surface": "panel"
+        }
+      ]
+    }
+  ],
+  "pause": {
+    "first": {
+      "flame": "false",
+      "overlayChildren": 1,
+      "spray": "paused",
+      "wet": [
+        "0.77882",
+        "0.77882"
+      ]
+    },
+    "second": {
+      "spray": "paused",
+      "wet": [
+        "0.77882",
+        "0.77882"
+      ]
+    }
+  },
+  "animationSamples": [
+    {
+      "camera": "matrix(1.10792, 0, 0, 1.10792, 0, 0)",
+      "sprayOpacity": "0.857117",
+      "wet": [
+        {
+          "opacity": "0",
+          "type": "torch"
+        },
+        {
+          "opacity": "0",
+          "type": "panel"
+        }
+      ]
+    },
+    {
+      "camera": "matrix(1.11157, 0, 0, 1.11157, 0, 0)",
+      "sprayOpacity": "0.775795",
+      "wet": [
+        {
+          "opacity": "0",
+          "type": "torch"
+        },
+        {
+          "opacity": "0",
+          "type": "panel"
+        }
+      ]
+    },
+    {
+      "camera": "matrix(1.14377, 0, 0, 1.14377, 0, 0)",
+      "sprayOpacity": "0.715006",
+      "wet": [
+        {
+          "opacity": "0.0540497",
+          "type": "torch"
+        },
+        {
+          "opacity": "0.0540497",
+          "type": "panel"
+        }
+      ]
+    },
+    {
+      "camera": "matrix(1.1596, 0, 0, 1.1596, 0, 0)",
+      "sprayOpacity": "0.633726",
+      "wet": [
+        {
+          "opacity": "0.468745",
+          "type": "torch"
+        },
+        {
+          "opacity": "0.468745",
+          "type": "panel"
+        }
+      ]
+    },
+    {
+      "camera": "matrix(1.1764, 0, 0, 1.1764, 0, 0)",
+      "sprayOpacity": "0.564497",
+      "wet": [
+        {
+          "opacity": "0.779516",
+          "type": "torch"
+        },
+        {
+          "opacity": "0.779516",
+          "type": "panel"
+        }
+      ]
+    }
+  ],
+  "nonSea": {
+    "spray": 0,
+    "wet": 0,
+    "motion": "toeDrawBackgroundWalk"
+  },
+  "method": "Real components in development gallery, browser viewport checks; not physical-phone FPS profiling."
+}

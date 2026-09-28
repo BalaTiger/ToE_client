@@ -1,0 +1,29 @@
+{
+  "date": "2026-09-15",
+  "tool": "Built-in image_gen",
+  "intent": "generate",
+  "reference": "public/img/btn/btn_dark_green.webp",
+  "generatedSource": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-0b5f261a-eb8d-4b06-ab01-7534f7aba194.png",
+  "prompt": "Create ONE production bitmap for a nine-slice gothic card-game information panel, using supplied original game panel as visual style reference. Landscape 3:1 canvas. FULLY OPAQUE image, with no transparency, no checkerboard, and no background outside the panel. The rectangular panel fills every pixel of the canvas; all four outermost edges are dark bronze metal rails reaching the exact image boundaries. Thin realistic tarnished brass and blackened iron double border, subtle restrained corner etching, matte worn texture, muted old gold highlights, serious cosmic horror aesthetic, not cartoon. Four small squared corner ornaments each contained in a square patch at the corner. All four middle straight rail sections are uniform and stretchable, no center emblems or bumps. Central region must be a completely blank near-black charcoal surface with very subtle gray grunge, no icons or words. Border about 4 percent of image height, corner patches about 18 percent of image height. No large protrusions, no characters, no letters, no symbols, no circles, no vignette fade at outside edges, no perspective, no cast shadow, no blank padding around frame. Straight-on rectangular solid-panel atlas designed for CSS border-image nine-slicing. Preserve the reference's restrained slim border and weathered dark material, not its original square proportions. This is only one frame; color tints and contents will be added by the game separately.",
+  "assets": [
+    {
+      "path": "public/img/ui/start/role-panel-9slice.webp",
+      "size": [
+        768,
+        256
+      ],
+      "processing": "Proportional resize from 2172×724, WebP quality 90",
+      "slice": 40,
+      "borderWidth": 12,
+      "fill": false
+    },
+    {
+      "path": "public/img/ui/start/role-panel-surface.webp",
+      "size": [
+        256,
+        128
+      ],
+      "processing": "Center crop of resized atlas at x=240,y=64, WebP quality 86; repeated beneath per-role CSS tint"
+    }
+  ]
+}

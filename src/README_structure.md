@@ -1,295 +1,394 @@
-# 邪神的宝藏 - 前端结构说明
+# Frontend Structure And Refactor Status
 
-本文档用于说明 `src/` 目录当前的职责划分。后续每次拆分 `App.jsx` 时，都应同步更新这里，避免代码边界和文档描述脱节。
+This is the current source of truth for `src/` module boundaries. Historical split plans have been folded into this file so future refactors do not have to reconcile multiple stale documents.
 
-## 当前目标
+## Current Goal
 
-当前前端的拆分方向是：
+Keep `App.jsx` as the top-level game shell while continuing to move independent logic into smaller modules:
 
-- `App.jsx` 只保留：
-  - React 组件与页面结构
-  - 全局状态机与回合推进
-  - 动画播放与实时日志桥接
-  - 联机同步入口与本地交互桥接
-- 其余独立性较强的逻辑逐步拆到：
-  - 静态卡牌数据
-  - 规则纯函数
-  - AI 决策
-  - 开局生成
-  - 多人视角旋转
-  - 日志编排辅助
+- pure data -> `constants/`
+- pure rules and state transforms -> `game/`
+- standalone sound-sequence lifecycles -> `audio/`
+- reusable React hooks -> `hooks/`
+- multiplayer socket/session glue -> `multiplayer/`
+- render-only UI -> `components/`
+- generic runtime helpers -> `utils/`
 
-## 目录结构
+## Directory Map
 
 ```text
 src/
-├─ App.jsx              # 游戏主入口，维护全局状态、动画队列、UI渲染
-├─ App.css              # 游戏界面样式
-├─ index.css            # 全局基础样式
-├─ main.jsx             # React挂载入口
-├─ README_structure.md  # 本文档
-├─ assets/              # 静态资源目录
+├─ App.jsx                  # top-level game component and screen composition
+├─ App.css                  # legacy app-level styles
+├─ index.css                # global base styles
+├─ main.jsx                 # React mount entry
+├─ README_structure.md      # this document
+├─ assets/                  # bundled static assets
+├─ audio/                   # standalone sound-sequence timing and cleanup controllers
 ├─ components/
-│  ├─ cards/            # 阶段2.1：卡牌渲染组件
-│  │  └─ index.jsx      # DDCard, GodDDCard, DDCardBack, GodCardDisplay, Tooltip, OctopusSVG
-│  └─ start/
-│     └─ StartScreen.jsx # 首页主界面视觉组件（开始页主体）
-├─ hooks/
-│  ├─ useResourcePreload.js  # 启动资源预加载与缓存版本控制
-│  ├─ useMultiplayerLobby.js # 联机大厅/房间/改名/Toast 状态与交互
-│  └─ useAnimationQueue.js   # 动画队列推进、pendingGs 落地、出队时序控制
-├─ constants/
-│  └─ card.js           # 卡牌静态数据、身份常量、颜色配置
-├─ game/                # 游戏逻辑纯函数（无React依赖）
-│  ├─ index.js          # 桶文件，统一导出game下所有模块
-│  ├─ ai.js            # AI决策策略、评分器、目标选择
-│  ├─ animLogs.js      # 动画日志编排辅助函数
-│  ├─ animQueueCore.js # 动画队列核心纯函数（状态差分 -> 动画步骤）
-│  ├─ animQueueHelpers.js  # 动画队列外围辅助函数
-│  ├─ coreUtils.js     # 洗牌、拷贝、区域牌判断等规则工具
-│  ├─ rotateState.js   # 联机视角旋转、seat语义判断
-│  ├─ setup.js         # 开局生成：mkDeck, mkRoles
-│  └─ turnAnimState.js # 回合开场动画状态/本地抽牌队列辅助
-├─ styles/              # 样式目录
-└─ utils/               # 工具函数目录
+│  ├─ anim/                 # animation overlays and animation CSS snippets
+│  ├─ board/                # player panels, piles, stat bars, board widgets
+│  ├─ cards/                # card faces, card backs, hover tooltip helpers
+│  ├─ lobby/                # lobby, room, privacy, tutorial intro, debug controls
+│  ├─ log/                  # battle log panel
+│  ├─ modals/               # game decision modals and informational modals
+│  ├─ phase/                # battle phase bar
+│  ├─ start/                # start screen
+│  ├─ theme/                # theme ornament components
+│  ├─ tutorial/             # in-game tutorial and soft guide overlays
+│  └─ ui/                   # small reusable UI pieces
+├─ constants/               # card data, theme data, flavor text
+├─ game/                    # pure game logic and tested state helpers
+├─ hooks/                   # React hooks for app subsystems
+├─ multiplayer/             # socket connection, handlers, state broadcast, UI session hooks
+└─ utils/                   # runtime config, DOM, scale, socket loader
 ```
 
-## 模块职责
+## Live log presentation boundary
+
+The existing turn-flow manager selects the rule stage. Rules produce visual events with turn ownership and a separate settlement transcript. During play, only event/animation message payloads feed the live log; `state.log` is not a live-log cursor or a source of inferred events.
+
+- `game/visualEventLogs.js` assigns message occurrence identities. Playback consumes each identity once, while preserving equal text from distinct events.
+- `hooks/useAnimationQueue.js` reveals messages when their step begins, or at its configured impact cue. Queue completion and idle state updates never restore the full transcript.
+- `restoreVisibleLog` is restricted to initial history, explicit restoration/tutorial setup, and final settlement. New-game history uses `_initialLog` captured before the first turn is resolved.
+- Rule `LOG_ONLY` events carry notices with no animation and still pass through the queue. Multiplayer buffers these packets in arrival order.
+- Canonical event queues bypass legacy log-bucket attachment. Historical replay adapters remain for snapshots without staged events; do not use them for new producers.
+- `auditVisualEventLogCoverage` is a read-only audit of one ordered transaction against its rule-log delta. It reports missing/extra occurrences and ordering differences; it must not repair events or drive playback.
+
+## Major Modules
 
 ### `App.jsx`
 
-当前仍然是前端主文件，但职责已经收缩到以下几类：
+Still owns:
+
+- top-level `gs` state and screen branches
+- battle action handlers and turn-flow orchestration
+- tutorial controller glue
+- animation queue construction and React-state bridges around the extracted queue runtime
+- multiplayer authority and broadcast bridges around local actions
+- battle-screen prop composition and remaining decision overlays
+- some global styles
+
+Do not add pure data, pure rules, or standalone AI strategy here.
+
+### `game/`
+
+Pure logic modules with no React dependency. Important files include:
+
+- `coreUtils.js` - shared rules, card predicates, player copying, card log text
+- `setup.js` - deck, roles, and initial game construction helpers
+- `turnEngine.js` - turn start, draw, god encounter, and turn flow helpers
+- `RULES.md` - normative turn phases, event priority, interruption, and state-snapshot semantics
+- `turnFlowStages.js` / `turnStartEvents.js` / `endTurnEvents.js` - shared phase names and player/AI event registries
+- `ai.js` / `aiTurn.js` - AI choices and AI turn resolution
+- `AI_STRATEGY.md` / `aiPolicy.js` - observation, isolated rule previews, faction scoring, and AI decision adapters
+- `aiTurnPresentation.js` / `aiDecisionState.js` - AI presentation queues, recovery, and decision-state helpers
+- `effectEngine.js` - zone/check card and public effect resolution
+- `balancePatches.js` / `balanceCards.js` - explicit balance-rule switches and card side effects
+- `caveDuel.js` - shared cave-duel choice and resolution rules used by player, AI, and takeover paths
+- `rotateState.js` - multiplayer seat rotation and local-seat semantics
+- `multiplayerRemoteReplay.js` / `multiplayerTimeouts.js` - replay construction and timeout transforms
+- `multiplayerAiTakeover.js` - deterministic disconnect-takeover decisions
+- `animQueueCore.js` / `animQueueHelpers.js` / `animLogs.js` - animation queue and animation-log helpers
+- `animationTiming.js` - shared duration/impact resolution and pause-resumable playback cue compilation
+- `animationStepSchema.js` - animation-step normalization and playback-boundary validation
+- `animationQueueMachine.js` - explicit idle/playing/exiting/paused/committing queue lifecycle
+- `visualEvents.js` - visual-event metadata used by animation and sync
+- `statEvents.js` - HP/SAN event compilation, combined-effect normalization, presentation baselines, impact updates, and continuity validation
+- `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
+
+When a rule helper can be expressed as input -> output without DOM or React state, prefer putting it here and testing it under `game/__tests__/`.
+
+### `hooks/`
+
+React state/effect modules that are reusable but still React-aware. Current examples:
+
+- `useAnimationQueue.js`
+- `useBattleResponsiveLayout.js`
+- `useGameAudio.js`
+- `useGamePreferences.js`
+- `useAiTurnController.js` / `useAiWatchdog.js`
+- `useDebugSettings.js`
+- `useMultiplayerLobby.js`
+- `useMultiplayerTimers.js`
+- `useResourcePreload.js`
+- animation effect hooks such as damage, card transfer, skill, earthquake, audio, visual discard sync
 
-- React UI 与弹窗渲染
-- 游戏状态 `gs` 的维护与推进
-- 动画队列与视觉特效
-- 实时日志与完整日志的同步桥接
-- 单机与联机的主流程调度
+### `multiplayer/`
 
-不应该继续往这里堆纯数据、纯规则工具或纯 AI 策略。
+Socket/session code that has been extracted from `App.jsx`:
 
-### `constants/card.js`
+- `useMultiplayerConnection.js` - runtime Socket.io loading and connection setup
+- `registerMultiplayerSocketHandlers.js` - socket event registration
+- `useMultiplayerStateBroadcast.js` - local state broadcast and game-end sync
+- `useMultiplayerUiSession.js` - waiting-room/in-match foreground reconnect and emoji sending
+- `multiplayerRemoteReplayExecutor.js` - validates, buffers, and applies relayed state snapshots to animation/runtime refs
 
-负责卡牌静态数据与常量定义，例如：
+`App.jsx` retains the authority check, seat rotation, socket emission, and thin wrappers that provide current React refs/actions to these modules.
 
-- 区域牌主数据
-- 邪神牌定义
-- 身份常量
-- 文案、颜色、基础配置
+### `audio/`
 
-当前区域牌主数据已经以“按编号分组的变体列表”为主，不再依赖旧的 `face/tag` 作为运行时主结构。
+Non-React controllers for sound sequences whose lifetime can outlive a visual animation:
 
-### `game/coreUtils.js`
+- `caveDuelSoundSequence.js` - background/result tracks, independent win/lose fades, timers, animation frames, and cleanup
 
-负责纯函数型规则工具，不依赖 React 状态，也不应依赖 DOM。
+Keep playback policy and timing tests here when a sequence has multiple tracks or detached cleanup. `useGameAudio.js` should own browser audio objects and registration, not duplicate the full timeline.
 
-当前包括：
+### `components/`
 
-- 洗牌、裁剪、玩家拷贝等基础工具
-- 区域牌正负中性 / 作用域判断
-- 手牌胜利条件判断
-- 日志中的卡牌文本格式化
-- 相邻存活角色索引等规则辅助
+Render-focused components. They should receive data and callbacks via props and avoid owning core game rules.
 
-适合放这里的函数特征是：
+Important extracted layers:
 
-- 输入明确
-- 输出明确
-- 无副作用
-- 与 UI 无直接关系
+- `cards/` - `DDCard`, `GodDDCard`, `DDCardBack`, `GodCardDisplay`, tooltip helpers, animated card backs
+- `modals/` - decision and information modals
+- `board/` - player panels, piles, stat widgets
+- `anim/` - animation overlays and global animation layer
+- `lobby/` - room/lobby/debug/tutorial intro controls
+- `start/` - start screen
 
-### `game/ai.js`
+## Completed Refactor Areas
 
-负责 AI 的纯策略与选择逻辑。
+- card and god static data -> `constants/card.js`
+- theme data -> `constants/theme.js`
+- pure rules and state helpers -> `game/`
+- AI strategy and AI turn flow -> `game/ai.js`, `game/aiTurn.js`
+- state rotation and local-seat helpers -> `game/rotateState.js`
+- animation queue helpers -> `game/animQueueCore.js`, `game/animQueueHelpers.js`, `game/animLogs.js`
+- turn start animation state -> `game/turnAnimState.js`
+- remote replay and visual-event helpers -> `game/multiplayerRemoteReplay.js`, `game/visualEvents.js`
+- most rendering components -> `components/`
+- resource preload -> `hooks/useResourcePreload.js`
+- lobby/room state -> `hooks/useMultiplayerLobby.js`
+- timers -> `hooks/useMultiplayerTimers.js`
+- animation queue runtime -> `hooks/useAnimationQueue.js`
+- HP/SAN presentation transactions -> `game/statEvents.js` + `hooks/useAnimationQueue.js`
+- socket connection and several multiplayer side effects -> `src/multiplayer/`
+- multiplayer remote replay execution -> `src/multiplayer/multiplayerRemoteReplayExecutor.js`
+- multiplayer disconnect takeover decisions -> `src/game/multiplayerAiTakeover.js`
+- AI turn execution watchdog/controller -> `src/hooks/useAiTurnController.js`, `src/hooks/useAiWatchdog.js`
+- AI presentation and recovery transforms -> `src/game/aiTurnPresentation.js`
+- user preferences persistence -> `src/hooks/useGamePreferences.js`
+- cave-duel rules and blind-choice policy -> `src/game/caveDuel.js`
+- detached cave-duel audio timeline -> `src/audio/caveDuelSoundSequence.js`
+- end-turn transition decision (`endTurn()` dispatch) -> `src/game/endTurnFlow.js`
+- post-discard end-turn transition wrapper (`confirmDiscard` / `autoDiscardFromRight`) -> `src/game/postDiscardEndTurn.js`
+- hand-limit discard helpers (`splitKeptDestroyedDiscarded`, `discardCardsFromHand*`, `applyHandDiscardSideEffectsWithAnim`) -> `src/game/handLimitDiscard.js`
+- rest action end-turn transition wrapper (`doRest`) -> `src/game/restTurnFlow.js`
+- target-action continuation state/routing -> `src/game/targetContinuation.js`
+- battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
+- UI appearance preference and asset/layout registry -> `ui/UiAppearance.jsx`, `ui/appearances.js` (usage in `ui/README.md`). 遗迹航路 (`coastal`) is the only shipped layout; removed or unknown IDs fall back to it. The provider, selector, preference storage, asset variables and optional `appearance.BattleLayout` component override remain available for new compositions. `CoastalBattleLayout.jsx` composes the live regions; `CoastalOpponents` and `OpponentRoster` arrange full/compact opponent panels. These components never own HP/SAN or turn state; `logRef` stays on the scrolling log content. Expansion backgrounds, card backs, colors and exploration cameras remain selected by `expansionKey` in `constants/theme.js`, independently of layout.
 
-当前包括：
+## Remaining High-Value Refactor Targets
 
-- 是否收入区域牌
-- 亮牌选择
-- 猎人夺牌选择
-- `先到先得` 选牌
-- `玫瑰倒刺` 目标选择
-- 区域牌评分器
+### 1. Battle Actions / Turn Flow
 
-这里应只放“AI 怎么判断”的逻辑，不放动画、日志、状态落地。
+Largest remaining block in `App.jsx`. The `endTurn()` dispatch decision has moved to `src/game/endTurnFlow.js`; the post-discard transition wrapper has moved to `src/game/postDiscardEndTurn.js`; hand-limit discard helpers have moved to `src/game/handLimitDiscard.js`; the rest action wrapper has moved to `src/game/restTurnFlow.js`. The battle screen JSX has moved to `src/components/battle/BattleScreen.jsx`. Remaining parts include draw decisions, target selection, skills, god choices, and replay/broadcast bridges around local actions.
 
-### `game/setup.js`
+Risk: high. It shares refs, tutorial gates, animation queues, multiplayer sync, and pending state. Extract in small slices with tests.
 
-负责开局生成相关的纯逻辑。
+Suggested next slices:
 
-当前包括：
+- replay/broadcast bridges around the extracted target-action continuation flow
+- draw/god-choice decision handlers
+- small pure helpers still nested inside action handlers
 
-- `mkDeck()`：生成初始牌堆
-- `mkRoles()`：生成初始身份顺序
+### 2. Tutorial Controller
 
-后续如果继续收缩 `App.jsx`，与"构建初始对局状态"强相关、但又不依赖 UI 的逻辑，也可以继续往这里移动。
+The scripted tutorial uses the same canonical visual events, strict queue validation and `useAnimationQueue` playback/commit boundary as normal matches. There is no tutorial-only unbounded animation duration, component `onSettled` callback or split-and-resume inspection tail. Teaching pauses occur only between committed actions: queued movement, inspection, stat changes and income finish normally before the next explanation appears. Tutorial scenario/action permissions remain in `game/tutorialScenario.js`; `InGameTutorialOverlay` and `useTutorialHighlightMeasurements` target the live sidebar, cards, pile counters and status/skull anchors of 遗迹航路. Numeric legacy tutorial steps and their separate overlay are retired.
 
-### `game/index.js`
+Tutorial step transitions still share action-handler glue in `App.jsx`. Risk: medium. Further extraction must preserve committed-action boundaries and animation-owned presentation state.
 
-游戏逻辑模块的统一导出入口（桶文件）。
+### 3. Additional Audio Sequences
+
+`useGameAudio.js` still contains several multi-track timelines such as volcano, semi-materialization, burrowing worm, snake trap, and black goat movement. Use the cave-duel controller as the extraction pattern, but wait for a second concrete sequence before introducing a generic framework.
 
-当前导出：
+Risk: medium. Preserve detached lifetimes and cleanup semantics.
+
+### 4. Battle Screen Composition
 
-- `coreUtils` 的所有导出
-- `ai` 的所有导出
-- `setup` 的所有导出
-
-App.jsx 通过 `import { xxx } from './game'` 统一导入，便于扩展和维护。
-
-负责联机视角旋转与“本地 seat 语义”相关 helper。
-
-当前包括：
-
-- `rotateGsForViewer(...)`
-- `derotateGs(...)`
-- 本地 seat / AI seat 判断
-- 本地行动者 / 本地响应者 / 本地目标判断
-- 本地显示名 helper
-
-这部分的目标是把：
-
-- `0/非0` 的硬编码
-- 本地玩家/联机玩家的视角映射
-
-从 `App.jsx` 中逐步抽离出来。
-
-### `game/animLogs.js`
-
-负责动画日志编排的纯辅助函数。
-
-当前包括：
-
-- 日志类型判断
-- 日志切片与分桶
-- 显式日志片段绑定
-- 回合切换日志切分
-- `prepareAnimQueueLogs(...)`
-
-这里主要承接“日志如何跟动画步骤对齐”的纯逻辑。真正依赖 React ref、组件状态的那层仍保留在 `App.jsx`。
-
-### `game/animQueueHelpers.js`
-
-负责动画队列外围的纯辅助函数。
-
-当前包括：
-
-- 回合高亮的队列步骤解析
-- 蛊惑后被赠牌角色的后续队列构造
-- SAN 检定牌翻牌队列构造
-- 检定前后状态之间的动画流拼装
-
-这部分和动画系统关系很近，但本身不依赖 React state、ref 或 DOM，因此适合从 `App.jsx` 中独立出来。
-
-## 当前已完成的拆分
-
-截至目前，已经从 `App.jsx` 拆出的主要内容有：
-
-- 区域牌/邪神牌静态数据 -> `constants/card.js`
-- 规则纯函数 -> `game/coreUtils.js`
-- AI 策略与评分器 -> `game/ai.js`
-- 开局生成 -> `game/setup.js`
-- 动画队列核心纯函数 -> `game/animQueueCore.js`
-- 回合开场动画状态辅助 -> `game/turnAnimState.js`
-- 联机视角旋转与 seat helper -> `game/rotateState.js`
-- 动画日志辅助 -> `game/animLogs.js`
-- 动画队列外围辅助 -> `game/animQueueHelpers.js`
-- 卡牌渲染组件 -> `components/cards/` (阶段 2.1)
-- 首页主界面视觉组件 -> `components/start/StartScreen.jsx`
-- 资源预加载 -> `hooks/useResourcePreload.js`
-- 联机大厅与房间交互 -> `hooks/useMultiplayerLobby.js`
-- 动画队列推进与时序控制 -> `hooks/useAnimationQueue.js`
-- 桌面布局组件（已开始） -> `components/board/`：`HoundsTimerBadge`、`StatBar`、`DiscardPile`
-
-### `components/cards/index.jsx`
-
-负责基础卡牌 UI 渲染，是全应用最高频复用的组件层。
-
-当前包括：
-
-- `DDCard`：区域牌卡片组件（支持普通牌、空白牌、玫瑰倒刺标记）
-- `GodDDCard`：邪神牌卡片组件
-- `DDCardBack`：牌背面组件
-- `GodCardDisplay`：邪神牌展示组件
-- `GodTooltip`：邪神牌悬浮提示
-- `AreaTooltip`：区域牌悬浮提示
-- `OctopusSVG`：八爪鱼装饰 SVG
-- `useCardHoverTooltip`：卡牌悬浮提示 Hook
-
-特点：
-- 完全独立，无 React 状态依赖
-- 通过 props 接收数据和回调
-- 可直接复用或替换样式
-
-## 当前仍留在 `App.jsx`、后续可继续拆分的重点
-
-### 阶段 2.2：交互模态框与面板 (Modals & Modifiers)
-
-待拆分组件：
-- `GodChoiceModal`、`NyaBorrowModal`、`DrawRevealModal`
-- `TreasureDodgeModal`、`PeekHandModal`、`TortoiseOracleModal`
-- `AboutModal`、`FullLogModal`、`RoadmapModal`
-
-目标路径：`components/modals/`
-
-### 阶段 2.3：玩家面板及桌面布局 (Board Layer)
-
-待拆分组件：
-- `PlayerPanel`、`PileDisplay`、`DiscardPile`、`DeckPile`
-- `InspectionPile`、`HoundsTimerBadge`、`StatBar`
-
-目标路径：`components/board/`
-
-### 阶段 2.4：复杂动画节点 (Animations & Overlays)
-
-待拆分组件：
-- `FlowerBloom`、`CardFlipAnim`、`KnifeEffect`、`DiscardMoveOverlay`
-- `CardTransferOverlay`、`GenericAnimOverlay`、`DiceRollAnim`、`YourTurnAnim`
-- `GuillotineAnim`、`SanMistOverlay`、`HealCrossEffect`、`CaveDuelAnim`
-- `BewitchEyeOverlay`、`HuntScopeOverlay`、`SwapCupOverlay` 等
-
-目标路径：`components/anim/`
-
-### 效果结算主链（长期）
-
-- `applyFx(...)`
-- 邪神结算相关主链
-
-长期更适合拆成独立的 effect engine。
-
-### 实时日志与动画的最终桥接层
-
-虽然纯 helper 已经拆到 `animLogs.js`，但：
-
-- `visibleLogRef`
-- `revealAnimLogs(...)`
-- `advanceQueue(...)`
-
-仍在 `App.jsx`，这是合理的中间状态。
-
-## 后续拆分原则
-
-后续继续拆分时，建议遵循这些规则：
-
-1. 纯数据放 `constants/`
-2. 纯规则函数放 `game/coreUtils.js`
-3. 纯 AI 决策放 `game/ai.js`
-4. 开局构建放 `game/setup.js`
-5. 联机 seat / 视角映射放 `game/rotateState.js`
-6. 动画日志纯辅助放 `game/animLogs.js`
-7. UI 组件按层级拆分到 `components/cards/`、`components/modals/`、`components/board/`、`components/anim/`
-8. 只有真正依赖 React 状态、组件上下文或 DOM 的逻辑，才继续留在 `App.jsx`
-
-## 维护要求
-
-每次发生以下情况时，都要同步更新本文档：
-
-- 新增一个拆分模块
-- 某类职责从 `App.jsx` 移出
-- 某个模块边界发生调整
-- 原有模块职责出现扩展或收缩
-
-这样可以确保：
-
-- 后续拆分有连续性
-- 回看历史时能快速理解模块边界
-- 不会出现“代码已经拆了，但文档还是旧结构”的情况
+The main sections have moved out of `BattleScreen.jsx`. Remaining work should focus on reducing prop volume and separating decision-overlay groups without changing z-index or pointer-event behavior.
+
+Risk: medium.
+
+### 5. Global Styles
+
+`GLOBAL_STYLES` can move to a stylesheet or style module.
+
+Risk: low-medium. Verify animation names and global CSS variables after moving.
+
+## Testing Priorities
+
+When changing extracted logic, prefer focused tests first:
+
+- turn order and draw/god encounter flow
+- animation queue ordering around bewitch, inspection, card transfer, and deaths
+- Zhu hidden-card interception and resumed draws
+- CTH rest draws and remaining-draw continuation
+- multiplayer state broadcast, socket handler registration, and timeout decisions
+- multiplayer replay execution, buffering, and disconnect takeover phase matrices
+- detached audio timing and cleanup behavior
+
+Then run `npm.cmd run build` for integration confidence.
+
+## Visual Event Transaction Boundary
+
+Rule resolution owns canonical `_visualEvents`; React entry points must not recreate turn-start, draw, target, inspection, or stat events from a post-resolution snapshot. `startNextTurn` now emits its turn-start/draw/stat events directly, and `visualEventTransactionCompiler.js` assigns a stable transaction ID, preserves event order as one atomic queue block, and validates required sequences such as throw-stone dice -> target -> projectile -> damage.
+
+`useAnimationQueue` is the confirmation boundary. A visual event ID enters the client-local consumed set only after its queue reaches commit; multiplayer receive/broadcast paths must not mark an event consumed merely because it was sent, received, or queued. Legacy `_xxxEvents` promotion and `buildAnimQueue(oldGs, newGs)` have been removed: rule producers must emit canonical `_visualEvents`, and presentation code compiles only those explicit events.
+
+The state-diff retirement guard in `scripts/check-animation-transactions.mjs` rejects `buildAnimQueue`, inspection-aware replay, hand-delta/log/terminal inference, legacy event promotion, caller-side legacy filtering, and `legacyMerge`. New rule producers should use payload-complete `CARD_MOVE`, `CARD_REVEAL`, or `DICE_RESULT` events when no existing domain event fits. In tests, every fresh canonical event must compile to at least one owned animation step; an unknown or incomplete event fails immediately instead of being silently left unconsumed.
+
+Terminal turn openings use the same canonical `TURN_START`, `DRAW_CARD`, and `STAT_EVENTS` transaction as nonterminal openings. No presentation path may reconstruct a banner or draw from `gameOver`, `currentTurn`, `_drawnCard`, or log snapshots. If a turn-opening rule consequence ends the game, the generic terminal boundary retains the causal event prefix and drops the continuation callback.
+
+A synchronously resolved slime extra draw of a god card attaches its encounter outcome to the canonical `DRAW_CARD` visual event instead of being reconstructed downstream: the rule layer records `godEncounter` (stat/inspection seqs + structured `discardedGod`), `startNextTurn` emits a canonical `GOD_GIFT_DISCARD` event and writes the owned ids back to `godEncounter.visualEventIds`, and `turnAnimState.js` interleaves those steps strictly by event id. Legacy draw/inspection/random-target/slime-grant snapshot arrays are no longer accepted as presentation inputs. See `docs/slime-god-encounter-anim-ownership.md`.
+
+Chained AI hunts are one ordered action transaction. `aiTurn.js` assigns the
+action events a shared `transactionId` and increasing `order`; presentation
+compiles the pre-hunt portion only through `_playersBeforeSkillAction`, then
+selects every canonical event owned by the hunt attempts and compiles that set
+in one transaction. A pending player reveal may append a queue-owned prompt,
+but it does not manufacture a rule event.
+Never compare the action start directly with the completed chained-hunt state,
+because that leaks later hunt discards into worship or other pre-hunt steps.
+Each hunt attempt also owns a stable `attemptId`/`phaseGroupId`. An Apophis
+target event is a sibling canonical event and exposes its id as
+`targetResolutionEventId`; inspection events reference it through
+`causedByEventId`, and `huntResult` references the same target event instead of
+embedding or recreating an Apophis payload. `_aiHuntEvents` contains only stable
+ownership ids and execution snapshots; hunt presentation never associates
+events through `legacySeq` or log text. The AI final boundary never calls the
+legacy final-state `mergeApophisTargetQueue`, leaving the transaction compiler
+as the only ordering authority.
+
+An AI hunt victory must return through the same presentation pack as a paused
+or completed hunt chain. The rule layer marks the final ordered action event
+as `terminalBoundary`, so earlier casualties cannot truncate subsequent hunts,
+immortality reveals, deaths, or loot before settlement.
+
+## Hand-Transfer Presentation Boundary
+
+Hand areas render from the animation-locked `visualPlayers` snapshot during queued playback, so a hand-affecting `CARD_TRANSFER`/`DISCARD` step must commit its after snapshot itself: pass `playersBefore`/`playersAfter` (and discard pairs) to `cardTransferStep`/`swapCardsSteps`/`fullHandSwapSteps`, which attach a stepStart `visualSetupPatch` plus a mid-flight `visualTimeline` commit. The after snapshot must be transfer-scoped (`deriveHandTransferSnapshot`), never the event-level `playersAfter`, which already contains later settlements (SAN loss, deaths) whose animations have not played yet. `validateHandTransferCommits` in `animationStepSchema.js` reports (DEV) any hand transfer with no mid-flight commit and no immediately following `STATE_PATCH`/`VISUAL_LOCK`; steps with a legitimate late commit (e.g. hunt loot) opt out explicitly via `deferHandCommit`.
+
+## HP/SAN Presentation Boundary
+`game/incomePresentation.js` adds local playback metadata after timing normalization.
+For a revealed card followed only by ordinary, nonfatal HP/SAN events on its recipient,
+the income flight starts with the first stat effect and spans the unchanged stat cues
+through the original hand-commit cue. `incomeFlight` is shared across those steps;
+the transfer hook creates one flight, retains it through queue pauses, and removes it
+when the queue leaves that span. It does not move events, hand snapshots, logs, or
+authoritative state. Inspection/reaction tails instead retain `incomeReveal` until
+the transfer, while inspection draws still take visual priority.
+
+Damage submitted through `effectEngine.submitLossEvents` returns one rule-owned
+result: `logs`, the original `statEvents`/`statEventSeq`, and `phase`/`abilityData`
+for any pending decision. `statEventLogs` is a copied input containing authored
+messages for this batch; reactions are collected privately and included in
+`result.logs`. The supplied `log` remains the final-settlement sink and receives
+reaction messages as before. Neither the visual compiler nor live-log playback
+may read that sink to recover missing messages.
+
+Consumers must preserve the returned events with `appendStatChangeResult` or
+`buildStatChangeStatePatch`, or give them to one explicit composite owner. Do not
+rebuild damage from final player snapshots: rope timelines and immortality reveal
+metadata are consumed when the original result is built. Do not register both a
+generic wrapper and a second stat wrapper for the same result. Composite draw,
+faith, and discard events own their announcements; damage events own the ensuing
+reactions. A decision pause must retain events for damage already applied.
+`statEventsToAnimQueue` also owns embedded immortality reveals, so composite
+hunt/card events and standalone stat events share the damage -> reveal ->
+recovery/death order without a second visual wrapper.
+Confirmed redirect chains use `deferPostDamageDecisions` only to preserve their
+existing loss/inspection order before the chain controller offers rope/slime
+decisions. Each completed damage batch still emits its original events immediately.
+
+Authoritative HP/SAN remain in `gs.players`, but battle stat bars render from
+`displayStats`. During an animation transaction:
+
+- `statEvents.js` primes each affected resource from the first event's `from` value;
+- only `HP_DAMAGE`, `SAN_DAMAGE`, `HP_HEAL`, and `SAN_HEAL` may advance that resource to `to`;
+- combined HP/SAN effects are split into the corresponding generic steps at the playback boundary;
+- explicit stat steps carry `statEvents` as their sole target-value representation; legacy-only `targetStats` steps are marked `legacyStatTarget` during normalization and cannot coexist with `statEvents`;
+- animation steps are normalized and schema-validated before playback, including timing, stat-write authority, special slime transactions, and unique IDs;
+- the queue lifecycle follows `idle -> playing -> exiting -> committing -> idle`; pause preserves and restores the prior phase, and cue delivery is phase-guarded;
+- generic `visualSetupPatch`, `visualTimeline`, `VISUAL_LOCK`, and `STATE_PATCH` player snapshots must not write `displayStats`;
+- `GUILLOTINE` and `PETRIFY_DEATH` are presentation-only and do not change stat bars;
+- `TSG_SLIME_POP` with `statPresentation` is the sole special path: it commits slime-balance HP/SAN on the slime animation impact without damage/heal effects;
+- queue completion or a truly idle state may reconcile `displayStats` to authoritative state.
+
+Keep the continuity invariant `previous.to === next.from` for sequential changes to
+the same resource. Add focused `statEvents` tests whenever introducing a new stat-changing
+animation path.
+
+## Reveal Decision Presentation Boundary
+
+### Deferred region-card income
+
+Every region card finishes its entire effect before entering the hand, including
+forced draws and bewitch gifts. `zoneCardIncome.js` stores the source card in
+`abilityData.pendingZoneIncome` while a choice/reaction is pending; its owner
+uses stable `player.id`, not a seat index. It survives target, rest-draw,
+inspection, etherealize and slime continuations. A replay of an existing hand
+card (`fromEndTurnReplay`) never creates a second income.
+
+`finishTargetContinuation` adds the card only when the effect returns to
+ACTION/AI_TURN (or terminates the game), appends its actual transfer and commit,
+then resumes any further draws. A dead owner sends the pending card to discard.
+Multiplayer publishes the complete effect/income queue as one transaction.
+Sequential burial uses transition-scoped coverage: historical `logOnly` events
+do not belong to the next burial, while newly omitted events still fail strict
+validation. AI sequential targets reuse the same confirmation handler.
+
+The pending source cannot pay costs, participate in choices, be gifted, or count
+toward a winning hand. 同归深渊 and 半物质化 use the hand before income;
+斯芬克斯 receives its source only after guessing, damage, dodge and reactions.
+The same contract applies to AI rule previews, timeout/disconnect takeover and
+headless simulation. A takeover must finish the outstanding decision, not clear
+its pending income. Presentation plays each draw's effects and income before the
+next draw; bewitch's initial transfer ends at the reveal area, not in the hand.
+
+`DRAW_REVEAL` and `GOD_CHOICE` remain rule-owned decision phases, held by the
+existing turn-flow manager. Their UI now lives in `CardRevealDecisionLayer`
+under `GlobalAnimLayer`, outside board zoom. `BattleDecisionModals` no longer
+renders separate area-exploration or god-choice panels.
+
+- `DRAW_CARD` completes normally without input. Eligible local region-card decision
+  buttons appear 850 ms after the central rise/spin starts, before the card settles.
+  A click can finish only that active reveal step through `useAnimationQueue`;
+  encounter inspection/stat tails still run and commit normally. Never leave an
+  active animation step waiting for a click: this would block decision transactions
+  and multiplayer replay. Paused playback, inspection draws, custom cues/callbacks
+  and hidden/travel-only draws keep their existing timing. Scripted tutorials use
+  the same reveal timing and early-finish eligibility; teaching permissions may
+  restrict the available actions without suspending an animation step.
+- God-card decisions do not accept early choices or shorten the reveal. Their
+  buttons appear only after the reveal, encounter SAN loss and any resulting
+  inspections/reactions finish and the pending decision state commits.
+- The reveal host preserves the playback key and `CardFlipAnim` final frame.
+  `settled` stops one-shot effects without replaying the rise/spin. During
+  subsequent stat effects only the card remains, so its backdrop cannot hide
+  the affected player panels. Restored snapshots can render a settled card
+  without replay history.
+- Early region-card `RevealDecisionActions` uses the pending decision for its button preview.
+  `CardRevealDecisionLayer` saves only the selected action name and reveal identity;
+  it invokes the latest existing handler after pending state commits and submission
+  unlocks. Revalidate ownership, card identity and button permissions before dispatch;
+  changed decisions cancel the saved choice. A click lock and playback identity
+  invalidation prevent duplicate dispatch and stale timer advancement. Normal settled
+  decisions, tutorial restrictions and multiplayer waiting states are reused.
+  Submission removes the held card before transfer/discard playback.
+- `getCardRevealMetrics` supplies both the responsive frame and flight fallback;
+  `captureDecisionCardAnchors` records the displayed face before pointer/keyboard
+  decisions, including restored snapshots and resize. Blind-zone concealment
+  persists while waiting. Hidden draws, forced keeps and other decisions keep
+  their existing behavior.
+- `CardFlipAnim` captures each revealed card's viewport frame and spin in layout
+  cleanup before its DOM is removed, including AI reveals without decision UI.
+  Income flights consume that local card-identity snapshot in a layout effect,
+  so no empty paint separates reveal and transfer. Intervening inspections do
+  not replace the source card's snapshot; game/animation reset clears the cache.
+  These screen coordinates never enter synchronized rule events.
+
+## Maintenance Rule
+
+Update this file whenever a responsibility moves out of `App.jsx`, a module boundary changes, or a refactor plan changes. Avoid creating new long-lived plan documents unless they are clearly temporary and linked from here.

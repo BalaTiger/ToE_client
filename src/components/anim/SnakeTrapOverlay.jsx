@@ -366,7 +366,7 @@ function drawPolarImpactBursts(ctx, white, burst) {
   }
 }
 
-function drawBiteSpeedLines(ctx, white) {
+function drawBiteSpeedLines(ctx) {
   ctx.save();
   ctx.restore();
 }
@@ -399,7 +399,7 @@ function drawBite(ctx, hit, time) {
     if (lineAlpha > 0) {
       ctx.save();
       ctx.globalAlpha *= lineAlpha;
-      drawBiteSpeedLines(ctx, white);
+      drawBiteSpeedLines(ctx);
       ctx.restore();
     }
   }
@@ -480,6 +480,9 @@ function SnakeTrapCanvas({ layout, rayAngles, exiting }) {
       cancelAnimationFrame(raf);
       window.removeEventListener('resize', resize);
     };
+  // Stable geometry keys deliberately control canvas reconstruction. Depending on
+  // the layout arrays themselves would restart the animation on every measurement.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     layout.center.x,
     layout.center.y,

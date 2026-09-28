@@ -1,14 +1,46 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ANIM_STEP_GAP } from '../components/anim/constants';
-import { _getZoomCompensatedRect, getGodChoiceAnchorCenter, getPileAnchorCenter, getPlayerAreaAnchorCenter, getPlayerGodPowerAnchorCenter, getPlayerHandAnchorCenter } from '../utils/dom';
+import { clearRevealCardAnchors, getGodChoiceCardAnchor, getPileCardAnchor, getPlayerAreaCardAnchor, getPlayerGodPowerAnchorCenter, getPlayerHandCardAnchor, getRevealCardAnchor } from '../utils/dom';
+
+export function resolveCardTransferFaceUp(transfer = {}, card = transfer.cards?.[0]) {
+  if (transfer.faceUp != null) return transfer.faceUp;
+  if (transfer.dest === 'discard') return true;
+  if (!card || card._back) return false;
+  if (transfer.dest !== 'player') return true;
+  return transfer.toPid === 0 || !!(card.isBlackGoatYoung || card.isTsathogguaSlime);
+}
+
+export function resolveCardTransferAnchors(transfer, card) {
+  const hand = getPlayerHandCardAnchor(transfer.fromPid ?? 0, card);
+  const source = ['reveal', 'drawReveal'].includes(transfer.sourceAnchor) ? getRevealCardAnchor(card)
+    : transfer.sourceAnchor === 'discard' ? getPileCardAnchor('[data-discard-pile]')
+    : transfer.sourceAnchor === 'deck' ? getPileCardAnchor('[data-deck-pile]')
+    : transfer.sourceAnchor === 'godPower' ? { ...hand, ...getPlayerGodPowerAnchorCenter(transfer.fromPid) }
+    : transfer.sourceAnchor === 'playerArea' ? getPlayerAreaCardAnchor(transfer.fromPid ?? 0, card, transfer.effect === 'draw')
+    : transfer.sourceAnchor === 'godChoice' ? getGodChoiceCardAnchor(card)
+    : hand;
+  const from = Number.isFinite(transfer.sourcePoint?.x) && Number.isFinite(transfer.sourcePoint?.y)
+    ? { ...source, ...transfer.sourcePoint } : source;
+  const destination = transfer.dest === 'discard' ? getPileCardAnchor('[data-discard-pile]')
+    : transfer.dest === 'reveal' ? getRevealCardAnchor()
+    : ['deck', 'deckTop', 'deckBottom'].includes(transfer.dest) ? getPileCardAnchor('[data-deck-pile]')
+    : transfer.dest === 'player' ? getPlayerHandCardAnchor(transfer.toPid ?? 0, card)
+    : getPlayerAreaCardAnchor(transfer.fromPid ?? 0);
+  const to = Number.isFinite(transfer.destPoint?.x) && Number.isFinite(transfer.destPoint?.y)
+    ? { ...destination, ...transfer.destPoint } : destination;
+  return { from, to };
+}
 
 export function useCardTransferAnimationEffects({ anim }) {
   const [cardTransfers, setCardTransfers] = useState([]);
   const [damageLinkEstablishAnims, setDamageLinkEstablishAnims] = useState([]);
   const cardTransferTimersRef = useRef(new Set());
   const damageLinkEstablishTimersRef = useRef(new Map());
+  const incomeFlightRef = useRef(null);
 
   const clearCardTransferAnimations = useCallback(() => {
+    clearRevealCardAnchors();
+    incomeFlightRef.current = null;
     cardTransferTimersRef.current.forEach(timer => clearTimeout(timer));
     cardTransferTimersRef.current.clear();
     damageLinkEstablishTimersRef.current.forEach(timer => clearTimeout(timer));
@@ -19,71 +51,49 @@ export function useCardTransferAnimationEffects({ anim }) {
 
   useEffect(() => clearCardTransferAnimations, [clearCardTransferAnimations]);
 
-  useEffect(() => {
-    if (!anim || anim.type !== 'CARD_TRANSFER') return;
-
-    const resolveSourcePos = (transfer) => {
-      if (transfer?.sourcePoint && Number.isFinite(transfer.sourcePoint.x) && Number.isFinite(transfer.sourcePoint.y)) {
-        return transfer.sourcePoint;
-      }
-      const transferFromPid = transfer?.fromPid;
-      const transferSourceAnchor = transfer?.sourceAnchor;
-      return transferSourceAnchor === 'godPower'
-        ? getPlayerGodPowerAnchorCenter(transferFromPid)
-        : transferSourceAnchor === 'playerArea'
-          ? getPlayerAreaAnchorCenter(transferFromPid)
-          : transferSourceAnchor === 'godChoice'
-            ? getGodChoiceAnchorCenter()
-            : getPlayerHandAnchorCenter(transferFromPid);
-    };
-
-    const resolveDestPos = (transfer, srcPos) => {
-      const transferDest = transfer?.dest;
-      if (transfer?.destPoint && Number.isFinite(transfer.destPoint.x) && Number.isFinite(transfer.destPoint.y)) {
-        return transfer.destPoint;
-      }
-      if (transferDest === 'discard') {
-        return getPileAnchorCenter(
-          '[data-discard-pile]',
-          { x: window.innerWidth * 0.45, y: window.innerHeight * 0.45 }
-        );
-      }
-      if (transferDest === 'deck' || transferDest === 'deckTop' || transferDest === 'deckBottom') {
-        const deckPos = getPileAnchorCenter(
-          '[data-deck-pile]',
-          { x: window.innerWidth * 0.94 - 35, y: window.innerHeight * 0.08 }
-        );
-        const deckOffset = transferDest === 'deckTop' ? -7 : transferDest === 'deckBottom' ? 7 : 0;
-        return { x: deckPos.x, y: deckPos.y + deckOffset };
-      }
-      if (transferDest === 'player') {
-        return getPlayerHandAnchorCenter(transfer?.toPid);
-      }
-      const srcPanelEl = document.querySelector(`[data-pid="${transfer?.fromPid}"]`);
-      const srcPanelRect = _getZoomCompensatedRect(srcPanelEl);
-      return {
-        x: srcPos.x,
-        y: srcPanelRect ? srcPanelRect.top + srcPanelRect.height * 0.25 : srcPos.y * 0.5,
-      };
-    };
+  useLayoutEffect(() => {
+    const incomeFlight = anim?.incomeFlight;
+    if (incomeFlightRef.current && incomeFlightRef.current !== incomeFlight) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- remove the completed queue-owned flight before paint
+      setCardTransfers(prev => prev.filter(transfer => !transfer.incomeFlight));
+      incomeFlightRef.current = null;
+    }
+    if (incomeFlight && incomeFlightRef.current === incomeFlight) return;
+    if (!incomeFlight && (!anim || anim.type !== 'CARD_TRANSFER')) return;
 
     const buildTransfer = (transfer, idx = 0) => {
-      const srcPos = resolveSourcePos(transfer);
-      const destPos = resolveDestPos(transfer, srcPos);
+      const paths = Array.from({ length: Math.max(1, transfer.count ?? 1) }, (_, cardIndex) => resolveCardTransferAnchors(transfer, transfer.cards?.[cardIndex]));
+      const { from: srcPos, to: destPos } = paths[0];
       const key = `${transfer?.fromPid ?? 'x'}-${transfer?.dest ?? 'x'}-${transfer?.toPid ?? 'x'}-${Date.now()}-${idx}`;
       return {
         srcX: srcPos.x,
         srcY: srcPos.y,
         destX: destPos.x,
         destY: destPos.y,
+        srcWidth: srcPos.width, destWidth: destPos.width,
+        srcRotation: srcPos.rotation, destRotation: destPos.rotation,
+        srcTilt: srcPos.tilt, destTilt: destPos.tilt,
+        srcProjection: srcPos.projection, destProjection: destPos.projection,
+        paths,
+        flightDurationMs: transfer.flightDurationMs,
         count: transfer?.count ?? 1,
         key,
         effect: transfer?.effect,
         cards: transfer?.cards,
+        keepFacing: transfer.dest === 'player',
+        // Resolve per card so public tokens do not reveal ordinary cards in a batch.
+        cardFaceUp: paths.map((_, cardIndex) => resolveCardTransferFaceUp(transfer, transfer.cards?.[cardIndex] ?? null)),
+        faceUp: resolveCardTransferFaceUp(transfer),
       };
     };
 
-    const { fromPid, dest, toPid, count, sourceAnchor, effect, cards } = anim;
+    if (incomeFlight) {
+      incomeFlightRef.current = incomeFlight;
+      setCardTransfers(prev => [...prev, { ...buildTransfer(incomeFlight), incomeFlight: true }]);
+      return;
+    }
+
+    const { fromPid, toPid, effect } = anim;
     let cancelled = false;
     let raf1 = 0;
     let raf2 = 0;
@@ -112,19 +122,15 @@ export function useCardTransferAnimationEffects({ anim }) {
       };
     }
 
-    schedule(() => {
+    // Layout effects run after the reveal's unmount snapshot and before paint.
+    // Starting here avoids two blank frames between the flip and income flight.
+    {
       const transfers = Array.isArray(anim.transfers) && anim.transfers.length
         ? anim.transfers.map((transfer, idx) => buildTransfer({
-          fromPid,
-          dest,
-          toPid,
-          count,
-          sourceAnchor,
-          effect,
-          cards,
+          ...anim,
           ...transfer,
         }, idx))
-        : [buildTransfer({ fromPid, dest, toPid, count, sourceAnchor, effect, cards })];
+        : [buildTransfer(anim)];
       const cleanupMs = Number.isFinite(anim.durationMs)
         ? anim.durationMs + ANIM_STEP_GAP + 100
         : effect === 'blackGoat' ? 1700 : effect === 'tsgSlime' ? 950 : 750;
@@ -135,7 +141,7 @@ export function useCardTransferAnimationEffects({ anim }) {
         cardTransferTimersRef.current.delete(timer);
       }, cleanupMs);
       cardTransferTimersRef.current.add(timer);
-    });
+    }
     return () => {
       cancelled = true;
       cancelAnimationFrame(raf1);

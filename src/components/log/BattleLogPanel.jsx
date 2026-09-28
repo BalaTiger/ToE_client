@@ -2,6 +2,8 @@ import React from 'react';
 import { getReliefDisplayConfig } from '../../constants/theme';
 import { buildPublicUrl } from '../../utils/url';
 import { getFontZoomCompensate } from '../../utils/scale';
+import { normalizeLogForViewer } from '../../game/logPerspective';
+import '../battle/coastal-panels.css';
 
 function getLogPatternBackground(expansionKey = '地神的潜影') {
   const suffix = expansionKey === '群星呼唤' ? 'stars' : 'earth';
@@ -38,25 +40,6 @@ function getLogReliefMaskStyle(isMobile) {
   };
 }
 
-function normalizeMultiplayerLogLine(line, { isMultiplayer, logOwner, myName, players }) {
-  if (!isMultiplayer || !logOwner || logOwner === myName) return line;
-
-  const owner = players.find(p => p.name === logOwner);
-  const roleTag = owner ? `${owner.name}（身份：${owner.role}）` : logOwner;
-  return line
-    .replace(/^你（([^）]+)）/, (_, role) => `${logOwner}（${role}）`)
-    .replace(/^你的邪神之力/, `${logOwner}的邪神之力`)
-    .replace(/^你遭遇/, `${logOwner}遭遇`)
-    .replace(/^你信仰/, `${logOwner}信仰`)
-    .replace(/^你放弃/, `${logOwner}放弃`)
-    .replace(/^你摸到/, `${logOwner}摸到`)
-    .replace(/^你选择/, `${logOwner}选择`)
-    .replace(/^你借用/, `${logOwner}借用`)
-    .replace(/^你（克苏鲁/, `${logOwner}（克苏鲁`)
-    .replace(/^你$/, roleTag)
-    .replace(/^你/, logOwner);
-}
-
 export function BattleLogPanel({
   logRef,
   visibleLog,
@@ -67,17 +50,40 @@ export function BattleLogPanel({
   middleRowHeight,
   fontSizes,
   scaleRatio = 1,
+  coastalBook = false,
 }) {
   const reliefConfig = getReliefDisplayConfig(expansionKey);
-  const logLines = Array.isArray(visibleLog) ? visibleLog.slice(-50) : [];
-  let logOwner = null;
+  const allLogLines = Array.isArray(visibleLog) ? visibleLog : [];
   const myName = players?.[0]?.name;
+  // Normalize before truncating so the current turn owner is still known when
+  // a long turn pushes its heading outside the last 50 visible entries.
+  const allNormalizedLines = normalizeLogForViewer(allLogLines, { isMultiplayer, myName });
+  const logLines = allLogLines.slice(-50);
+  const normalizedLines = allNormalizedLines.slice(-50);
+  const displayLogLines = logLines.map((line, index) => ({ line, display: normalizedLines[index] }));
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const mobileLogHeight = Math.round(132 * fontZoom);
   const reliefMaskStyle = getLogReliefMaskStyle(isMobile);
+  const heading = <div className="toe-log-heading" style={{
+    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+    color: 'var(--toe-log-title-ink,' + reliefConfig.logText.title + ')',
+    fontSize: Math.max(12 * fontZoom, fontSizes.small),
+    letterSpacing: 2,
+    marginBottom: 5,
+    textTransform: 'uppercase',
+    position: 'relative',
+  }}>冒险日志</div>;
 
   return (
-    <div ref={logRef} data-log-panel style={{
+    <div className="toe-log-frame-shell toe-closed-panel" data-log-book={coastalBook || undefined} style={{
+      width: isMobile ? '100%' : 218,
+      flexBasis: isMobile ? '100%' : undefined,
+      flexShrink: 0,
+      height: isMobile ? mobileLogHeight : middleRowHeight,
+      '--toe-coastal-body-font': `${12 * fontZoom}px`,
+    }}>
+    {coastalBook && heading}
+    <div ref={logRef} className="toe-battle-panel" data-log-panel style={{
       width: isMobile ? '100%' : 218,
       flexBasis: isMobile ? '100%' : undefined,
       flexShrink: 0,
@@ -92,7 +98,7 @@ export function BattleLogPanel({
       overflowX: 'hidden',
       scrollbarGutter: 'stable',
     }}>
-      <div style={{
+      <div className="toe-log-relief" style={{
         position: 'sticky',
         top: 0,
         height: 0,
@@ -120,39 +126,24 @@ export function BattleLogPanel({
           ))}
         </div>
       </div>
-      <div style={{
-        fontFamily: "'Cinzel',serif",
-        color: reliefConfig.logText.title,
-        fontSize: fontSizes.small,
-        letterSpacing: 2,
-        marginBottom: 5,
-        textTransform: 'uppercase',
-        position: 'relative',
-      }}>— 冒险日志 —</div>
-      {logLines.map((line, i) => {
-        const turnMatch = line.match(/^── (.+?) 的回合开始 ──$/);
-        if (turnMatch) logOwner = turnMatch[1];
-        const display = normalizeMultiplayerLogLine(line, {
-          isMultiplayer,
-          logOwner,
-          myName,
-          players: players || [],
-        });
+      {!coastalBook && heading}
+      {displayLogLines.map(({ line, display }, i) => {
         return (
-          <div key={i} style={{
-            fontFamily: "'IM Fell English','Georgia',serif",
-            fontStyle: 'italic',
-            fontSize: fontSizes.body,
+          <div key={i} className="toe-log-line" data-turn-heading={line.includes('──')} style={{
+            fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+            fontStyle: 'normal',
+            fontSize: Math.max(12 * fontZoom, fontSizes.body),
             lineHeight: 1.7,
-            color: line.includes('──') ? reliefConfig.logText.turn
-              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? '#882020'
-                : line.includes('获胜') || line.includes('集齐') ? 'var(--toe-strong,#c8a96e)'
-                  : reliefConfig.logText.body,
+            color: line.includes('──') ? `var(--toe-log-turn-ink,${reliefConfig.logText.turn})`
+              : line.includes('☠') || line.includes('死亡') || line.includes('倒下') ? 'var(--toe-log-danger-ink,#cc8b7c)'
+                : line.includes('获胜') || line.includes('集齐') ? 'var(--toe-log-win-ink,var(--toe-strong,#c8a96e))'
+                  : `var(--toe-log-body-ink,${reliefConfig.logText.body})`,
             fontWeight: line.includes('──') ? 700 : 400,
             position: 'relative',
-          }}>{display}</div>
+          }}>{coastalBook && line.includes('──') ? display.replace(/^─+\s*|\s*─+$/g, '') : display}</div>
         );
       })}
+    </div>
     </div>
   );
 }

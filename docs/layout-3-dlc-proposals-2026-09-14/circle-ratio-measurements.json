@@ -1,0 +1,461 @@
+{
+  "sourceDimensions": {
+    "selfFrame": [
+      806,
+      364
+    ],
+    "turnDial": [
+      778,
+      526
+    ]
+  },
+  "checks": [
+    {
+      "viewport": {
+        "height": 900,
+        "width": 1600
+      },
+      "frameScaleMismatch": 0.00004154672522771463,
+      "dialScaleMismatch": 0.00005599766978381382,
+      "portraitScaleMismatch": 0,
+      "horizontalOverflow": false,
+      "labelsInsideViewport": true
+    },
+    {
+      "viewport": {
+        "height": 844,
+        "width": 390
+      },
+      "frameScaleMismatch": 0.00016460286919572908,
+      "dialScaleMismatch": 0.000031234001061974936,
+      "portraitScaleMismatch": 0,
+      "horizontalOverflow": false,
+      "labelsInsideViewport": true
+    },
+    {
+      "viewport": {
+        "height": 390,
+        "width": 844
+      },
+      "frameScaleMismatch": 0.00006370598127047877,
+      "dialScaleMismatch": 0.00007525914893791175,
+      "portraitScaleMismatch": 0,
+      "horizontalOverflow": false,
+      "labelsInsideViewport": true
+    },
+    {
+      "viewport": {
+        "height": 740,
+        "width": 320
+      },
+      "frameScaleMismatch": 0.00006958156083358702,
+      "dialScaleMismatch": 0.0001481471370063936,
+      "portraitScaleMismatch": 0,
+      "horizontalOverflow": false,
+      "labelsInsideViewport": true
+    },
+    {
+      "viewport": {
+        "height": 1303,
+        "width": 2548
+      },
+      "frameScaleMismatch": 0.0000254224038322981,
+      "dialScaleMismatch": 0.000009606758979874286,
+      "portraitScaleMismatch": 0,
+      "horizontalOverflow": false,
+      "labelsInsideViewport": true
+    }
+  ],
+  "measurements": [
+    {
+      "dial": {
+        "aspectRatio": "778 / 526",
+        "backgroundSize": "contain",
+        "bottom": 211.765625,
+        "height": 270.421875,
+        "right": 1648,
+        "width": 400,
+        "x": 1248,
+        "y": -58.65625
+      },
+      "frame": {
+        "aspectRatio": "806 / 364",
+        "backgroundSize": "contain",
+        "height": 152.18,
+        "width": 336.984
+      },
+      "labels": [
+        {
+          "bottom": 41.4375,
+          "height": 20.78125,
+          "right": 338,
+          "text": "你",
+          "width": 213.34375,
+          "x": 124.65625,
+          "y": 20.65625
+        },
+        {
+          "bottom": 59.421875,
+          "height": 16.65625,
+          "right": 181.78125,
+          "text": "✦ 寻宝者",
+          "width": 57.125,
+          "x": 124.65625,
+          "y": 42.765625
+        },
+        {
+          "bottom": 80.1875,
+          "height": 16.859375,
+          "right": 339.34375,
+          "text": "HP8",
+          "width": 214.6875,
+          "x": 124.65625,
+          "y": 63.328125
+        },
+        {
+          "bottom": 102.375,
+          "height": 16.859375,
+          "right": 339.34375,
+          "text": "SAN6",
+          "width": 214.6875,
+          "x": 124.65625,
+          "y": 85.515625
+        },
+        {
+          "bottom": 108.59375,
+          "height": 65.84375,
+          "right": 1434.390625,
+          "text": "回合 3你的回合",
+          "width": 154.390625,
+          "x": 1280,
+          "y": 42.75
+        }
+      ],
+      "overflowX": false,
+      "portrait": {
+        "bottom": 101.984375,
+        "height": 85.328125,
+        "right": 90,
+        "width": 85.328125,
+        "x": 4.671875,
+        "y": 16.65625
+      },
+      "viewport": {
+        "height": 900,
+        "width": 1600
+      }
+    },
+    {
+      "dial": {
+        "aspectRatio": "778 / 526",
+        "backgroundSize": "contain",
+        "bottom": 126.3125,
+        "height": 118.3125,
+        "right": 377,
+        "width": 175,
+        "x": 202,
+        "y": 8
+      },
+      "frame": {
+        "aspectRatio": "806 / 364",
+        "backgroundSize": "contain",
+        "height": 88.9531,
+        "width": 197
+      },
+      "labels": [
+        {
+          "bottom": 39.625,
+          "height": 15.59375,
+          "right": 177,
+          "text": "你",
+          "width": 115.703125,
+          "x": 61.296875,
+          "y": 24.03125
+        },
+        {
+          "bottom": 53.125,
+          "height": 12.5,
+          "right": 104.15625,
+          "text": "✦ 寻宝者",
+          "width": 42.859375,
+          "x": 61.296875,
+          "y": 40.625
+        },
+        {
+          "bottom": 93.0625,
+          "height": 12.640625,
+          "right": 177,
+          "text": "HP8",
+          "width": 173,
+          "x": 4,
+          "y": 80.421875
+        },
+        {
+          "bottom": 109.703125,
+          "height": 12.640625,
+          "right": 177,
+          "text": "SAN6",
+          "width": 173,
+          "x": 4,
+          "y": 97.0625
+        },
+        {
+          "bottom": 90.546875,
+          "height": 38.1875,
+          "right": 283.546875,
+          "text": "回合 3你的回合",
+          "width": 67.546875,
+          "x": 216,
+          "y": 52.359375
+        }
+      ],
+      "overflowX": false,
+      "portrait": {
+        "bottom": 61.65625,
+        "height": 37.140625,
+        "right": 50.234375,
+        "width": 37.140625,
+        "x": 13.09375,
+        "y": 24.515625
+      },
+      "viewport": {
+        "height": 844,
+        "width": 390
+      }
+    },
+    {
+      "dial": {
+        "aspectRatio": "778 / 526",
+        "backgroundSize": "contain",
+        "bottom": 176.25,
+        "height": 162.25,
+        "right": 830,
+        "width": 240,
+        "x": 590,
+        "y": 14
+      },
+      "frame": {
+        "aspectRatio": "806 / 364",
+        "backgroundSize": "contain",
+        "height": 187.859,
+        "width": 416
+      },
+      "labels": [
+        {
+          "bottom": 67.90625,
+          "height": 15.59375,
+          "right": 407,
+          "text": "你",
+          "width": 264,
+          "x": 143,
+          "y": 52.3125
+        },
+        {
+          "bottom": 81.40625,
+          "height": 12.5,
+          "right": 185.859375,
+          "text": "✦ 寻宝者",
+          "width": 42.859375,
+          "x": 143,
+          "y": 68.90625
+        },
+        {
+          "bottom": 113.375,
+          "height": 12.640625,
+          "right": 401,
+          "text": "HP8",
+          "width": 258,
+          "x": 143,
+          "y": 100.734375
+        },
+        {
+          "bottom": 130.015625,
+          "height": 12.640625,
+          "right": 401,
+          "text": "SAN6",
+          "width": 258,
+          "x": 143,
+          "y": 117.375
+        },
+        {
+          "bottom": 124.234375,
+          "height": 49.390625,
+          "right": 701.8125,
+          "text": "回合 3你的回合",
+          "width": 92.625,
+          "x": 609.1875,
+          "y": 74.84375
+        }
+      ],
+      "overflowX": false,
+      "portrait": {
+        "bottom": 131.78125,
+        "height": 78.4375,
+        "right": 121.5625,
+        "width": 78.4375,
+        "x": 43.125,
+        "y": 53.34375
+      },
+      "viewport": {
+        "height": 390,
+        "width": 844
+      }
+    },
+    {
+      "dial": {
+        "aspectRatio": "778 / 526",
+        "backgroundSize": "contain",
+        "bottom": 108.046875,
+        "height": 100.046875,
+        "right": 312,
+        "width": 148,
+        "x": 164,
+        "y": 8
+      },
+      "frame": {
+        "aspectRatio": "806 / 364",
+        "backgroundSize": "contain",
+        "height": 73.1562,
+        "width": 162
+      },
+      "labels": [
+        {
+          "bottom": 36.0625,
+          "height": 15.59375,
+          "right": 147,
+          "text": "你",
+          "width": 91.203125,
+          "x": 55.796875,
+          "y": 20.46875
+        },
+        {
+          "bottom": 49.5625,
+          "height": 12.5,
+          "right": 98.65625,
+          "text": "✦ 寻宝者",
+          "width": 42.859375,
+          "x": 55.796875,
+          "y": 37.0625
+        },
+        {
+          "bottom": 80.90625,
+          "height": 12.640625,
+          "right": 147,
+          "text": "HP8",
+          "width": 138,
+          "x": 9,
+          "y": 68.265625
+        },
+        {
+          "bottom": 97.546875,
+          "height": 12.640625,
+          "right": 147,
+          "text": "SAN6",
+          "width": 138,
+          "x": 9,
+          "y": 84.90625
+        },
+        {
+          "bottom": 83.703125,
+          "height": 38.1875,
+          "right": 232.953125,
+          "text": "回合 3你的回合",
+          "width": 57.125,
+          "x": 175.828125,
+          "y": 45.515625
+        }
+      ],
+      "overflowX": false,
+      "portrait": {
+        "bottom": 51.421875,
+        "height": 30.546875,
+        "right": 45.609375,
+        "width": 30.546875,
+        "x": 15.0625,
+        "y": 20.875
+      },
+      "viewport": {
+        "height": 740,
+        "width": 320
+      }
+    },
+    {
+      "dial": {
+        "aspectRatio": "778 / 526",
+        "backgroundSize": "contain",
+        "bottom": 337.234375,
+        "height": 430.65625,
+        "right": 2619.4375,
+        "width": 636.984375,
+        "x": 1982.453125,
+        "y": -93.421875
+      },
+      "frame": {
+        "aspectRatio": "806 / 364",
+        "backgroundSize": "contain",
+        "height": 152.266,
+        "width": 337.169
+      },
+      "labels": [
+        {
+          "bottom": 65.84375,
+          "height": 33.125,
+          "right": 533.46875,
+          "text": "你",
+          "width": 340.109375,
+          "x": 193.359375,
+          "y": 32.71875
+        },
+        {
+          "bottom": 94.484375,
+          "height": 26.53125,
+          "right": 284.328125,
+          "text": "✦ 寻宝者",
+          "width": 90.96875,
+          "x": 193.359375,
+          "y": 67.953125
+        },
+        {
+          "bottom": 127.515625,
+          "height": 26.859375,
+          "right": 535.59375,
+          "text": "HP8",
+          "width": 342.234375,
+          "x": 193.359375,
+          "y": 100.65625
+        },
+        {
+          "bottom": 162.859375,
+          "height": 26.859375,
+          "right": 535.59375,
+          "text": "SAN6",
+          "width": 342.234375,
+          "x": 193.359375,
+          "y": 136
+        },
+        {
+          "bottom": 172.953125,
+          "height": 104.890625,
+          "right": 2279.28125,
+          "text": "回合 3你的回合",
+          "width": 245.875,
+          "x": 2033.40625,
+          "y": 68.0625
+        }
+      ],
+      "overflowX": false,
+      "portrait": {
+        "bottom": 162.234375,
+        "height": 135.890625,
+        "right": 138.15625,
+        "width": 135.890625,
+        "x": 2.265625,
+        "y": 26.34375
+      },
+      "viewport": {
+        "height": 1303,
+        "width": 2548
+      }
+    }
+  ]
+}

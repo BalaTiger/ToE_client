@@ -1,0 +1,94 @@
+/* The compact panel is also the death-animation snapshot boundary. Keep its
+   portrait, count and bars inside the root rather than hanging them outside. */
+.toe-player-panel.toe-opponent-panel[data-opponent-simplified='true'] {
+  box-sizing: border-box;
+  container-type: inline-size;
+  height: 118px;
+  min-height: 118px;
+  padding: 16px 4px 6px !important;
+  background: radial-gradient(ellipse at 50% 65%, #091011ed 30%, #080c0d90 64%, transparent 76%) !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  overflow: visible;
+}
+.toe-player-panel.toe-opponent-panel[data-opponent-simplified='true']::before,
+.toe-player-panel.toe-opponent-panel[data-opponent-simplified='true']::after {
+  display: none !important;
+}
+.toe-opponent-compact-core {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 100%;
+}
+.toe-opponent-compact-portrait {
+  position: relative;
+  flex: none;
+  align-self: center;
+  width: 56px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 439 / 448;
+}
+.toe-opponent-compact-portrait > .toe-coastal-portrait-framed {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 439 / 448;
+  background-color: transparent;
+  background-position: center;
+  background-size: contain;
+  background-repeat: no-repeat;
+  overflow: visible;
+  filter: drop-shadow(0 1px 2px var(--toe-panel-frame-color));
+}
+.toe-opponent-compact-portrait > .toe-coastal-portrait-framed img {
+  display: block;
+  position: absolute;
+  top: 16%;
+  left: 16%;
+  width: 68%;
+  height: auto;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  object-fit: cover;
+  object-position: center 38%;
+}
+.toe-opponent-compact-core > .toe-opponent-hand-count {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  width: 100%;
+  height: 17px;
+  color: #cfc1a1;
+  font-family: var(--toe-coastal-panel-font, var(--toe-ui-font, serif));
+  font-size: 12px;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1;
+  text-shadow: 0 1px 2px #000;
+}
+.toe-opponent-hand-count svg {
+  width: 19px;
+  height: 16px;
+  overflow: visible;
+  fill: #11191a;
+  stroke: #b1a17b;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+.toe-opponent-hand-count svg path:last-child { fill: #b1a17b; stroke: none; }
+.toe-opponent-compact-stats { width: 100%; margin-top: 2px; background: #091011; }
+.toe-opponent-compact-core .toe-opponent-compact-stats > [data-stat-label] {
+  width: 100% !important;
+  grid-template-columns: minmax(0, 1fr) !important;
+  margin: 0 0 3px !important;
+}
+.toe-opponent-compact-core .toe-opponent-compact-stats .toe-stat-value {
+  display: none;
+}
+.toe-opponent-compact-core .toe-opponent-compact-stats .toe-stat-track { height: 5px !important; }

@@ -1,0 +1,37 @@
+.toe-sailing-wet-surface, .toe-sailing-wet-region {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.toe-sailing-wet-region {
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  /* Shared footprint × complementary local ownership × incoming front.
+     clip-path shrinks the wet boundary without moving/stretching the artwork. */
+  mask-size: 100% 100%, 100% 100%, 100% 100%, 300% 300%;
+  mask-position: 0% 0%, 0% 0%, 0% 0%, 0% 0%;
+  mask-repeat: no-repeat;
+  mask-composite: intersect;
+  mask-mode: alpha;
+}
+.toe-sailing-wet-panel { display: none; }
+[data-ui-layout='coastal'] .toe-board-composition-coastal:not([data-compact='true']) .toe-sailing-wet-panel {
+  display: block;
+  z-index: -1;
+}
+.toe-sailing-wet-piece {
+  position: relative;
+  display: block;
+  width: 100%;
+  /* Torch keeps its native alpha; panel artwork is restricted to the smooth
+     inner plate so the original bronze frame remains exactly registered. */
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  opacity: var(--toe-wet-intensity, 1);
+}
+/* These end caps match the existing native-ratio skin, not a stretched
+   full-height mask. Only the straight middle rail can grow. */
+.toe-sailing-wet-top, .toe-sailing-wet-bottom { aspect-ratio: 622 / 137; flex: none; }
+.toe-sailing-wet-rail { flex: 1; min-height: 0; }
+.toe-sailing-wet-torch { height: 100%; }

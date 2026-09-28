@@ -1,0 +1,21 @@
+/* Siblings, not nested z-index guesses: scene < unfiltered light < overlays. */
+[data-game-layer] { position: fixed; inset: 0; width: 100%; height: 100%; isolation: isolate; }
+[data-game-layer='scene'] {
+  z-index: 1;
+  overflow: auto;
+  background: #242424 var(--toe-html-bg, none) center / cover fixed;
+  filter: var(--toe-scene-gamma, none);
+}
+[data-game-layer='scene']:has(.toe-coastal-matte) { overflow: hidden; }
+[data-game-layer='flame'] { z-index: 2; overflow: hidden; pointer-events: none; }
+[data-game-layer='overlay'] {
+  z-index: 3;
+  pointer-events: none;
+  color: var(--toe-text, #c8a96e);
+  font-family: var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', serif);
+  filter: var(--toe-scene-gamma, none);
+}
+/* Empty hosts never swallow input. Individual noninteractive effects retain
+   their explicit inline pointer-events:none, while dialogs remain operable. */
+[data-game-layer='overlay'] > * { pointer-events: auto; }
+[data-game-layer='flame'] * { pointer-events: none; }

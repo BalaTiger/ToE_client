@@ -1,0 +1,166 @@
+{
+  "source": "panel-master.png",
+  "sourceSize": [
+    1254,
+    1254
+  ],
+  "sourceSha256": "160a8096c64d8c9acde8cee19074c4b1ff1cc6fd7193dabb7dd6a8e1d62d3f5f",
+  "normalizedSize": [
+    512,
+    512
+  ],
+  "borderImageSlice": 48,
+  "cardAspect": {
+    "width": 392,
+    "height": 590
+  },
+  "regions": [
+    {
+      "file": "slices/top-left.png",
+      "normalizedBox": [
+        0,
+        0,
+        48,
+        48
+      ],
+      "sourceBox": [
+        0,
+        0,
+        118,
+        118
+      ]
+    },
+    {
+      "file": "slices/top-center.png",
+      "normalizedBox": [
+        48,
+        0,
+        464,
+        48
+      ],
+      "sourceBox": [
+        118,
+        0,
+        1136,
+        118
+      ]
+    },
+    {
+      "file": "slices/top-right.png",
+      "normalizedBox": [
+        464,
+        0,
+        512,
+        48
+      ],
+      "sourceBox": [
+        1136,
+        0,
+        1254,
+        118
+      ]
+    },
+    {
+      "file": "slices/middle-left.png",
+      "normalizedBox": [
+        0,
+        48,
+        48,
+        464
+      ],
+      "sourceBox": [
+        0,
+        118,
+        118,
+        1136
+      ]
+    },
+    {
+      "file": "slices/middle-center.png",
+      "normalizedBox": [
+        48,
+        48,
+        464,
+        464
+      ],
+      "sourceBox": [
+        118,
+        118,
+        1136,
+        1136
+      ]
+    },
+    {
+      "file": "slices/middle-right.png",
+      "normalizedBox": [
+        464,
+        48,
+        512,
+        464
+      ],
+      "sourceBox": [
+        1136,
+        118,
+        1254,
+        1136
+      ]
+    },
+    {
+      "file": "slices/bottom-left.png",
+      "normalizedBox": [
+        0,
+        464,
+        48,
+        512
+      ],
+      "sourceBox": [
+        0,
+        1136,
+        118,
+        1254
+      ]
+    },
+    {
+      "file": "slices/bottom-center.png",
+      "normalizedBox": [
+        48,
+        464,
+        464,
+        512
+      ],
+      "sourceBox": [
+        118,
+        1136,
+        1136,
+        1254
+      ]
+    },
+    {
+      "file": "slices/bottom-right.png",
+      "normalizedBox": [
+        464,
+        464,
+        512,
+        512
+      ],
+      "sourceBox": [
+        1136,
+        1136,
+        1254,
+        1254
+      ]
+    }
+  ],
+  "runtime": [
+    {
+      "path": "public/img/ui/interface/panel-frame.webp",
+      "bytes": 12118,
+      "sha256": "7da094ea039788ee82064c949d9913579273c03879057704f02ed06be9015c61"
+    },
+    {
+      "path": "public/img/ui/interface/panel-surface.webp",
+      "bytes": 1132,
+      "sha256": "66e872ac1aef4dcbb50dd92179c4eb6a662965479553abe374a05d36152cd015"
+    }
+  ]
+}

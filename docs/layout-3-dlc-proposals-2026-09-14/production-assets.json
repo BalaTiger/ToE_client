@@ -1,0 +1,362 @@
+{
+  "generator": "scripts/extract-coastal-assets.mjs",
+  "originalSourceDirectory": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0",
+  "processing": {
+    "operation": "Deterministic extraction of generated artwork; no repainting or recoloring",
+    "neutralMatte": {
+      "minChannel": 130,
+      "maxChannelSpread": 22
+    },
+    "enclosedCheckerboard": {
+      "minArea": 32,
+      "minLuminanceRange": 38
+    },
+    "alpha": "Exterior/checked-hole removal, largest connected subject except full foreground, one-pixel edge decontamination",
+    "trimPadding": 2,
+    "webp": {
+      "quality": 94,
+      "alphaQuality": 100,
+      "effort": 6
+    }
+  },
+  "assets": [
+    {
+      "name": "self-frame",
+      "path": "public/img/ui/coastal/self-frame.webp",
+      "source": "exec-2599d90f-9db2-4dab-8b0a-8582c672480b.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-panels-master.png",
+      "crop": {
+        "left": 24,
+        "top": 14,
+        "width": 830,
+        "height": 379
+      },
+      "trim": {
+        "left": 11,
+        "top": 2,
+        "width": 806,
+        "height": 364
+      },
+      "size": [
+        806,
+        364
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 3,
+      "bytes": 73010,
+      "sha256": "91b30d9c5b87baa055546c1d90aa17fb7fd0a5a3283fe663fe00101fba6c8638"
+    },
+    {
+      "name": "opponent-frame",
+      "path": "public/img/ui/coastal/opponent-frame.webp",
+      "source": "exec-2599d90f-9db2-4dab-8b0a-8582c672480b.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-panels-master.png",
+      "crop": {
+        "left": 939,
+        "top": 10,
+        "width": 482,
+        "height": 393
+      },
+      "trim": {
+        "left": 10,
+        "top": 3,
+        "width": 458,
+        "height": 390
+      },
+      "size": [
+        458,
+        390
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 2,
+      "bytes": 60562,
+      "sha256": "909a73a53b93adf94bf6daff4d033903e297e783149ff2c0ad3c73633b364b7e"
+    },
+    {
+      "name": "faith-banner",
+      "path": "public/img/ui/coastal/faith-banner.webp",
+      "source": "exec-2599d90f-9db2-4dab-8b0a-8582c672480b.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-panels-master.png",
+      "crop": {
+        "left": 204,
+        "top": 405,
+        "width": 389,
+        "height": 614
+      },
+      "trim": {
+        "left": 9,
+        "top": 10,
+        "width": 373,
+        "height": 594
+      },
+      "size": [
+        373,
+        594
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 4,
+      "bytes": 59036,
+      "sha256": "32531b544ce91fbacfd1a015807ff766b0a6fbfe6f35303d74eb62566ba03899"
+    },
+    {
+      "name": "log-banner",
+      "path": "public/img/ui/coastal/log-banner.webp",
+      "source": "exec-2599d90f-9db2-4dab-8b0a-8582c672480b.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-panels-master.png",
+      "crop": {
+        "left": 935,
+        "top": 409,
+        "width": 450,
+        "height": 612
+      },
+      "trim": {
+        "left": 11,
+        "top": 8,
+        "width": 427,
+        "height": 598
+      },
+      "size": [
+        427,
+        598
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 3,
+      "bytes": 69590,
+      "sha256": "8dd6cadec5af5df595bfd4dc47a76e4d9018b4b7c6e4c147dc2557403e7e784b"
+    },
+    {
+      "name": "action-skill",
+      "path": "public/img/ui/coastal/action-skill.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 0,
+        "width": 740,
+        "height": 174
+      },
+      "trim": {
+        "left": 17,
+        "top": 20,
+        "width": 723,
+        "height": 152
+      },
+      "size": [
+        723,
+        152
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 6,
+      "bytes": 29710,
+      "sha256": "9b2f6cd6719cff1e0bbd645b9d67f6ba1377abc6dbcc3709dde37e735bb34b11"
+    },
+    {
+      "name": "action-rest",
+      "path": "public/img/ui/coastal/action-rest.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 174,
+        "width": 740,
+        "height": 164
+      },
+      "trim": {
+        "left": 17,
+        "top": 10,
+        "width": 722,
+        "height": 151
+      },
+      "size": [
+        722,
+        151
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 1,
+      "bytes": 30846,
+      "sha256": "dbe3bbeb68828d64df31cf78db2f828eafb7ad8b62c40d9ce09558901728d3f5"
+    },
+    {
+      "name": "action-multiply",
+      "path": "public/img/ui/coastal/action-multiply.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 338,
+        "width": 740,
+        "height": 169
+      },
+      "trim": {
+        "left": 17,
+        "top": 9,
+        "width": 722,
+        "height": 152
+      },
+      "size": [
+        722,
+        152
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 2,
+      "bytes": 27878,
+      "sha256": "87cdd68f046dae8029a58bfdec363bd7331a11efd20ccabfd7d2417e56416c8a"
+    },
+    {
+      "name": "action-end",
+      "path": "public/img/ui/coastal/action-end.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 507,
+        "width": 740,
+        "height": 168
+      },
+      "trim": {
+        "left": 17,
+        "top": 6,
+        "width": 722,
+        "height": 150
+      },
+      "size": [
+        722,
+        150
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 3,
+      "bytes": 29662,
+      "sha256": "130074b0671d881e91bc2d2c9963fcb92eb8f8c2dceeb942b7d948d255fe4aa6"
+    },
+    {
+      "name": "prompt",
+      "path": "public/img/ui/coastal/prompt.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 675,
+        "width": 740,
+        "height": 128
+      },
+      "trim": {
+        "left": 70,
+        "top": 0,
+        "width": 617,
+        "height": 120
+      },
+      "size": [
+        617,
+        120
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 7,
+      "bytes": 17994,
+      "sha256": "60a847054e4a7de737a10acc7005c2a54f68c2d94a0ff742e147e6383b35366b"
+    },
+    {
+      "name": "counter",
+      "path": "public/img/ui/coastal/counter.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 0,
+        "top": 803,
+        "width": 740,
+        "height": 190
+      },
+      "trim": {
+        "left": 73,
+        "top": 14,
+        "width": 614,
+        "height": 160
+      },
+      "size": [
+        614,
+        160
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 5,
+      "bytes": 32584,
+      "sha256": "0b30929e3fcf572c98ec152630d9e5071b59ec410edadee8f0cd8a0e6ba7e660"
+    },
+    {
+      "name": "turn-dial",
+      "path": "public/img/ui/coastal/turn-dial.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 750,
+        "top": 0,
+        "width": 786,
+        "height": 530
+      },
+      "trim": {
+        "left": 0,
+        "top": 4,
+        "width": 778,
+        "height": 526
+      },
+      "size": [
+        778,
+        526
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 12,
+      "bytes": 93074,
+      "sha256": "9ae2e7413d9a26f35d6d88a65a1c743fc7f3b854eea1e476116b5ef6e772fbdb"
+    },
+    {
+      "name": "hand-count",
+      "path": "public/img/ui/coastal/hand-count.webp",
+      "source": "exec-5c6ea1e6-096a-47b0-b0da-9ece1eb7db03.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-controls-master.png",
+      "crop": {
+        "left": 925,
+        "top": 503,
+        "width": 450,
+        "height": 459
+      },
+      "trim": {
+        "left": 4,
+        "top": 4,
+        "width": 439,
+        "height": 448
+      },
+      "size": [
+        439,
+        448
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 3,
+      "bytes": 41648,
+      "sha256": "60728e0050b9a9f4b584b14a3e58e03f4350afc587f63b582caa1ccd618170c9"
+    },
+    {
+      "name": "foreground",
+      "path": "public/img/ui/coastal/foreground.webp",
+      "source": "exec-1584fad8-a64f-4bd5-997e-1d6350116892.png",
+      "archivedSource": "docs/layout-3-dlc-proposals-2026-09-14/production-foreground-master.png",
+      "crop": {
+        "left": 0,
+        "top": 0,
+        "width": 1536,
+        "height": 1024
+      },
+      "trim": {
+        "left": 0,
+        "top": 0,
+        "width": 1536,
+        "height": 1024
+      },
+      "size": [
+        1536,
+        1024
+      ],
+      "hasAlpha": true,
+      "clearedComponents": 7,
+      "bytes": 152346,
+      "sha256": "5c78665244542f2b3ebefa67595f038e6760a68200f44d34187fc9810f1bb5db"
+    }
+  ]
+}

@@ -1,12 +1,145 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyStatEventsToDisplayStats,
+  applyStatAnimationImpact,
   buildStatEvents,
+  createPlayerDefeatedStatEvent,
+  expandCombinedStatAnimationSteps,
+  primeDisplayStatsForStatQueue,
   statEventsToAnimQueue,
+  validateStatAnimationContinuity,
 } from '../statEvents';
 import { makePlayer } from './factory';
+import { applyHpDamageWithLink, submitLossEvents } from '../effectEngine';
+import { addDamageLink } from '../damageLinks';
+import { copyPlayers } from '../coreUtils';
 
 describe('statEvents', () => {
+  it.each([true, false])('共享属性队列在不灭之躯成功=%s时保留一次翻牌并按顺序结算', succeeded => {
+    const before = [
+      makePlayer({ name: '你' }),
+      makePlayer({ name: '贝拉', hp: 2, godName: 'VRI', godLevel: 3 }),
+    ];
+    const players = copyPlayers(before);
+    const damage = submitLossEvents({
+      players,
+      deck: [
+        { id: 'immortal-one', name: '首张牌', isGod: !succeeded, isZone: succeeded },
+        { id: 'immortal-two', name: '区域牌', isZone: true },
+      ],
+      discard: [], log: [], currentTurn: 0,
+      events: [{ targetIdx: 1, lostHp: 3, source: '致死伤害' }],
+      statEventSeq: 10,
+    });
+    const originalEvents = structuredClone(damage.statEvents);
+    const queue = statEventsToAnimQueue(damage.statEvents, before, damage.logs);
+    const types = queue.map(step => step.type);
+    const reveal = queue.find(step => step.type === 'VRI_IMMORTAL_REVEAL');
+
+    expect(types.filter(type => type === 'VRI_IMMORTAL_REVEAL')).toHaveLength(1);
+    expect(types.indexOf('VRI_IMMORTAL_REVEAL')).toBeGreaterThan(types.indexOf('HP_DAMAGE'));
+    expect(types.indexOf(succeeded ? 'HP_HEAL' : 'GUILLOTINE')).toBeGreaterThan(types.indexOf('VRI_IMMORTAL_REVEAL'));
+    expect(reveal).toMatchObject({ targetPid: 1, succeeded });
+    expect(reveal.cards).toHaveLength(2);
+    expect(reveal.msgs).toHaveLength(1);
+    expect(queue.filter(step => step.type !== 'VRI_IMMORTAL_REVEAL')
+      .some(step => step.msgs?.some(msg => reveal.msgs.includes(msg)))).toBe(false);
+    expect(damage.statEvents).toEqual(originalEvents);
+    expect(validateStatAnimationContinuity(queue)).toEqual([]);
+    expect(applyStatAnimationImpact([{ hp: 10, san: 8 }, { hp: 0, san: 8 }], reveal))
+      .toEqual([{ hp: 10, san: 8 }, { hp: 0, san: 8 }]);
+  });
+
+  it('属性队列开始时只把对应数值锁定到第一段事件的 from', () => {
+    const displayStats = [{ hp: 4, san: 6 }];
+    const queue = statEventsToAnimQueue([
+      { seq: 1, type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 9 }, to: { hp: 10, san: 7 } },
+      { seq: 2, type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 7 }, to: { hp: 10, san: 6 } },
+      { seq: 3, type: 'HP_LOSS', target: 0, from: { hp: 10, san: 6 }, to: { hp: 8, san: 6 } },
+    ], [makePlayer({ hp: 8, san: 6 })]);
+
+    expect(primeDisplayStatsForStatQueue(displayStats, queue)).toEqual([{ hp: 10, san: 9 }]);
+  });
+
+  it('每种属性只在对应特效命中时变化', () => {
+    const events = [{
+      type: 'HP_SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 9 },
+      to: { hp: 8, san: 7 },
+    }];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 8, san: 7 })]);
+    const baseline = primeDisplayStatsForStatQueue([{ hp: 8, san: 7 }], queue);
+    const afterHp = applyStatAnimationImpact(baseline, queue[0]);
+    const afterSan = applyStatAnimationImpact(afterHp, queue[1]);
+
+    expect(baseline).toEqual([{ hp: 10, san: 9 }]);
+    expect(afterHp).toEqual([{ hp: 8, san: 9 }]);
+    expect(afterSan).toEqual([{ hp: 8, san: 7 }]);
+  });
+
+  it('组合恢复在播放边界拆成通用 HP 与 SAN 恢复步骤', () => {
+    const queue = expandCombinedStatAnimationSteps([{
+      type: 'HP_SAN_HEAL',
+      hitIndices: [0],
+      targetStats: [{ hp: 7, san: 6 }],
+      msgs: ['平衡恢复'],
+    }]);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_HEAL', 'SAN_HEAL']);
+    expect(queue[0].msgs).toEqual(['平衡恢复']);
+    expect(queue[1].msgs).toEqual([]);
+  });
+
+  it('断头台与石化死亡不能直接更新 HP 条', () => {
+    const stats = [{ hp: 2, san: 6 }];
+    expect(applyStatAnimationImpact(stats, {
+      type: 'GUILLOTINE', hitIndices: [0], targetStats: [{ hp: 0, san: 6 }],
+    })).toBe(stats);
+    expect(applyStatAnimationImpact(stats, {
+      type: 'PETRIFY_DEATH', hitIndices: [0], targetStats: [{ hp: 0, san: 6 }],
+    })).toBe(stats);
+  });
+
+  it('撒托古亚黏液只在自身动画命中时提交平分结果', () => {
+    const step = {
+      type: 'TSG_SLIME_POP',
+      statPresentation: { target: 0, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } },
+    };
+    const baseline = primeDisplayStatsForStatQueue([{ hp: 6, san: 6 }], [step]);
+
+    expect(baseline).toEqual([{ hp: 3, san: 9 }]);
+    expect(applyStatAnimationImpact(baseline, step)).toEqual([{ hp: 6, san: 6 }]);
+  });
+
+  it('检测同一属性动画事务的 from/to 断链', () => {
+    const queue = statEventsToAnimQueue([
+      { seq: 1, type: 'SAN_LOSS', target: 0, from: { san: 9 }, to: { san: 7 } },
+      { seq: 2, type: 'SAN_LOSS', target: 0, from: { san: 8 }, to: { san: 6 } },
+    ], [makePlayer({ san: 6 })]);
+
+    expect(validateStatAnimationContinuity(queue)).toMatchObject([{
+      target: 0,
+      field: 'san',
+      expectedFrom: 7,
+      actualFrom: 8,
+    }]);
+  });
+
+  it('旧的 SAN 伤害步骤不会把已降到 6 的显示值回滚到 7', () => {
+    const displayStats = [{ hp: 10, san: 6 }];
+    const staleDamage = [{
+      type: 'SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 9 },
+      to: { hp: 10, san: 7 },
+    }];
+
+    expect(applyStatEventsToDisplayStats(displayStats, staleDamage, 'SAN_DAMAGE')).toEqual([
+      { hp: 10, san: 6 },
+    ]);
+  });
+
   it('从玩家前后状态生成 HP/SAN 事件', () => {
     const before = [
       makePlayer({ hp: 10, san: 8 }),
@@ -37,7 +170,9 @@ describe('statEvents', () => {
 
     expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'SAN_HEAL']);
     expect(queue[0]).toMatchObject({ hitIndices: [0], msgs: ['结算'] });
-    expect(queue[1]).toMatchObject({ hitIndices: [1], targetStats: [{ hp: 7, san: 8, isDead: false }, { hp: 5, san: 5, isDead: false }] });
+    expect(queue[1]).toMatchObject({ hitIndices: [1], statEvents: [events[1]] });
+    expect(queue[0]).not.toHaveProperty('targetStats');
+    expect(queue[1]).not.toHaveProperty('targetStats');
   });
 
   it('不同 seq 的显式事件按结算顺序生成动画，后续 SAN 回复不会抢跑', () => {
@@ -62,6 +197,72 @@ describe('statEvents', () => {
     expect(queue[1]).toMatchObject({ hitIndices: [0, 1] });
     expect(queue[2]).toMatchObject({ hitIndices: [1] });
     expect(queue[3]).toMatchObject({ hitIndices: [2] });
+  });
+
+  it('石化死亡先播放面板石化动画，再复用通用死亡公告', () => {
+    const beforePlayers = [
+      makePlayer({ name: '你', hp: 10, san: 8 }),
+      makePlayer({ name: '艾伦', hp: 2, san: 5 }),
+    ];
+    const players = copyPlayers(beforePlayers);
+    players[1] = { ...players[1], hp: 0, isDead: true, roleRevealed: true };
+    const events = [
+      createPlayerDefeatedStatEvent({
+        target: 1,
+        cause: 'petrification',
+        from: { hp: 2, san: 5, isDead: false },
+        to: { hp: 0, san: 5, isDead: true },
+        logHint: '艾伦 被石化',
+        playersBefore: beforePlayers,
+        playersAfter: players,
+        settlementOwner: 'test',
+      }),
+    ];
+
+    const queue = statEventsToAnimQueue(events, players, ['艾伦 被石化']);
+
+    expect(queue.map(step => step.type)).toEqual(['PETRIFY_DEATH', 'DEATH']);
+    expect(queue[0]).toMatchObject({ hitIndices: [1], msgs: [] });
+    expect(queue[1]).toMatchObject({ hitIndices: [1], msgs: ['艾伦 被石化'] });
+  });
+
+  it('AOE 多人致死会累计死亡提交，并且只在事务末尾提交一次终态', () => {
+    const cards = [{ id: 'a' }, { id: 'b' }];
+    const before = [
+      makePlayer({ name: '艾伦', hp: 1, hand: [cards[0]] }),
+      makePlayer({ name: '贝拉', hp: 1, hand: [cards[1]] }),
+    ];
+    const after = copyPlayers(before).map(player => ({
+      ...player,
+      hp: 0,
+      isDead: true,
+      roleRevealed: true,
+      hand: [],
+    }));
+    const logs = ['全体失去 1 HP', '☠ 艾伦倒下了！', '☠ 贝拉倒下了！'];
+    const events = buildStatEvents(before, after, logs, {
+      reason: 'AOE', seq: 1, discardBefore: [], discardAfter: cards,
+    });
+
+    const queue = statEventsToAnimQueue(events, before, logs);
+    const deathSteps = queue.filter(step => step.type === 'DEATH');
+
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'GUILLOTINE', 'DEATH',
+      'GUILLOTINE', 'DEATH',
+      'DISCARD', 'DISCARD',
+      'STATE_PATCH',
+    ]);
+    expect(deathSteps[0].visualSetupPatch.players).toMatchObject([
+      { isDead: true, hand: [cards[0]] },
+      { isDead: false, hand: [cards[1]] },
+    ]);
+    expect(deathSteps[1].visualSetupPatch.players).toMatchObject([
+      { isDead: true, hand: [cards[0]] },
+      { isDead: true, hand: [cards[1]] },
+    ]);
+    expect(queue.filter(step => step.type === 'STATE_PATCH')).toHaveLength(1);
   });
 
   it('两人一绳断裂会拆成原伤害、断裂、绳索伤害三段', () => {
@@ -95,6 +296,109 @@ describe('statEvents', () => {
     expect(applyStatEventsToDisplayStats(displayStats, events)).toEqual([
       { hp: 10, san: 8 },
       { hp: 5, san: 1 },
+    ]);
+  });
+
+  it('HP/SAN 同时变动时按各自动画分阶段更新数值条', () => {
+    const displayStats = [{ hp: 10, san: 8 }];
+    const events = [{
+      type: 'HP_SAN_LOSS',
+      target: 0,
+      from: { hp: 10, san: 8 },
+      to: { hp: 7, san: 6 },
+    }];
+    const players = [makePlayer({ hp: 7, san: 6 })];
+
+    expect(statEventsToAnimQueue(events, players).map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'SAN_DAMAGE',
+    ]);
+    const afterHpImpact = applyStatEventsToDisplayStats(displayStats, events, 'HP_DAMAGE');
+    expect(afterHpImpact).toEqual([{ hp: 7, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterHpImpact, events, 'SAN_DAMAGE')).toEqual([
+      { hp: 7, san: 6 },
+    ]);
+  });
+
+  it('HP/SAN 同时回复时拆成各自的回复特效', () => {
+    const displayStats = [{ hp: 5, san: 4 }];
+    const events = [{
+      type: 'HP_SAN_GAIN',
+      target: 0,
+      from: { hp: 5, san: 4 },
+      to: { hp: 7, san: 6 },
+    }];
+
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 6 })]);
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_HEAL',
+      'SAN_HEAL',
+    ]);
+    const afterHpHeal = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterHpHeal).toEqual([{ hp: 7, san: 4 }]);
+    expect(applyStatEventsToDisplayStats(afterHpHeal, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 7, san: 6 },
+    ]);
+  });
+
+  it('多条绳索断裂按每条绳索的状态补丁与伤害阶段依次入队', () => {
+    const players = [
+      makePlayer({ name: '艾伦', hp: 10 }),
+      makePlayer({ name: '贝拉', hp: 10 }),
+      makePlayer({ name: '卡洛斯', hp: 10 }),
+    ];
+    addDamageLink(players, 0, 1, { createdSeq: 1 });
+    addDamageLink(players, 2, 1, { createdSeq: 2 });
+    const before = copyPlayers(players);
+    const logs = ['贝拉 失去 1 HP'];
+    applyHpDamageWithLink(players, 1, 1, [], logs, 1, []);
+
+    const events = buildStatEvents(before, players, logs, { reason: '测试', seq: 10 });
+    const queue = statEventsToAnimQueue(events, players, logs);
+
+    expect(events.filter(event => event.type === 'DAMAGE_LINK_BREAK').map(event => event.pair)).toEqual([[0, 1], [1, 2]]);
+    expect(queue.map(step => step.type)).toEqual([
+      'HP_DAMAGE',
+      'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'HP_DAMAGE',
+      'STATE_PATCH', 'TURN_BOUNDARY_PAUSE', 'HP_DAMAGE',
+    ]);
+    expect(queue[1]._logChunk[0]).toContain('贝拉 和 艾伦');
+    expect(queue[4]._logChunk[0]).toContain('贝拉 和 卡洛斯');
+  });
+
+  it('同一效果先扣减再恢复HP时按各自特效分段更新HP条', () => {
+    const displayStats = [{ hp: 10, san: 8 }];
+    const events = [
+      { type: 'HP_LOSS', target: 0, from: { hp: 10, san: 8 }, to: { hp: 6, san: 8 } },
+      { type: 'HP_GAIN', target: 0, from: { hp: 6, san: 8 }, to: { hp: 9, san: 8 } },
+    ];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 9, san: 8 })]);
+
+    expect(queue.map(step => step.type)).toEqual(['HP_DAMAGE', 'HP_HEAL']);
+    expect(queue[0].statEvents).toEqual([{ ...events[0], id: expect.any(String) }]);
+    expect(queue[1].statEvents).toEqual([{ ...events[1], id: expect.any(String) }]);
+    const afterDamage = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterDamage).toEqual([{ hp: 6, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterDamage, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 9, san: 8 },
+    ]);
+  });
+
+  it('同一效果先恢复再扣减SAN时保留事件顺序并分段更新SAN条', () => {
+    const displayStats = [{ hp: 7, san: 4 }];
+    const events = [
+      { type: 'SAN_GAIN', target: 0, from: { hp: 7, san: 4 }, to: { hp: 7, san: 8 } },
+      { type: 'SAN_LOSS', target: 0, from: { hp: 7, san: 8 }, to: { hp: 7, san: 5 } },
+    ];
+    const queue = statEventsToAnimQueue(events, [makePlayer({ hp: 7, san: 5 })]);
+
+    expect(queue.map(step => step.type)).toEqual(['SAN_HEAL', 'SAN_DAMAGE']);
+    expect(queue[0].statEvents).toEqual([{ ...events[0], id: expect.any(String) }]);
+    expect(queue[1].statEvents).toEqual([{ ...events[1], id: expect.any(String) }]);
+    const afterHeal = applyStatEventsToDisplayStats(displayStats, queue[0].statEvents, queue[0].type);
+    expect(afterHeal).toEqual([{ hp: 7, san: 8 }]);
+    expect(applyStatEventsToDisplayStats(afterHeal, queue[1].statEvents, queue[1].type)).toEqual([
+      { hp: 7, san: 5 },
     ]);
   });
 });

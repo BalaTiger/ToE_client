@@ -1,10 +1,17 @@
 import { cardLogText } from './coreUtils';
 import { localDisplayName } from './rotateState';
 import { statEventsToAnimQueue } from './statEvents';
+import { cardIdentity } from './cardIdentity';
+import { createVisualLogEntries } from './visualEventLogs';
+import { statEventIdentity } from './ruleResolutionTransaction';
+import { ensureStatEventId } from './statEventIdentity';
 
 export const VISUAL_EVENT = {
   TIMED_OUT_DRAW_DISCARD: 'timedOutDrawDiscard',
+  GOD_GIFT_DISCARD: 'godGiftDiscard',
+  GOD_GIFT_KEEP: 'godGiftKeep',
   TURN_START: 'turnStart',
+  DECK_RESHUFFLE: 'deckReshuffle',
   DRAW_CARD: 'drawCard',
   STAT_EVENTS: 'statEvents',
   BEWITCH_GIFT: 'bewitchGift',
@@ -16,22 +23,92 @@ export const VISUAL_EVENT = {
   HAND_LIMIT_DISCARD: 'handLimitDiscard',
   CARD_EFFECT: 'cardEffect',
   EARTHQUAKE: 'earthquake',
+  ANIM_TRANSACTION: 'animTransaction',
   ENDLESS_CORRIDOR_REPLAY: 'endlessCorridorReplay',
   GOD_POWER_BLOCKED: 'godPowerBlocked',
   TSG_SLIME_POP: 'tsgSlimePop',
+  GOD_STATUS_CHANGED: 'godStatusChanged',
+  APOPHIS_ECLIPSE: 'apophisEclipse',
+  THROW_STONE: 'throwStone',
+  APOPHIS_TARGET: 'apophisTarget',
+  INSPECTION: 'inspection',
+  TSG_SLIME_GRANT: 'tsgSlimeGrant',
+  MULTIPLY: 'multiply',
+  RANDOM_TARGET: 'randomTarget',
+  GRAVE_DIG: 'graveDig',
+  CARD_MOVE: 'cardMove',
+  CARD_REVEAL: 'cardReveal',
+  DICE_RESULT: 'diceResult',
+  LOG_ONLY: 'logOnly',
+  VRITRA_IMMORTAL_REVEAL: 'vritraImmortalReveal',
 };
+
+// Audit only: pass one ordered transaction and its rule-log delta. This
+// reports omissions, multiplicity and order; it never changes playback.
+export function auditVisualEventLogCoverage(events = [], log = []) {
+  const lines = Array.isArray(log) ? log : [];
+  const claimed = new Set();
+  const seenEntries = new Set();
+  let cursor = -1;
+  const issues = [];
+  (Array.isArray(events) ? events : []).forEach(event => {
+    if (!event || event.logExcluded === true) return;
+    const entries = event.logEntries || createVisualLogEntries(event.id, event.msgs);
+    entries.forEach(entry => {
+      if (seenEntries.has(entry.id)) return;
+      seenEntries.add(entry.id);
+      const index = lines.findIndex((line, i) => !claimed.has(i) && line === entry.text);
+      if (index < 0) {
+        issues.push({ code: 'VISUAL_EVENT_LOG_MISSING', eventId: event.id || null, msg: entry.text });
+        return;
+      }
+      claimed.add(index);
+      if (index < cursor) issues.push({ code: 'VISUAL_EVENT_LOG_OUT_OF_ORDER', eventId: event.id || null, msg: entry.text });
+      cursor = Math.max(cursor, index);
+    });
+  });
+  lines.forEach((msg, index) => {
+    if (!claimed.has(index)) issues.push({ code: 'RULE_LOG_WITHOUT_VISUAL_EVENT', index, msg });
+  });
+  return issues;
+}
+
+export function createLogOnlyVisualEvent({
+  msgs = [],
+  turnStartStage = null,
+  turnStartStageOrder = null,
+  transactionId = null,
+  order = null,
+} = {}) {
+  const normalized = Array.isArray(msgs) ? msgs.filter(msg => typeof msg === 'string' && msg.length) : [];
+  if (!normalized.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.LOG_ONLY,
+    msgs: normalized,
+    ...(turnStartStage ? { turnStartStage } : {}),
+    ...(Number.isFinite(turnStartStageOrder) ? { turnStartStageOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(Number.isFinite(order) ? { order } : {}),
+  }, turnStartStage ? 'turn' : 'action');
+}
 
 const visualEventInstanceId = Math.random().toString(36).slice(2, 10);
 let actionEventSeq = 0;
+let visualEventSeq = 0;
 let cardEffectEventSeq = 0;
 let earthquakeEventSeq = 0;
-let endlessCorridorEventSeq = 0;
+let animTransactionEventSeq = 0;
 let godPowerBlockedEventSeq = 0;
 let tsgSlimePopEventSeq = 0;
+let godStatusChangedEventSeq = 0;
 
-function cardIdentity(card) {
-  if (!card) return 'none';
-  return card.id || card.uid || [card.key, card.godKey, card.name, card.type].filter(Boolean).join(':') || 'card';
+export function withVisualEventIdentityScope(callback) {
+  const saved = [actionEventSeq, visualEventSeq, cardEffectEventSeq, earthquakeEventSeq,
+    animTransactionEventSeq, godPowerBlockedEventSeq, tsgSlimePopEventSeq, godStatusChangedEventSeq];
+  try { return callback(); } finally {
+    [actionEventSeq, visualEventSeq, cardEffectEventSeq, earthquakeEventSeq,
+      animTransactionEventSeq, godPowerBlockedEventSeq, tsgSlimePopEventSeq, godStatusChangedEventSeq] = saved;
+  }
 }
 
 function msgsIdentity(msgs) {
@@ -45,15 +122,15 @@ function makeVisualEventId(event) {
   if (event.drawerIdx != null) parts.push(`d${event.drawerIdx}`);
   if (event.sourceIdx != null) parts.push(`s${event.sourceIdx}`);
   if (event.targetIdx != null) parts.push(`t${event.targetIdx}`);
-  if (event.card) parts.push(`c${cardIdentity(event.card)}`);
+  if (event.card) parts.push(`c${cardIdentity(event.card) || 'none'}`);
   if (Array.isArray(event.cards) && event.cards.length) {
-    parts.push(`cards${event.cards.map(cardIdentity).join(',')}`);
+    parts.push(`cards${event.cards.map(card => cardIdentity(card) || 'none').join(',')}`);
   }
   if (Array.isArray(event.statEvents) && event.statEvents.length) {
     parts.push(`seq${event.statEvents.map(ev => ev?.seq ?? `${ev?.type || 'stat'}:${ev?.target ?? ''}`).join(',')}`);
   }
   if (Array.isArray(event.discardEvents) && event.discardEvents.length) {
-    parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card)}`).join(',')}`);
+    parts.push(`quake${event.discardEvents.map(ev => `${ev?.playerIndex ?? ''}:${cardIdentity(ev?.card) || 'none'}`).join(',')}`);
   }
   if (event.effectKey) parts.push(`effect${event.effectKey}`);
   const msgKey = msgsIdentity(event.msgs);
@@ -61,61 +138,269 @@ function makeVisualEventId(event) {
   return parts.join('|');
 }
 
-function withVisualEventMeta(event, scope = 'action') {
+function withVisualEventMeta(event, scope = 'action', generateUniqueId = true) {
   if (!event) return null;
   const scoped = {
     ...event,
+    ...(Array.isArray(event.statEvents) ? { statEvents: event.statEvents.map(ensureStatEventId) } : {}),
     scope: event.scope || scope,
   };
+  const id = event.id || (generateUniqueId
+    ? `${event.type}:${visualEventInstanceId}:${++visualEventSeq}`
+    : makeVisualEventId(scoped));
   return {
     ...scoped,
-    id: event.id || makeVisualEventId(scoped),
+    id,
+    ...(event.msgs?.length ? { logEntries: createVisualLogEntries(id, event.msgs) } : {}),
   };
 }
 
-export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家' } = {}) {
+export function createTimedOutDrawDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家', beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.TIMED_OUT_DRAW_DISCARD,
     card,
     drawerIdx,
     drawerName,
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'turn');
 }
 
-export function createTurnStartEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+// 黏液额外摸到邪神牌且同步结算为「放弃馈赠」时，由规则层发出此事件，
+// 弃牌动画步骤由事务编译器统一产出，不再由呈现层根据日志文本补造。
+export function createGodGiftDiscardEvent({ card, drawerIdx = 0, drawerName = '该玩家', beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
+  if (!card) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_GIFT_DISCARD,
+    turnStartStage: 'draw',
+    // 排在同次遭遇的 SAN 扣减（1）与 SAN 检定（3）之后。
+    turnStartStageOrder: 4,
+    card,
+    drawerIdx,
+    drawerName,
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
+  }, 'turn');
+}
+
+export function getTurnBannerVisualEventId(state = {}) {
+  // A continuation may rebuild abilityData and prune the consumed TURN_START
+  // payload. Keep the identity tied to the logical turn, not to a state diff or
+  // to the lifetime of a particular decision object.
+  const turnKey = state?._turnKey ?? state?.turn ?? 'unknown';
+  const playerIdx = state?.currentTurn ?? 0;
+  return `${VISUAL_EVENT.TURN_START}:turn-${String(turnKey)}:player-${playerIdx}`;
+}
+
+function createTurnStartEvent({ id = null, playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.TURN_START,
+    ...(id ? { id } : {}),
+    turnStartStage: 'turnBanner',
+    turnStartStageOrder: 0,
     playerIdx,
     playerName,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
 
-export function createDrawCardEvent({ playerIdx = 0, playerName = '该玩家', card, msgs = [], sourcePile = null } = {}) {
+export function createDrawCardEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  card,
+  msgs = [],
+  sourcePile = null,
+  drawOrder = 0,
+  transactionId = null,
+  fromTsathogguaSlime = false,
+  slimePop = null,
+  godEncounter = null,
+  keptInHand = false,
+  incomeDestination = null,
+  discarded = false,
+  playersBefore = null,
+  playersAfterKeep = null,
+  playersAfterDiscard = null,
+  discardAfter = null,
+  playersAfterResolution = null,
+  statEventIds = [],
+  effectVisualEventIds = [],
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DRAW_CARD,
+    turnStartStage: 'draw',
+    turnStartStageOrder: drawOrder * 2 + 1,
+    drawOrder,
+    ...(effectVisualEventIds.length ? { effectVisualEventIds } : {}),
+    ...(transactionId ? { transactionId } : {}),
     playerIdx,
     playerName,
     card,
     ...(sourcePile ? { sourcePile } : {}),
+    ...(fromTsathogguaSlime ? { fromTsathogguaSlime: true } : {}),
+    ...(slimePop ? { slimePop } : {}),
+    ...(godEncounter ? { godEncounter } : {}),
+    ...(keptInHand ? { keptInHand: true } : {}),
+    ...(incomeDestination ? { incomeDestination } : {}),
+    ...(discarded ? { discarded: true } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfterKeep) ? { playersAfterKeep } : {}),
+    ...(Array.isArray(playersAfterDiscard) ? { playersAfterDiscard } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+    ...(Array.isArray(playersAfterResolution) ? { playersAfterResolution } : {}),
+    ...(Array.isArray(statEventIds) && statEventIds.length
+      ? { statEventIds: [...new Set(statEventIds.filter(Boolean))] }
+      : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'turn');
 }
 
-export function createStatEventsEvent({ statEvents = [], msgs = [] } = {}) {
+// 邪神馈赠经过独立决策后进入手牌时，由规则层发出新的结果事件。
+// 原 DRAW_CARD 事件可能已经播放并被消费，不能在决策完成后回写它的 keptInHand。
+export function createGodGiftKeepEvent({
+  card,
+  drawerIdx = 0,
+  drawerName = '该玩家',
+  drawEventId = null,
+  playersBefore = null,
+  playersAfter = null,
+  msgs = [],
+  presentAfterInspectionSeq = null,
+} = {}) {
+  if (!card || !Array.isArray(playersBefore) || !Array.isArray(playersAfter)) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_GIFT_KEEP,
+    card,
+    drawerIdx,
+    drawerName,
+    ...(drawEventId ? { drawEventId } : {}),
+    playersBefore,
+    playersAfter,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+  }, 'turn');
+}
+
+export function buildGodGiftKeepSteps(event) {
+  if (!event?.card || event.drawerIdx == null
+    || !Array.isArray(event.playersBefore) || !Array.isArray(event.playersAfter)) return [];
+  return [
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.drawerIdx,
+      dest: 'player',
+      toPid: event.drawerIdx,
+      count: 1,
+      sourceAnchor: 'godChoice',
+      effect: 'draw',
+      cards: [event.card],
+      msgs: event.msgs || [],
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: { players: event.playersBefore },
+    },
+    {
+      type: 'STATE_PATCH',
+      visualEventId: event.id,
+      players: event.playersAfter,
+    },
+  ];
+}
+
+export function createDeckReshuffleEvent({
+  playerIdx = 0,
+  drawEventId = null,
+  msgs = [],
+  drawOrder = 0,
+  transactionId = null,
+} = {}) {
+  const normalizedMsgs = Array.isArray(msgs) ? msgs.filter(Boolean) : [];
+  if (!normalizedMsgs.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.DECK_RESHUFFLE,
+    turnStartStage: 'draw',
+    turnStartStageOrder: drawOrder * 2,
+    drawOrder,
+    ...(transactionId ? { transactionId } : {}),
+    ...(drawEventId ? { drawEventId } : {}),
+    playerIdx,
+    msgs: normalizedMsgs,
+  }, 'turn');
+}
+
+export function createTurnDrawVisualEvents(draw = {}) {
+  const drawEvent = createDrawCardEvent(draw);
+  if (!drawEvent) return [];
+  const reshuffleEvent = draw.reshuffleLog
+    ? createDeckReshuffleEvent({
+        playerIdx: drawEvent.playerIdx,
+        drawEventId: drawEvent.id,
+        msgs: [draw.reshuffleLog],
+        drawOrder: drawEvent.drawOrder,
+        transactionId: drawEvent.transactionId,
+      })
+    : null;
+  return [reshuffleEvent, drawEvent].filter(Boolean);
+}
+
+export function createStatEventsEvent({
+  statEvents = [],
+  msgs = [],
+  turnStartStage = null,
+  turnStartStageOrder = null,
+  transactionId = null,
+  order = null,
+  resolutionPhase = null,
+  barrier = null,
+} = {}) {
   const events = Array.isArray(statEvents) ? statEvents.filter(Boolean) : [];
   if (!events.length) return null;
+  const phaseGroupIds = [...new Set(events.map(event => event?.phaseGroupId).filter(Boolean))];
   return withVisualEventMeta({
     type: VISUAL_EVENT.STAT_EVENTS,
+    ...(turnStartStage ? {
+      turnStartStage,
+      turnStartStageOrder: Number.isFinite(turnStartStageOrder) ? turnStartStageOrder : 1,
+    } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
+    ...(phaseGroupIds.length === 1 ? { phaseGroupId: phaseGroupIds[0] } : {}),
     statEvents: events,
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'stat');
 }
 
-export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetName = '该玩家', card, msgs = [] } = {}) {
+export function createBewitchGiftEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  targetName = '该玩家',
+  card,
+  msgs = [],
+  encounterMsgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  discardBefore = null,
+  discardAfter = null,
+  statEvents = [],
+  settlementEvents = [],
+  encounterEvents = [],
+  acceptanceEvents = [],
+  zhuLightBefore = null,
+  zhuLightAfter = null,
+} = {}) {
   if (!card) return null;
+  const normalizedSettlementEvents = Array.isArray(settlementEvents) && settlementEvents.length
+    ? settlementEvents.filter(Boolean)
+    : [
+        ...(Array.isArray(encounterEvents) ? encounterEvents.filter(Boolean).map(event => ({ ...event, cardAcquisitionStage: 'godEncounter' })) : []),
+        ...(Array.isArray(acceptanceEvents) ? acceptanceEvents.filter(Boolean).map(event => ({ ...event, cardAcquisitionStage: 'acceptance' })) : []),
+      ];
   return withVisualEventMeta({
     type: VISUAL_EVENT.BEWITCH_GIFT,
     id: `${VISUAL_EVENT.BEWITCH_GIFT}:${visualEventInstanceId}:${++actionEventSeq}`,
@@ -124,10 +409,129 @@ export function createBewitchGiftEvent({ sourceIdx = 0, targetIdx = 0, targetNam
     targetName,
     card,
     msgs: Array.isArray(msgs) ? msgs : [],
+    encounterMsgs: Array.isArray(encounterMsgs) ? encounterMsgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardBefore) ? { discardBefore } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
+    settlementEvents: normalizedSettlementEvents,
+    ...(zhuLightBefore ? { zhuLightBefore } : {}),
+    ...(zhuLightAfter ? { zhuLightAfter } : {}),
   }, 'action');
 }
 
-export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount = 1, targetCount = 1, msgs = [], takenCard = null, givenCard = null, sourceName = null, sourceLabel = null } = {}) {
+function orderExplicitSettlementEvents(events = []) {
+  const ordered = [...events];
+  // Some effect resolvers append their card/stat visual events only after
+  // finishing the SAN-inspection chain.  The inspection snapshot still
+  // carries the authoritative beforeStatEventSeq boundary, so move any later
+  // event whose complete stat payload belongs to that boundary in front of
+  // the reveal.  This covers both aggregate stat wrappers and bespoke damage
+  // effects such as 夜风呼啸, whose event owns its own SAN impact.  Without
+  // this normalization a gifted 鼠群 records `inspection -> statEvents` and
+  // the inspection card visibly flips before the SAN-loss animation.
+  for (let boundaryIndex = 0; boundaryIndex < ordered.length; boundaryIndex += 1) {
+    const boundary = Number(ordered[boundaryIndex]?.beforeStatEventSeq);
+    if (!Number.isFinite(boundary)) continue;
+    const movable = [];
+    for (let index = boundaryIndex + 1; index < ordered.length; index += 1) {
+      const candidate = ordered[index];
+      if (!Array.isArray(candidate?.statEvents) || !candidate.statEvents.length) continue;
+      const seqs = candidate.statEvents.map(statEvent => Number(statEvent?.seq));
+      if (seqs.every(seq => Number.isFinite(seq) && seq <= boundary)) movable.push(candidate);
+    }
+    if (!movable.length) continue;
+    const movableSet = new Set(movable);
+    ordered.splice(0, ordered.length,
+      ...ordered.slice(0, boundaryIndex),
+      ...movable,
+      ordered[boundaryIndex],
+      ...ordered.slice(boundaryIndex + 1).filter(event => !movableSet.has(event)),
+    );
+    boundaryIndex += movable.length;
+  }
+  return ordered;
+}
+
+export function createOrderedSettlementEvents({ events = [], statEvents = [] } = {}) {
+  const seenEventIds = new Set();
+  const seenEventRefs = new Set();
+  const explicitEvents = orderExplicitSettlementEvents((Array.isArray(events) ? events : []).filter(event => {
+    if (!event) return false;
+    if (event.id) {
+      if (seenEventIds.has(event.id)) return false;
+      seenEventIds.add(event.id);
+      return true;
+    }
+    if (seenEventRefs.has(event)) return false;
+    seenEventRefs.add(event);
+    return true;
+  }));
+  const ownedStatKeys = new Set(explicitEvents
+    .flatMap(event => event?.statEvents || [])
+    .map(statEventIdentity));
+  const remaining = (Array.isArray(statEvents) ? statEvents : [])
+    .filter(event => event && !ownedStatKeys.has(statEventIdentity(event)));
+  const result = [];
+  const emitted = new Set();
+  const emitThrough = threshold => {
+    const batch = remaining.filter(event => (
+      !emitted.has(event) && threshold != null && (event?.seq ?? Number.POSITIVE_INFINITY) <= threshold
+    ));
+    batch.forEach(event => emitted.add(event));
+    const visualEvent = createStatEventsEvent({ statEvents: batch });
+    if (visualEvent) result.push(visualEvent);
+  };
+  explicitEvents.forEach(event => {
+    emitThrough(event?.beforeStatEventSeq);
+    result.push(event);
+  });
+  const tail = remaining.filter(event => !emitted.has(event));
+  const tailEvent = createStatEventsEvent({ statEvents: tail });
+  if (tailEvent) result.push(tailEvent);
+  return result;
+}
+
+export function createGraveDigEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  card,
+  msgs = [],
+  beforePlayers = null,
+  afterPlayers = null,
+  beforeDiscard = null,
+  afterDiscard = null,
+} = {}) {
+  if (!card || playerIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GRAVE_DIG,
+    playerIdx,
+    playerName,
+    card,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
+  }, 'action');
+}
+
+export function createSwapCardsEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  sourceCount = 1,
+  targetCount = 1,
+  msgs = [],
+  takenCard = null,
+  givenCard = null,
+  sourceName = null,
+  sourceLabel = null,
+  beforePlayers = null,
+  afterPlayers = null,
+  beforeDiscard = null,
+  afterDiscard = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.SWAP_CARDS,
     id: `${VISUAL_EVENT.SWAP_CARDS}:${visualEventInstanceId}:${++actionEventSeq}`,
@@ -139,21 +543,263 @@ export function createSwapCardsEvent({ sourceIdx = 0, targetIdx = 0, sourceCount
     ...(givenCard ? { givenCard } : {}),
     ...(sourceName ? { sourceName } : {}),
     ...(sourceLabel ? { sourceLabel } : {}),
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
 
-export function createHuntTargetEvent({ sourceIdx = 0, targetIdx = 0, msgs = [] } = {}) {
+export function createHuntTargetEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  msgs = [],
+  attemptId = null,
+  targetResolutionEventId = null,
+  phaseGroupId = null,
+  phaseOrder = null,
+  transactionId = null,
+  order = null,
+  beforePlayers = null,
+  afterPlayers = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_TARGET,
     id: `${VISUAL_EVENT.HUNT_TARGET}:${visualEventInstanceId}:${++actionEventSeq}`,
     sourceIdx,
     targetIdx,
+    ...(attemptId ? { attemptId } : {}),
+    ...(targetResolutionEventId ? { targetResolutionEventId } : {}),
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(afterPlayers) ? { afterPlayers } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
 
-export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs = [] } = {}) {
+// Generic presentation facts used while retiring snapshot/log inference.
+// Rule code records the semantic move/reveal/roll at the moment it happens;
+// the compiler maps it to playback steps without comparing resolved states.
+export function createCardMoveVisualEvent({
+  from,
+  to,
+  cards = [],
+  count = null,
+  effect = 'move',
+  sourceAnchor = null,
+  durationMs = null,
+  faceUp = null,
+  playersBefore = null,
+  playersAfter = null,
+  discardBefore = null,
+  discardAfter = null,
+  msgs = [],
+} = {}) {
+  const normalizedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  const normalizedCount = count ?? normalizedCards.length;
+  if (!from?.zone || !to?.zone || !Number.isFinite(Number(normalizedCount)) || Number(normalizedCount) <= 0) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.CARD_MOVE,
+    from: { ...from },
+    to: { ...to },
+    cards: normalizedCards,
+    count: Number(normalizedCount),
+    effect,
+    ...(sourceAnchor ? { sourceAnchor } : {}),
+    ...(durationMs != null ? { durationMs } : {}),
+    ...(faceUp != null ? { faceUp: !!faceUp } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardBefore) ? { discardBefore } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+    msgs: Array.isArray(msgs) ? msgs : [],
+  }, 'action');
+}
+
+export function buildCardMoveSteps(event = {}) {
+  if (!event?.from?.zone || !event?.to?.zone || !event?.count) return [];
+  const beforePatch = {
+    ...(Array.isArray(event.playersBefore) ? { players: event.playersBefore } : {}),
+    ...(Array.isArray(event.discardBefore) ? { discard: event.discardBefore } : {}),
+  };
+  const afterPatch = {
+    ...(Array.isArray(event.playersAfter) ? { players: event.playersAfter } : {}),
+    ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+  };
+  const hasBeforePatch = Object.keys(beforePatch).length > 0;
+  const hasAfterPatch = Object.keys(afterPatch).length > 0;
+  const fromPid = event.from.playerIdx;
+  const toPid = event.to.playerIdx;
+  const moveStep = event.to.zone === 'deckBottom'
+    ? {
+        type: 'BURY_TO_DECK',
+        fromPid: fromPid ?? 0,
+        cards: event.cards || [],
+        count: event.count,
+        effect: event.effect,
+        msgs: event.msgs || [],
+        ...(hasBeforePatch ? { visualSetupPatch: beforePatch } : {}),
+      }
+    : {
+        type: 'CARD_TRANSFER',
+        ...(fromPid != null ? { fromPid } : {}),
+        dest: event.to.zone === 'hand' || event.to.zone === 'godZone' ? 'player' : event.to.zone,
+        ...(toPid != null ? { toPid } : {}),
+        count: event.count,
+        cards: event.cards || [],
+        effect: event.effect,
+        sourceAnchor: event.sourceAnchor || event.from.zone,
+        msgs: event.msgs || [],
+        ...(event.durationMs != null ? { durationMs: event.durationMs } : {}),
+        ...(event.faceUp != null ? { faceUp: event.faceUp } : {}),
+        ...(hasBeforePatch ? { visualSetupTiming: 'stepStart', visualSetupPatch: beforePatch } : {}),
+        ...(hasAfterPatch ? { visualTimeline: [{ atMs: 360, patch: afterPatch }] } : {}),
+      };
+  return [
+    moveStep,
+    ...(hasAfterPatch ? [{ type: 'STATE_PATCH', ...afterPatch }] : []),
+  ];
+}
+
+export function createCardRevealVisualEvent({
+  card,
+  targetIdx = 0,
+  triggerName = '该玩家',
+  revealKind = 'card',
+  msgs = [],
+  skipTravel = false,
+  playersBefore = null,
+  playersAfter = null,
+} = {}) {
+  if (!card || targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.CARD_REVEAL,
+    card,
+    targetIdx,
+    triggerName,
+    revealKind,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(skipTravel ? { skipTravel: true } : {}),
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+  }, 'action');
+}
+
+export function buildCardRevealSteps(event = {}) {
+  if (!event?.card || event?.targetIdx == null) return [];
+  return [
+    {
+      type: 'DRAW_CARD',
+      card: event.card,
+      targetPid: event.targetIdx,
+      triggerName: event.triggerName || '该玩家',
+      revealKind: event.revealKind || 'card',
+      msgs: event.msgs || [],
+      ...(event.skipTravel ? { skipTravel: true } : {}),
+      ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
+    },
+    ...(Array.isArray(event.playersAfter) ? [{ type: 'STATE_PATCH', players: event.playersAfter }] : []),
+  ];
+}
+
+export function createDiceResultVisualEvent({
+  mode,
+  actorIdx = 0,
+  actorName = '该玩家',
+  dice = [],
+  d1 = null,
+  d2 = null,
+  heal = 0,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  negativeAvoided = null,
+  apophisChanged = null,
+  targetIdx = null,
+  distance = null,
+  damage = null,
+} = {}) {
+  const normalizedDice = Array.isArray(dice) ? dice.filter(value => Number.isFinite(Number(value))).map(Number) : [];
+  const first = d1 ?? normalizedDice[0];
+  const second = d2 ?? normalizedDice[1] ?? 0;
+  if (!mode || !Number.isFinite(Number(first))) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.DICE_RESULT,
+    mode,
+    actorIdx,
+    actorName,
+    dice: normalizedDice.length ? normalizedDice : [Number(first), Number(second)],
+    d1: Number(first),
+    d2: Number(second),
+    heal,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(negativeAvoided != null ? { negativeAvoided: !!negativeAvoided } : {}),
+    ...(apophisChanged != null ? { apophisChanged: !!apophisChanged } : {}),
+    ...(targetIdx != null ? { targetIdx } : {}),
+    ...(distance != null ? { distance } : {}),
+    ...(damage != null ? { damage } : {}),
+  }, 'action');
+}
+
+export function createVritraImmortalRevealEvent({
+  targetIdx = 0,
+  cards = [],
+  succeeded = false,
+  msg = '',
+} = {}) {
+  const revealedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
+  if (!revealedCards.length) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.VRITRA_IMMORTAL_REVEAL,
+    targetIdx,
+    cards: revealedCards,
+    succeeded: !!succeeded,
+    msgs: msg ? [msg] : [],
+  }, 'stat');
+}
+
+export function buildDiceResultSteps(event = {}) {
+  if (!event?.mode || !Number.isFinite(Number(event?.d1))) return [];
+  return [
+    {
+      type: 'DICE_ROLL',
+      diceMode: event.mode,
+      ...(event.mode === 'treasureDodge' ? { dodgeSuccess: Number(event.d1) >= 4 } : {}),
+      d1: Number(event.d1),
+      d2: Number(event.d2 ?? 0),
+      heal: Number(event.heal ?? 0),
+      rollerName: event.actorName || '该玩家',
+      msgs: event.msgs || [],
+      ...(Array.isArray(event.playersBefore) ? { visualSetupPatch: { players: event.playersBefore } } : {}),
+      ...Object.fromEntries(Object.entries(event).filter(([key]) => [
+        'negativeAvoided',
+        'apophisChanged',
+        'targetIdx',
+        'distance',
+        'damage',
+      ].includes(key))),
+    },
+    ...(Array.isArray(event.playersAfter) ? [{ type: 'STATE_PATCH', players: event.playersAfter }] : []),
+  ];
+}
+
+export function createHuntRevealEvent({
+  sourceIdx = 0,
+  targetIdx = 0,
+  card,
+  msgs = [],
+  attemptId = null,
+  phaseGroupId = null,
+  phaseOrder = null,
+  transactionId = null,
+  order = null,
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.HUNT_REVEAL,
@@ -161,6 +807,11 @@ export function createHuntRevealEvent({ sourceIdx = 0, targetIdx = 0, card, msgs
     sourceIdx,
     targetIdx,
     card,
+    ...(attemptId ? { attemptId } : {}),
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
     msgs: Array.isArray(msgs) ? msgs : [],
   }, 'action');
 }
@@ -180,19 +831,32 @@ export function createHuntResultEvent(event = {}) {
   }, 'action');
 }
 
-export function createSphinxResultEvent({ actorIdx = 0, card, guessCorrect = false, msgs = [] } = {}) {
+export function createSphinxResultEvent({
+  actorIdx = 0,
+  card,
+  sourceCard = null,
+  guessCorrect = false,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  statEvents = [],
+} = {}) {
   if (!card) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.SPHINX_RESULT,
     id: `${VISUAL_EVENT.SPHINX_RESULT}:${visualEventInstanceId}:${++actionEventSeq}`,
     actorIdx,
     card,
+    ...(sourceCard ? { sourceCard } : {}),
     guessCorrect: !!guessCorrect,
     msgs: Array.isArray(msgs) ? msgs : [],
+    statEvents: Array.isArray(statEvents) ? statEvents.filter(Boolean) : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
   }, 'action');
 }
 
-export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [], beforePlayers = null, beforeDiscard = null, afterDiscard = null } = {}) {
   const normalizedCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   if (!normalizedCards.length && !(Array.isArray(msgs) && msgs.length)) return null;
   return withVisualEventMeta({
@@ -201,10 +865,13 @@ export function createHandLimitDiscardEvent({ playerIdx = 0, playerName = '该�
     playerName,
     cards: normalizedCards,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(beforePlayers) ? { beforePlayers } : {}),
+    ...(Array.isArray(beforeDiscard) ? { beforeDiscard } : {}),
+    ...(Array.isArray(afterDiscard) ? { afterDiscard } : {}),
   }, 'turn');
 }
 
-export function createEndlessCorridorReplayEvent({
+export function createAnimTransactionEvent({
   actorIdx = 0,
   actorName = '该玩家',
   queue = [],
@@ -212,21 +879,39 @@ export function createEndlessCorridorReplayEvent({
   beforePlayers = null,
   beforeDiscard = null,
   zhuLight = null,
+  context = 'generic',
+  barrier = 'continuation',
+  coveredEventIds = [],
   id = null,
 } = {}) {
   const replayQueue = Array.isArray(queue) ? queue.filter(Boolean) : [];
   if (!replayQueue.length) return null;
+  const normalizedCoveredEventIds = [...new Set([
+    ...(Array.isArray(coveredEventIds) ? coveredEventIds : []),
+    ...replayQueue.map(step => step?.visualEventId),
+  ].filter(Boolean))];
   return withVisualEventMeta({
-    type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY,
-    id: id || `${VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY}:${visualEventInstanceId}:${++endlessCorridorEventSeq}`,
+    type: VISUAL_EVENT.ANIM_TRANSACTION,
+    id: id || `${VISUAL_EVENT.ANIM_TRANSACTION}:${visualEventInstanceId}:${++animTransactionEventSeq}`,
     actorIdx,
     actorName,
+    context,
+    barrier,
+    coveredEventIds: normalizedCoveredEventIds,
     queue: replayQueue,
     msgs: Array.isArray(msgs) ? msgs : [],
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : null,
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : null,
     zhuLight: zhuLight || null,
   }, 'turn');
+}
+
+// Compatibility wrapper for states/tests produced before animation transactions
+// were generalized. New callers that are not endless-corridor flows should use
+// createAnimTransactionEvent and provide their own context.
+export function createEndlessCorridorReplayEvent(options = {}) {
+  const event = createAnimTransactionEvent({ ...options, context: 'endlessCorridor' });
+  return event ? { ...event, type: VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY } : null;
 }
 
 export function buildHuntRevealStepFromVisualEvent(event, state, opts = {}) {
@@ -264,6 +949,12 @@ export function createCardEffectEvent({
   card = null,
   actorIdx = null,
   id = null,
+  phaseGroupId = null,
+  phaseOrder = null,
+  transactionId = null,
+  order = null,
+  resolutionPhase = null,
+  barrier = null,
   beforePlayers = [],
   beforeDiscard = [],
   afterPlayers = null,
@@ -280,6 +971,12 @@ export function createCardEffectEvent({
     effectKey,
     card: card || null,
     actorIdx,
+    ...(phaseGroupId ? { phaseGroupId } : {}),
+    ...(phaseOrder != null ? { phaseOrder } : {}),
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
     beforePlayers: Array.isArray(beforePlayers) ? beforePlayers : [],
     beforeDiscard: Array.isArray(beforeDiscard) ? beforeDiscard : [],
     afterPlayers: Array.isArray(afterPlayers) ? afterPlayers : null,
@@ -357,17 +1054,25 @@ export function buildSnakeTrapAnimStep(event, state) {
   };
 }
 
-export function createGodPowerBlockedEvent({ playerIdx = 0, playerName = '该玩家', msgs = [] } = {}) {
+export function createGodPowerBlockedEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  msgs = [],
+  turnStartStage = null,
+  turnStartStageOrder = null,
+} = {}) {
   return withVisualEventMeta({
     type: VISUAL_EVENT.GOD_POWER_BLOCKED,
     id: `${VISUAL_EVENT.GOD_POWER_BLOCKED}:${visualEventInstanceId}:${++godPowerBlockedEventSeq}`,
     playerIdx,
     playerName,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(turnStartStage ? { turnStartStage } : {}),
+    ...(Number.isFinite(turnStartStageOrder) ? { turnStartStageOrder } : {}),
   }, 'action');
 }
 
-export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [] } = {}) {
+export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该玩家', cards = [], msgs = [], playersBefore = null, playersAfter = null } = {}) {
   const slimeCards = Array.isArray(cards) ? cards.filter(Boolean) : [];
   return withVisualEventMeta({
     type: VISUAL_EVENT.TSG_SLIME_POP,
@@ -377,34 +1082,300 @@ export function createTsathogguaSlimePopEvent({ playerIdx = 0, playerName = '该
     count: slimeCards.length || 1,
     cards: slimeCards,
     msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
   }, 'action');
 }
 
-function buildStatEventsFromPlayerSnapshots(beforePlayers = [], afterPlayers = [], msgs = [], reason = '卡牌效果') {
-  if (!Array.isArray(beforePlayers) || !Array.isArray(afterPlayers)) return [];
-  const logHint = Array.isArray(msgs) ? msgs[0] : undefined;
-  return beforePlayers.flatMap((before, target) => {
-    const after = afterPlayers[target];
-    if (!before || !after) return [];
-    const hpLoss = Math.max(0, Number(before.hp ?? 0) - Number(after.hp ?? before.hp ?? 0));
-    const hpGain = Math.max(0, Number(after.hp ?? 0) - Number(before.hp ?? after.hp ?? 0));
-    const sanLoss = Math.max(0, Number(before.san ?? 0) - Number(after.san ?? before.san ?? 0));
-    const sanGain = Math.max(0, Number(after.san ?? 0) - Number(before.san ?? after.san ?? 0));
-    const from = { hp: before.hp, san: before.san, isDead: !!before.isDead };
-    const to = { hp: after.hp, san: after.san, isDead: !!after.isDead };
-    const events = [];
-    if (hpLoss && sanLoss) events.push({ type: 'HP_SAN_LOSS', target, from, to, reason, logHint });
-    else {
-      if (hpLoss) events.push({ type: 'HP_LOSS', target, from, to, reason, logHint });
-      if (sanLoss) events.push({ type: 'SAN_LOSS', target, from, to, reason, logHint });
-    }
-    if (hpGain && sanGain) events.push({ type: 'HP_SAN_GAIN', target, from, to, reason, logHint });
-    else {
-      if (hpGain) events.push({ type: 'HP_GAIN', target, from, to, reason, logHint });
-      if (sanGain) events.push({ type: 'SAN_GAIN', target, from, to, reason, logHint });
-    }
-    return events;
-  });
+export function createGodStatusChangedEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  godKey = null,
+  godLevel = 0,
+  msgs = [],
+  playersBefore = null,
+  playersAfter = null,
+  faithSettlement = null,
+  presentAfterInspectionSeq = null,
+} = {}) {
+  if (!godKey || !Array.isArray(playersAfter)) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.GOD_STATUS_CHANGED,
+    id: `${VISUAL_EVENT.GOD_STATUS_CHANGED}:${visualEventInstanceId}:${++godStatusChangedEventSeq}`,
+    playerIdx,
+    playerName,
+    godKey,
+    godLevel,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    playersAfter,
+    ...(faithSettlement ? { faithSettlement } : {}),
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+  }, 'action');
+}
+
+export function createApophisEclipseEvent({
+  playerIdx = 0,
+  playerName = '该玩家',
+  apophisNight = null,
+  msgs = [],
+  transactionId = null,
+  order = null,
+  resolutionPhase = 'immediateGodPower',
+  barrier = 'continuation',
+  presentAfterInspectionSeq = null,
+} = {}) {
+  if (!apophisNight?.active) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.APOPHIS_ECLIPSE,
+    playerIdx,
+    playerName,
+    apophisNight,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(transactionId ? { transactionId } : {}),
+    ...(order != null ? { order } : {}),
+    ...(resolutionPhase ? { resolutionPhase } : {}),
+    ...(barrier ? { barrier } : {}),
+    ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+  }, 'action');
+}
+
+export function buildApophisEclipseStep(event) {
+  if (!event?.apophisNight?.active) return null;
+  return {
+    type: 'APOPHIS_ECLIPSE',
+    visualEventId: event.id,
+    targetPid: event.playerIdx,
+    _apophisNight: event.apophisNight,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
+export function createThrowStoneEvent({ sourceIdx = 0, targetIdx = 0, roll = 1, distance = 0, damage = 0, resultText = '', msgs = [], playersBefore = null, playersAfter = null, statEvents = [], legacySeq = null } = {}) {
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.THROW_STONE,
+    sourceIdx,
+    targetIdx,
+    roll,
+    distance,
+    damage,
+    resultText,
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents : [],
+    ...(legacySeq != null ? { legacySeq } : {}),
+  }, 'action');
+}
+
+export function buildThrowStoneSteps(event, state = null) {
+  if (!event || event.sourceIdx == null || event.targetIdx == null || event.roll == null) return [];
+  const players = event.playersAfter || state?.players || [];
+  return [
+    {
+      type: 'DICE_ROLL',
+      visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
+      diceMode: 'throwStone',
+      d1: event.roll,
+      d2: 0,
+      rollerName: players?.[event.sourceIdx]?.name || '角色',
+      msgs: [],
+    },
+    {
+      type: 'RANDOM_TARGET',
+      visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
+      sourceIdx: event.sourceIdx,
+      targetIdx: event.targetIdx,
+      roll: event.roll,
+      distance: event.distance,
+      damage: event.damage || 0,
+      label: '投掷石块',
+      players,
+      msgs: event.resultText ? [event.resultText] : [],
+    },
+    {
+      type: 'THROW_STONE',
+      visualEventId: event.id,
+      visualEventType: VISUAL_EVENT.THROW_STONE,
+      sourceIdx: event.sourceIdx,
+      targetIdx: event.targetIdx,
+      damage: event.damage || 0,
+      players,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    },
+    ...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, []),
+  ];
+}
+
+export function createApophisTargetVisualEvent(event = {}, { playersBefore = null, playersAfter = null, statEvents = [] } = {}) {
+  if (!event?.seq || event.actorIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.APOPHIS_TARGET,
+    ...event,
+    legacySeq: event.seq,
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    statEvents: Array.isArray(statEvents) ? statEvents : [],
+  }, 'action');
+}
+
+export function buildApophisTargetSteps(event, state = null) {
+  if (!event?.legacySeq || event.roll == null) return [];
+  const players = event.playersAfter || state?.players || [];
+  const night = event.apophisNight || null;
+  const steps = [{
+    type: 'DICE_ROLL',
+    visualEventId: event.id,
+    _apophisTargetSeq: event.legacySeq,
+    _apophisNight: night,
+    diceMode: 'apophisNight',
+    apophisChanged: !!event.changed,
+    d1: event.roll,
+    d2: 0,
+    heal: 0,
+    rollerName: event.actorName || players?.[event.actorIdx]?.name || '???',
+    msgs: event.log ? [event.log] : [],
+    _logChunk: event.log ? [event.log] : [],
+  }];
+  // Target-shift SAN is the immediate result of the night roll. Present it
+  // before the identity skill locks onto / acts on the resolved target.
+  steps.push(...statEventsToAnimQueue(event.statEvents || [], event.playersBefore || players, [])
+    .map(step => ({ ...step, visualEventId: step.visualEventId || event.id })));
+  // The resolved identity action owns its own skill overlay. Keeping that
+  // overlay inside the target event made the canonical compiler place it
+  // before a following SAN-inspection event. The target transaction ends at
+  // the SAN consequence so the action transaction can begin after inspection.
+  return steps;
+}
+
+export function createInspectionVisualEvent(inspectionEvent = {}) {
+  if (!inspectionEvent?.card || inspectionEvent.target == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.INSPECTION,
+    ...inspectionEvent,
+    msgs: [
+      ...(Array.isArray(inspectionEvent.revealMsgs) ? inspectionEvent.revealMsgs : []),
+      ...(Array.isArray(inspectionEvent.effectMsgs) ? inspectionEvent.effectMsgs : []),
+    ],
+    legacySeq: inspectionEvent.seq,
+  }, 'inspection');
+}
+
+export function createTsathogguaSlimeGrantEvent(event = {}) {
+  if (event.ownerIdx == null || !event.count) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.TSG_SLIME_GRANT,
+    turnStartStage: 'turnBoundary',
+    turnStartStageOrder: 0,
+    playerIdx: event.ownerIdx,
+    ...event,
+  }, 'turn');
+}
+
+export function buildTsathogguaSlimeGrantSteps(event, state = null) {
+  if (!event || event.ownerIdx == null || !event.count) return [];
+  return [
+    { type: 'VISUAL_LOCK', visualEventId: event.id, players: event.playersBefore, zhuLight: state?.zhuLight || null },
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.ownerIdx,
+      dest: 'player',
+      toPid: event.ownerIdx,
+      count: event.count,
+      sourceAnchor: 'playerArea',
+      effect: 'tsgSlime',
+      durationMs: 950,
+      cards: event.cards || [],
+      msgs: event.msgs || [],
+    },
+    { type: 'STATE_PATCH', visualEventId: event.id, players: event.playersAfter },
+    { type: 'TURN_BOUNDARY_PAUSE', visualEventId: event.id, durationMs: 180 },
+  ];
+}
+
+export function createMultiplyVisualEvent({ fromIdx = 0, toIdx = 0, count = 1, cards = [], msgs = [], playersBefore = null, playersAfter = null, discardAfter = null } = {}) {
+  if (fromIdx == null || toIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.MULTIPLY,
+    sourceIdx: fromIdx,
+    targetIdx: toIdx,
+    fromIdx,
+    toIdx,
+    count,
+    cards: Array.isArray(cards) ? cards : [],
+    msgs: Array.isArray(msgs) ? msgs : [],
+    ...(Array.isArray(playersBefore) ? { playersBefore } : {}),
+    ...(Array.isArray(playersAfter) ? { playersAfter } : {}),
+    ...(Array.isArray(discardAfter) ? { discardAfter } : {}),
+  }, 'action');
+}
+
+export function createRandomTargetVisualEvent(event = {}, { players = null } = {}) {
+  if (event.sourceIdx == null || event.targetIdx == null) return null;
+  return withVisualEventMeta({
+    type: VISUAL_EVENT.RANDOM_TARGET,
+    ...event,
+    ...(Array.isArray(players) ? { playersAfter: players } : {}),
+    legacySeq: event.seq,
+  }, 'action');
+}
+
+export function buildRandomTargetSteps(event, state = null) {
+  if (!event || event.sourceIdx == null || event.targetIdx == null) return [];
+  return [{
+    ...event,
+    // Spreading the event must not clobber the step type with the event type
+    // ('randomTarget'); the player only recognizes the 'RANDOM_TARGET' step.
+    visualEventId: event.id,
+    visualEventType: VISUAL_EVENT.RANDOM_TARGET,
+    type: 'RANDOM_TARGET',
+    players: event.playersAfter || state?.players || [],
+    msgs: event.resultText ? [event.resultText] : (event.msgs || []),
+  }];
+}
+
+export function buildMultiplySteps(event) {
+  if (!event || event.fromIdx == null || event.toIdx == null) return [];
+  return [
+    {
+      type: 'CARD_TRANSFER',
+      visualEventId: event.id,
+      fromPid: event.fromIdx,
+      dest: 'player',
+      toPid: event.toIdx,
+      count: event.count || 1,
+      cards: event.cards || [],
+      effect: 'blackGoat',
+      durationMs: 1500,
+      msgs: event.msgs || [],
+    },
+    ...(Array.isArray(event.playersAfter) ? [{
+      type: 'STATE_PATCH',
+      visualEventId: event.id,
+      players: event.playersAfter,
+      ...(Array.isArray(event.discardAfter) ? { discard: event.discardAfter } : {}),
+    }] : []),
+  ];
+}
+
+export function buildGodStatusChangedStep(event) {
+  if (!event?.godKey || event.playerIdx == null) return null;
+  const setupPlayers = Array.isArray(event.playersBefore)
+    ? event.playersBefore
+    : event.playersAfter;
+  return {
+    type: 'GOD_HIGHLIGHT',
+    visualEventId: event.id,
+    targetPid: event.playerIdx,
+    godKey: event.godKey,
+    godLevel: event.godLevel || 0,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+    ...(Array.isArray(setupPlayers) ? { visualSetupPatch: { players: setupPlayers } } : {}),
+    ...(Array.isArray(event.playersAfter) ? { visualTimeline: [{ atMs: 0, patch: { players: event.playersAfter } }] } : {}),
+  };
 }
 
 export function buildEarthquakeAnimStep({
@@ -421,14 +1392,19 @@ export function buildEarthquakeAnimStep({
   const normalizedDiscardEvents = Array.isArray(discardEvents)
     ? discardEvents.map((event, index, events) => {
       const playerIndex = event?.playerIndex;
-      if (playerIndex != null && finalPlayerList?.[playerIndex]) {
+      // `afterPlayers` is captured immediately after removing this card,
+      // before any discard-triggered HP/SAN/death settlement.  Prefer it over
+      // the event's final player list so the flight phase cannot leak a later
+      // terminal state.  The final list remains a compatibility fallback for
+      // older events that did not carry per-discard snapshots.
+      if (Array.isArray(event?.afterPlayers)) {
+        stagedPlayers = event.afterPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
+      } else if (playerIndex != null && finalPlayerList?.[playerIndex]) {
         stagedPlayers = stagedPlayers.map((player, i) => (
           i === playerIndex
             ? { ...finalPlayerList[playerIndex], hand: [...(finalPlayerList[playerIndex].hand || [])] }
             : player
         ));
-      } else if (Array.isArray(event?.afterPlayers)) {
-        stagedPlayers = event.afterPlayers.map(p => ({ ...p, hand: [...(p?.hand || [])] }));
       }
       return {
         ...event,
@@ -460,19 +1436,23 @@ export function buildEarthquakeAnimStep({
 }
 
 export function buildTurnStartDrawVisualEvents(state) {
-  if (!state || state.gameOver) return [];
+  if (!state) return [];
   const events = [];
   if (Array.isArray(state._turnStartLogs) && state._turnStartLogs.length) {
     events.push(createTurnStartEvent({
+      id: getTurnBannerVisualEventId(state),
       playerIdx: state.currentTurn ?? 0,
       playerName: state.players?.[state.currentTurn]?.name || '该玩家',
       msgs: state._turnStartLogs,
     }));
   }
+  // The rule layer explicitly aborted this opening before the draw phase.
+  if (state._turnStartAbortedByDeath || state._turnStartDrawAborted) return events;
+  const explicitDrawEvents = getVisualEvents(state).filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.card);
   const drawCard = state.phase === 'GOD_CHOICE'
     ? state.abilityData?.godCard
     : state.drawReveal?.card;
-  if (drawCard) {
+  if (drawCard && !explicitDrawEvents.length) {
     const drawerIdx = state.phase === 'GOD_CHOICE'
       ? (state.abilityData?.drawerIdx ?? state.currentTurn ?? 0)
       : (state.drawReveal?.drawerIdx ?? state.currentTurn ?? 0);
@@ -489,21 +1469,64 @@ export function buildTurnStartDrawVisualEvents(state) {
 }
 
 export function buildFreshStatVisualEvents(state, previousStatSeq = 0) {
-  const statLogSet = new Set((Array.isArray(state?._statLogs) ? state._statLogs : []).filter(Boolean));
-  const freshStatEvents = Array.isArray(state?._statEvents)
+  const allFreshStatEvents = Array.isArray(state?._statEvents)
     ? state._statEvents.filter(ev => (
       ev &&
-      (ev.seq == null || ev.seq > (previousStatSeq || 0)) &&
-      (!statLogSet.size || !ev.logHint || statLogSet.has(ev.logHint))
+      (ev.seq == null || ev.seq > (previousStatSeq || 0))
     ))
     : [];
-  const event = createStatEventsEvent({ statEvents: freshStatEvents, msgs: state?._statLogs || [] });
-  return event ? [event] : [];
+  // 归属判断只认规范事件内嵌的 statEvents。此前用 _statLogs
+  // 文本匹配收窄，但黏液额外摸牌等路径不把效果日志写进 _statLogs，收窄会把这些
+  // 事件挤出规范归属，随后被上一回合 AI 行动队列的旧式差分捡走抢播。
+  const ownedStatKeys = new Set();
+  (Array.isArray(state?._visualEvents) ? state._visualEvents : []).forEach(event => {
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(statEvent => {
+      if (statEvent) ownedStatKeys.add(statEventIdentity(statEvent));
+    });
+  });
+  const freshStatEvents = allFreshStatEvents.filter(event => (
+    !ownedStatKeys.has(statEventIdentity(event))
+  ));
+  const statLogs = Array.isArray(state?._statLogs) ? state._statLogs : [];
+  const msgsFor = events => {
+    const hints = [...new Set(events.map(event => event?.logHint).filter(Boolean))];
+    const hintSet = new Set(hints);
+    // Canonical stat events own their log hints. Older turn-start paths did
+    // not populate _statLogs, so falling back to the event hints keeps those
+    // messages attached to the staged transaction instead of recovering them
+    // from state.log in the presentation layer.
+    const scoped = statLogs.filter(msg => hintSet.has(msg));
+    const known = new Set(scoped);
+    return [...scoped, ...hints.filter(msg => !known.has(msg))];
+  };
+  const preDrawEvents = freshStatEvents.filter(isPreDrawTurnStartStatEvent);
+  const drawEvents = freshStatEvents.filter(event => !isPreDrawTurnStartStatEvent(event));
+  return [
+    createStatEventsEvent({
+      statEvents: preDrawEvents,
+      msgs: msgsFor(preDrawEvents),
+      turnStartStage: 'turnStart',
+    }),
+    createStatEventsEvent({
+      statEvents: drawEvents,
+      msgs: msgsFor(drawEvents),
+      turnStartStage: 'draw',
+    }),
+  ].filter(Boolean);
+}
+
+export function isPreDrawTurnStartStatEvent(event) {
+  return event?.reason === '黑山羊幼仔' ||
+    String(event?.logHint || '').includes('黑山羊幼仔') ||
+    event?.reason === '中毒' ||
+    String(event?.logHint || '').includes('【中毒】') ||
+    event?.reason === '两人一绳' ||
+    String(event?.logHint || '').includes('【两人一绳】');
 }
 
 export function getVisualEvents(state) {
   return Array.isArray(state?._visualEvents)
-    ? state._visualEvents.map(event => withVisualEventMeta(event)).filter(Boolean)
+    ? state._visualEvents.map(event => withVisualEventMeta(event, 'action', false)).filter(Boolean)
     : [];
 }
 
@@ -513,7 +1536,7 @@ export function clearVisualEvents(state) {
 
 export function getVisualEventIds(events) {
   return (Array.isArray(events) ? events : [])
-    .map(event => withVisualEventMeta(event)?.id)
+    .map(event => withVisualEventMeta(event, 'action', false)?.id)
     .filter(Boolean);
 }
 
@@ -544,9 +1567,24 @@ export function buildTimedOutDrawDiscardStepFromVisualEvents(state) {
   return {
     type: 'DISCARD',
     card: event.card,
+    sourceAnchor: event.card.isGod ? 'godChoice' : 'playerArea',
     triggerName: displayName,
     targetPid: drawerIdx,
     msgs: [`(超时) ${displayName} 弃置了 ${cardLogText(event.card, { alwaysShowName: true })}`],
+  };
+}
+
+export function buildGodGiftDiscardStepFromVisualEvents(state) {
+  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.GOD_GIFT_DISCARD && ev.card);
+  if (!event) return null;
+  const drawerIdx = event.drawerIdx ?? 0;
+  const drawerName = event.drawerName || state?.players?.[drawerIdx]?.name || '???';
+  return {
+    type: 'DISCARD',
+    card: event.card,
+    sourceAnchor: 'godChoice',
+    triggerName: localDisplayName(drawerIdx, drawerName),
+    targetPid: drawerIdx,
   };
 }
 
@@ -559,6 +1597,8 @@ export function buildHandLimitDiscardStepsFromVisualEvents(state) {
   return [{
     type: 'DISCARD',
     card: Array.isArray(event.cards) ? event.cards[0] : null,
+    cards: Array.isArray(event.cards) ? event.cards : [],
+    count: Array.isArray(event.cards) ? event.cards.length : 1,
     triggerName: displayName,
     targetPid: playerIdx,
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
@@ -566,24 +1606,34 @@ export function buildHandLimitDiscardStepsFromVisualEvents(state) {
 }
 
 export function buildTurnStartStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.TURN_START);
+  const event = getVisualEvents(state).findLast(ev =>
+    ev?.type === VISUAL_EVENT.TURN_START &&
+    (ev.playerIdx == null || ev.playerIdx === (state?.currentTurn ?? 0))
+  );
   if (!event) return null;
   const playerIdx = event.playerIdx ?? state?.currentTurn ?? 0;
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
   return {
     type: 'YOUR_TURN',
+    visualEventId: event.id,
+    turnStartStage: event.turnStartStage || 'turnBanner',
     name: localDisplayName(playerIdx, playerName),
     msgs: Array.isArray(event.msgs) ? event.msgs : [],
   };
 }
 
 export function buildDrawCardStepFromVisualEvents(state) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.DRAW_CARD && ev.card);
+  const event = getVisualEvents(state).findLast(ev =>
+    ev?.type === VISUAL_EVENT.DRAW_CARD &&
+    ev.card &&
+    (ev.playerIdx == null || ev.playerIdx === (state?.currentTurn ?? 0))
+  );
   if (!event) return null;
   const playerIdx = event.playerIdx ?? state?.currentTurn ?? 0;
   const playerName = event.playerName || state?.players?.[playerIdx]?.name || '???';
   return {
     type: 'DRAW_CARD',
+    visualEventId: event.id,
     card: event.card,
     triggerName: localDisplayName(playerIdx, playerName),
     targetPid: playerIdx,
@@ -592,8 +1642,17 @@ export function buildDrawCardStepFromVisualEvents(state) {
   };
 }
 
+export function buildDeckReshuffleStepFromVisualEvent(event) {
+  if (!event || event.type !== VISUAL_EVENT.DECK_RESHUFFLE) return null;
+  return {
+    type: 'DECK_RESHUFFLE',
+    visualEventId: event.id,
+    msgs: Array.isArray(event.msgs) ? event.msgs : [],
+  };
+}
+
 export function buildStatStepsFromVisualEvents(state, players) {
-  const event = getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
+  const event = getVisualEvents(state).findLast(ev => ev?.type === VISUAL_EVENT.STAT_EVENTS && Array.isArray(ev.statEvents) && ev.statEvents.length);
   if (!event) return [];
   return statEventsToAnimQueue(event.statEvents, players || state?.players || [], event.msgs || []);
 }
@@ -602,15 +1661,13 @@ export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null
   const oldIds = new Set(getVisualEventIds(getVisualEvents(oldState)));
   const events = getVisualEvents(state)
     .filter(ev => ev?.type === VISUAL_EVENT.GOD_POWER_BLOCKED && ev?.id && !oldIds.has(ev.id));
-  if (events.length) {
-    try { console.log('[BUG1-DIAG] visualEventsPath godPowerBlocked', { currentTurn: state?.currentTurn, ids: events.map(e => e.id), playerIdx: events.map(e => e.playerIdx) }); } catch { /* noop */ }
-  }
   return events
     .map(event => {
       const playerIdx = event.playerIdx ?? 0;
       const playerName = event.playerName || state?.players?.[playerIdx]?.name || '该玩家';
       return {
         type: 'GOD_POWER_BLOCKED',
+        visualEventId: event.id,
         targetPid: playerIdx,
         name: localDisplayName(playerIdx, playerName),
         msgs: Array.isArray(event.msgs) ? event.msgs : [],
@@ -620,6 +1677,31 @@ export function buildGodPowerBlockedStepsFromVisualEvents(state, oldState = null
 
 export function buildCardEffectAnimStep(event, state) {
   if (!event) return null;
+  if (event.effectKey === 'selfRenounceGod') {
+    const cards = Array.isArray(event.payload?.cards) ? event.payload.cards.filter(Boolean) : [];
+    if (!cards.length || event.actorIdx == null) return null;
+    return {
+      type: 'CARD_TRANSFER',
+      fromPid: event.actorIdx,
+      dest: 'discard',
+      count: cards.length,
+      cards,
+      faceUp: true,
+      sourceAnchor: 'godPower',
+      effect: 'godRenounce',
+      durationMs: 1500,
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      visualSetupTiming: 'stepStart',
+      visualSetupPatch: {
+        players: event.beforePlayers || state?.players || [],
+        discard: event.beforeDiscard || state?.discard || [],
+      },
+      visualTimeline: [
+        { atMs: 0, patch: { players: event.beforePlayers || state?.players || [], discard: event.beforeDiscard || state?.discard || [] } },
+        { atMs: 360, patch: { players: event.afterPlayers || state?.players || [], discard: event.afterDiscard || state?.discard || [] } },
+      ],
+    };
+  }
   if (event.effectKey === 'earthquake' || event.type === VISUAL_EVENT.EARTHQUAKE) {
     return buildEarthquakeAnimStep({
       beforePlayers: event.beforePlayers,
@@ -628,6 +1710,56 @@ export function buildCardEffectAnimStep(event, state) {
       finalPlayers: state?.players,
       msgs: event.msgs,
     });
+  }
+  if (event.effectKey === 'forcedRandomDiscard') {
+    const initialPlayers = Array.isArray(event.beforePlayers) ? event.beforePlayers : [];
+    const initialDiscard = Array.isArray(event.beforeDiscard) ? event.beforeDiscard : [];
+    let cursorPlayers = initialPlayers;
+    let cursorDiscard = initialDiscard;
+    const discardEvents = Array.isArray(event.discardEvents) ? event.discardEvents : [];
+    const steps = discardEvents.map((discardEvent, index) => {
+      const playerIndex = discardEvent?.playerIndex ?? event.actorIdx ?? 0;
+      const playerName = state?.players?.[playerIndex]?.name || initialPlayers?.[playerIndex]?.name || '该玩家';
+      const nextPlayers = Array.isArray(discardEvent?.afterPlayers)
+        ? discardEvent.afterPlayers
+        : (event.afterPlayers || state?.players || cursorPlayers);
+      const nextDiscard = Array.isArray(discardEvent?.afterDiscard)
+        ? discardEvent.afterDiscard
+        : (event.afterDiscard || state?.discard || cursorDiscard);
+      const step = {
+        type: 'DISCARD',
+        card: discardEvent?.card || null,
+        cards: discardEvent?.card ? [discardEvent.card] : [],
+        count: 1,
+        triggerName: localDisplayName(playerIndex, playerName),
+        targetPid: playerIndex,
+        msgs: index === 0 && Array.isArray(event.msgs) ? event.msgs : [],
+        // Unlike queueStart setup, stepStart keeps the preceding draw/income
+        // presentation intact and restores the hand only when the forced
+        // discard itself begins.
+        visualSetupTiming: 'stepStart',
+        visualSetupPatch: {
+          players: cursorPlayers,
+          discard: cursorDiscard,
+        },
+        visualTimeline: [
+          { atMs: 0, patch: { players: cursorPlayers, discard: cursorDiscard } },
+          { atMs: 360, patch: { players: nextPlayers, discard: nextDiscard } },
+        ],
+      };
+      cursorPlayers = nextPlayers;
+      cursorDiscard = nextDiscard;
+      return step;
+    });
+    const statSteps = statEventsToAnimQueue(
+      event.statEvents || [],
+      cursorPlayers,
+      event.msgs || [],
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [...steps, ...statSteps],
+    };
   }
   if (event.effectKey === 'geomagneticReversal') {
     const payload = event.payload || {};
@@ -673,19 +1805,15 @@ export function buildCardEffectAnimStep(event, state) {
     };
   }
   if (event.effectKey === 'volcano') {
-    const volcanoStatEvents = Array.isArray(event.statEvents) && event.statEvents.length
-      ? event.statEvents
-      : buildStatEventsFromPlayerSnapshots(
-        event.beforePlayers,
-        event.afterPlayers || state?.players || [],
-        event.msgs || [],
-        event.card?.name || '活火山'
-      );
+    const volcanoStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
     const sync = buildSyncedCardEffectTimeline({
       beforePlayers: event.beforePlayers,
       beforeDiscard: event.beforeDiscard,
-      afterPlayers: event.afterPlayers || state?.players,
-      afterDiscard: event.afterDiscard || state?.discard,
+      // VOLCANO only presents the source card. HP/death state belongs to the
+      // following stat/death steps; committing the final snapshot here makes
+      // a defeated panel gray out before the guillotine and death notice.
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
       state,
       finalAtMs: 2400,
     });
@@ -708,6 +1836,141 @@ export function buildCardEffectAnimStep(event, state) {
         },
         ...statSteps,
       ],
+    };
+  }
+  if (event.effectKey === 'undergroundSpring') {
+    const springStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 300,
+    });
+    const statSteps = statEventsToAnimQueue(
+      springStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'UNDERGROUND_SPRING',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
+  if (event.effectKey === 'startledBats') {
+    const batsStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1320,
+    });
+    const statSteps = statEventsToAnimQueue(
+      batsStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'STARTLED_BATS',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
+  if (event.effectKey === 'nightWind') {
+    const nightWindStatEvents = Array.isArray(event.statEvents) ? event.statEvents : [];
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 1250,
+    });
+    const statSteps = statEventsToAnimQueue(
+      nightWindStatEvents,
+      event.beforePlayers || state?.players || [],
+      event.msgs || []
+    );
+    return {
+      type: 'COMPOSITE',
+      steps: [
+        {
+          type: 'NIGHT_WIND',
+          card: event.card,
+          actorIdx: event.actorIdx,
+          beforePlayers: event.beforePlayers || [],
+          beforeDiscard: event.beforeDiscard || [],
+          msgs: Array.isArray(event.msgs) ? event.msgs : [],
+          ...sync,
+        },
+        ...statSteps,
+      ],
+    };
+  }
+  if (event.effectKey === 'burrowingWorm') {
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.beforePlayers,
+      afterDiscard: event.beforeDiscard,
+      state,
+      finalAtMs: 0,
+    });
+    return {
+      type: 'BURROWING_WORM',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      durationMs: 2750,
+      ...sync,
+    };
+  }
+  if (event.effectKey === 'etherealizeGain') {
+    const payload = event.payload || {};
+    const sync = buildSyncedCardEffectTimeline({
+      beforePlayers: event.beforePlayers,
+      beforeDiscard: event.beforeDiscard,
+      afterPlayers: event.afterPlayers || state?.players,
+      afterDiscard: event.afterDiscard || state?.discard,
+      state,
+      finalAtMs: 3600,
+    });
+    return {
+      type: 'ETHEREALIZE_GAIN',
+      card: event.card,
+      actorIdx: event.actorIdx,
+      stackCount: Math.max(0, payload.stackCount || 0),
+      beforePlayers: event.beforePlayers || [],
+      beforeDiscard: event.beforeDiscard || [],
+      msgs: Array.isArray(event.msgs) ? event.msgs : [],
+      durationMs: 3800,
+      ...sync,
     };
   }
   if (event.effectKey === 'snakeTrap') {
@@ -736,14 +1999,28 @@ export function buildCardEffectStepsFromVisualEvents(state, oldState = null, pre
     .filter(event => (typeof predicate === 'function' ? predicate(event) : true))
     .flatMap(event => {
       const step = buildCardEffectAnimStep(event, state);
-      return step?.type === 'COMPOSITE' ? step.steps : [step];
+      const steps = step?.type === 'COMPOSITE' ? step.steps : [step];
+      // Tag each compiled step with its owning event id so queue-coverage
+      // checks (getAiActionQueueCoverage) recognize the event as presented;
+      // otherwise callers could compile the same event again
+      // a second time (e.g. 夜风呼啸 gifted via 蛊惑 played its animation and
+      // stat deductions twice).
+      return steps.filter(Boolean).map(s => (
+        event.id && !s.visualEventId ? { ...s, visualEventId: event.id } : s
+      ));
     })
     .filter(Boolean);
 }
 
-export function getEndlessCorridorReplayVisualEvent(state) {
-  return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY && Array.isArray(ev.queue) && ev.queue.length);
+export function getAnimTransactionVisualEvent(state) {
+  return getVisualEvents(state).find(ev => (
+    (ev?.type === VISUAL_EVENT.ANIM_TRANSACTION || ev?.type === VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY)
+    && Array.isArray(ev.queue)
+    && ev.queue.length
+  ));
 }
+
+export const getEndlessCorridorReplayVisualEvent = getAnimTransactionVisualEvent;
 
 export function getBewitchGiftVisualEvent(state) {
   return getVisualEvents(state).find(ev => ev?.type === VISUAL_EVENT.BEWITCH_GIFT && ev.card);

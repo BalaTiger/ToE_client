@@ -2,11 +2,12 @@
 //  DATA
 // ══════════════════════════════════════════════════════════════
 // ── DECK BALANCE ──────────────────────────────────────────────────────────────
-// Copy counts: 3× every card → 48 total. Perfect letter+number symmetry.
+// Deck: 16 slots × 1 variant of the active expansion = 48 zone cards
+//   + god cards (godCopies each, default 4×6 = 24) → 72 total, shuffled.
 
-// Math: E[HP per HP-affecting card drawn] = −68/32 ≈ −2  (target: −2)
-//   Heal contribution: 2×(+2+1+5+3) = +22
-//   Damage contribution: 6×(−2−1−8−4) = −90   [C2 hits 4 others = −8; D2 hits 1 = −4]
+// Math (默认扩展「地神的潜影」，仅无条件即时 HP 效果；不含荧光苔藓/条件牌/延迟牌):
+//   无条件自伤合计 −29；无条件自疗合计 +14；霉变食物期望 +0.5
+//   E[自己 HP / 次摸牌] ≈ (14 + 0.5 − 29) / 72 ≈ −0.20（条件伤害会进一步拉低）
 // ──────────────────────────────────────────────────────────────────────────────
 const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A1": [
@@ -53,7 +54,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "神圣菇肉",
-      "desc": "你回复5HP，失去2SAN",
+      "desc": "你恢复5HP，失去2SAN",
       "type": "selfHealHPSelfDamageSAN",
       "hpVal": 5,
       "sanVal": 2,
@@ -67,7 +68,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A2": [
     {
       "name": "蚂蚁虽小",
-      "desc": "你回复1HP",
+      "desc": "你恢复1HP",
       "type": "selfHealHP",
       "val": 1,
       "slotKey": "A2",
@@ -99,9 +100,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "A3": [
     {
       "name": "吃下荧光苔藓",
-      "desc": "HP回满，手牌全局公开，盲抽变挑选",
+      "desc": "本局游戏中你的手牌公开。仅当你HP不足8时，恢复HP至8点",
       "type": "selfRevealHandHP",
-      "val": 10,
+      "val": 8,
       "slotKey": "A3",
       "polarity": "neutral",
       "effectScope": "self",
@@ -132,7 +133,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "无尽通道",
-      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的牌视为被重新摸到并依次结算",
+      "desc": "回合结束时，若此牌在手中，展示所有手牌，使所有“无尽通道”左边的非衍生牌视为被重新摸到并依次结算",
       "type": "endTurnReplayHand",
       "val": 0,
       "slotKey": "A3",
@@ -142,9 +143,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "可生食木乃伊",
-      "desc": "你回复2HP，失去1SAN",
+      "desc": "你恢复1HP，失去1SAN",
       "type": "selfHealHPSelfDamageSAN",
-      "hpVal": 2,
+      "hpVal": 1,
       "sanVal": 1,
       "slotKey": "A3",
       "polarity": "neutral",
@@ -208,7 +209,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B1": [
     {
       "name": "圣甲虫",
-      "desc": "你回复1SAN",
+      "desc": "你恢复1SAN",
       "type": "selfHealSAN",
       "val": 1,
       "slotKey": "B1",
@@ -228,7 +229,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "生命天平",
-      "desc": "你回复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
+      "desc": "你恢复3HP。此牌从你的手牌进入弃牌堆时，你失去3HP",
       "type": "lifeBalance",
       "val": 3,
       "slotKey": "B1",
@@ -260,7 +261,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B2": [
     {
       "name": "新鲜空气",
-      "desc": "所有角色回复1HP",
+      "desc": "所有角色恢复1HP",
       "type": "allHealHP",
       "val": 1,
       "slotKey": "B2",
@@ -313,10 +314,10 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "B3": [
     {
       "name": "猎获穴兽",
-      "desc": "你回复3HP，相邻角色各回复2HP",
+      "desc": "你恢复2HP，相邻角色各恢复1HP",
       "type": "selfHealAdjHealHP",
-      "val": 3,
-      "adjVal": 2,
+      "val": 2,
+      "adjVal": 1,
       "slotKey": "B3",
       "polarity": "positive",
       "effectScope": "self",
@@ -370,7 +371,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "两人一绳",
-      "desc": "你和另一名角色间拉起救生索，任意一方受伤时绳索断裂，双方各失去3HP。如果到你的下个回合绳索未断裂，各回复4HP",
+      "desc": "你和另一名角色间拉起救生索，任意一方受伤时绳索断裂，双方各失去3HP。如果到你的下个回合绳索未断裂，各恢复4HP",
       "type": "damageLink",
       "val": 1,
       "polarity": "neutral",
@@ -403,7 +404,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "灵魂天平",
-      "desc": "你回复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
+      "desc": "你恢复3SAN。此牌从你的手牌进入弃牌堆时，你失去3SAN",
       "type": "soulBalance",
       "val": 3,
       "slotKey": "C1",
@@ -423,9 +424,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "烤盲鱼",
-      "desc": "你回复3HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
+      "desc": "你恢复2HP，且摸到下张区域牌时，须在只能看见编号的条件下决定是否收入",
       "type": "blindFish",
-      "val": 3,
+      "val": 2,
       "slotKey": "C1",
       "polarity": "positive",
       "effectScope": "self",
@@ -445,9 +446,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C2": [
     {
       "name": "地下泉",
-      "desc": "所有角色回复2HP",
+      "desc": "所有角色恢复1HP",
       "type": "allHealHP",
-      "val": 2,
+      "val": 1,
       "slotKey": "C2",
       "polarity": "positive",
       "effectScope": "all",
@@ -487,9 +488,9 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "C3": [
     {
       "name": "龙之心",
-      "desc": "你回复4HP与1SAN",
+      "desc": "你恢复3HP与1SAN",
       "type": "selfHealHPSAN",
-      "hpVal": 4,
+      "hpVal": 3,
       "sanVal": 1,
       "slotKey": "C3",
       "polarity": "positive",
@@ -549,7 +550,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
   "D1": [
     {
       "name": "秤心仪式",
-      "desc": "你失去3HP，回复2SAN（若你本局未信仰过邪神，只执行后半句效果）",
+      "desc": "你失去3HP，恢复2SAN（若你本局未信仰过邪神，只执行后半句效果）",
       "type": "sacHealSelfSANCultist",
       "val": 2,
       "slotKey": "D1",
@@ -664,7 +665,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "偷吃龙蛋",
-      "desc": "你回复3HP，相邻角色各失去2HP",
+      "desc": "你恢复3HP，相邻角色各失去2HP",
       "type": "selfHealAdjDamageHP",
       "val": 3,
       "adjVal": 2,
@@ -718,7 +719,7 @@ const FIXED_ZONE_CARD_VARIANTS_BY_KEY = {
     },
     {
       "name": "鲜红夜宴",
-      "desc": "所有角色回复2HP，失去1SAN",
+      "desc": "所有角色恢复2HP，失去1SAN",
       "type": "allHealHPDamageSAN",
       "hpVal": 2,
       "sanVal": 1,
@@ -863,9 +864,9 @@ const GOD_DEFS={
     godKey:'VRI',name:'弗栗多',subtitle:'巨龙之化身',power:'不灭之躯',
     col:'#c04020',bgCol:'#1a0808',
     levels:[
-      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
-      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
-      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP回复至1，然后弃置这些牌'},
+      {immortalCount:6,desc:'当你在回合外受到致命伤害，展示牌堆顶部的6张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:4,desc:'当你在回合外受到致命伤害，展示牌堆顶部的4张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
+      {immortalCount:2,desc:'当你在回合外受到致命伤害，展示牌堆顶部的2张牌，若没有邪神牌和圣物牌，将HP恢复至1，然后弃置这些牌'},
     ],
   },
   TSG:{
@@ -960,19 +961,43 @@ function getAnimatedCardBackFramePaths(expansionKey = '地神的潜影', publicP
 }
 
 export const INSPECTION_DECK = [
-  ...Array(4).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 1, type: 'negative' }),
-  ...Array(4).fill({ name: '自残', effect: 'selfDamageHP', value: 1, type: 'negative' }),
-  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, type: 'negative' }),
+  ...Array(6).fill({ name: '乱抓', effect: 'adjacentDamageHP', value: 2, type: 'negative' }),
+  ...Array(6).fill({ name: '自残', effect: 'selfDamageHP', value: 2, type: 'negative' }),
+  ...Array(4).fill({ name: '失眠', effect: 'disableRest', value: 1, durationTurns: 1, type: 'negative' }),
   ...Array(2).fill({ name: '暂时的平静', effect: 'nothing', value: 0, type: 'neutral' }),
   ...Array(2).fill({ name: '昏睡', effect: 'flip', value: 1, type: 'negative' }),
   ...Array(2).fill({ name: '迫害妄想', effect: 'discardRandom', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, type: 'negative' }),
-  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '失忆', effect: 'disableSkill', value: 1, durationTurns: 1, type: 'negative' }),
+  ...Array(2).fill({ name: '乏力', effect: 'handLimitDecrease', value: 1, durationTurns: 1, type: 'negative' }),
   { name: '超人意志', effect: 'healSAN', value: 1, type: 'positive' },
   { name: '揭开真相', effect: 'drawCard', value: 1, type: 'positive' },
-  { name: '封印松动', effect: 'sealLoosening', value: 1, type: 'negative' },
-  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, type: 'negative' }
+  { name: '封印松动', effect: 'sealLoosening', value: 1, triggerCount: 2, type: 'negative' },
+  { name: '廷达罗斯猎犬', effect: 'houndsOfTindalos', value: 1, timeoutSeconds: 15, damage: 4, type: 'negative' }
 ];
+
+export function getInspectionCardDescription(card) {
+  if (!card) return '';
+  if (card.desc) return card.desc;
+  const value = card.value ?? 1;
+  const durationTurns = card.durationTurns ?? 1;
+  const turnPrefix = durationTurns === 1 ? '下一回合' : `未来 ${durationTurns} 回合`;
+  switch (card.effect) {
+    case 'adjacentDamageHP': return `相邻角色失去 ${value} HP`;
+    case 'selfDamageHP': return `失去 ${value} HP`;
+    case 'disableRest': return `${turnPrefix}禁用“休息”`;
+    case 'nothing': return '什么也不做';
+    case 'flip': return '翻面';
+    case 'discardRandom': return `随机弃 ${value} 张牌`;
+    case 'disableSkill': return `${turnPrefix}禁用技能`;
+    case 'handLimitDecrease': return `${turnPrefix}手牌上限 -${value}`;
+    case 'healSAN': return `恢复 ${value} SAN`;
+    case 'drawCard': return `从牌堆摸 ${value} 张牌`;
+    case 'sealLoosening': return `连续翻出 ${card.triggerCount ?? 2} 次时邪神复活`;
+    case 'houndsOfTindalos':
+      return `首个超时超过 ${card.timeoutSeconds ?? 15} 秒的回合失去 ${card.damage ?? 4} HP`;
+    default: return '';
+  }
+}
 
 let _bgyId = 0;
 export function createBlackGoatYoungCard() {
@@ -1003,6 +1028,13 @@ export function createTsathogguaSlimeCard() {
 }
 
 let _gmRestoreId = 0;
+export function withDerivedCardIdentityScope(callback) {
+  const saved = [_bgyId, _tsgSlimeId, _gmRestoreId];
+  try { return callback(); } finally {
+    [_bgyId, _tsgSlimeId, _gmRestoreId] = saved;
+  }
+}
+
 export function createGeomagneticRestoreCard() {
   return {
     id: `gmr-${_gmRestoreId++}`,

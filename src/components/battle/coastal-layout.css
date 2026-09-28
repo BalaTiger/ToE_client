@@ -1,0 +1,153 @@
+.toe-coastal-matte { position: fixed; inset: 0; background: #040608; pointer-events: none; }
+body:has(.toe-coastal-matte) { min-width: 0; overflow: hidden; }
+[data-ui-layout='coastal'] .toe-battle-root {
+  padding: 0 !important;
+  position: fixed !important;
+  left: var(--toe-coastal-viewport-left, 0px) !important;
+  top: var(--toe-coastal-viewport-top, 0px) !important;
+  width: var(--toe-coastal-viewport-width, 100%) !important;
+  height: var(--toe-coastal-viewport-height, 100dvh) !important;
+  min-height: 0 !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scrollbar-gutter: auto !important;
+}
+[data-ui-layout='coastal'] .toe-battle-root > .toe-battle-background {
+  position: absolute;
+  inset: 0;
+}
+[data-ui-layout='coastal'] .toe-battle-background::before,
+[data-ui-layout='coastal'] .toe-battle-background::after {
+  inset: 0;
+  background-attachment: scroll;
+}
+[data-ui-layout='coastal'] .toe-battle-content {
+  max-width: none !important;
+  gap: 0 !important;
+}
+.toe-board-composition-coastal {
+  position: relative;
+  width: 100%;
+  min-height: var(--toe-coastal-height, 680px);
+  isolation: isolate;
+  overflow: clip;
+}
+/* Cloth and journal sit behind torch/tentacles, independently of live effects. */
+.toe-coastal-drapery { position: absolute; inset: 0; z-index: -2; pointer-events: none; }
+.toe-coastal-drapery img { position: absolute; display: block; height: auto; }
+/* Extra action rows tuck the intact page behind the prompt rail, without stretching. */
+.toe-coastal-log-book { top: var(--toe-coastal-log-top, 92px); right: var(--toe-coastal-log-right, -12px); width: var(--toe-coastal-log-width, 224px); filter: brightness(.78) saturate(.7); clip-path: inset(0 0 max(0px, calc(100% - var(--toe-coastal-log-height, 323.25px) - 18px)) 0); }
+.toe-coastal-foreground { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; object-fit: fill; z-index: -1; }
+.toe-coastal-torch { position: absolute; left: -14px; bottom: -56px; width: 330px; aspect-ratio: 2 / 3; z-index: -1; pointer-events: none; }
+.toe-coastal-torch > img { display: block; width: 100%; height: auto; }
+/* Atlas combustion base (.5, .8) meets the charred fuel head at (.8, .14). */
+.toe-coastal-torch-flame-anchor { position: absolute; left: calc(80% - 64px); top: calc(14% - 204.8px); width: 128px; height: 256px; visibility: hidden; pointer-events: none; }
+.toe-coastal-torch-light-viewport { position: fixed; overflow: hidden; visibility: hidden; pointer-events: none; }
+.toe-coastal-torch-light-position { position: absolute; pointer-events: none; }
+.toe-coastal-self { position: absolute; top: 4px; left: 8px; width: 262px; z-index: 20; }
+.toe-coastal-roles { position: absolute; top: 8px; left: 14px; width: calc(76.5% - 14px); z-index: 25; }
+.toe-coastal-opponents { display: flex; align-items: stretch; justify-content: center; gap: 5px; width: 100%; }
+.toe-coastal-opponent-seat { width: calc((100% - (var(--coastal-opponent-count) - 1) * 5px) / var(--coastal-opponent-count)); flex-shrink: 0; }
+.toe-coastal-opponents[data-crowded='true'] { gap: 0; justify-content: flex-start; }
+.toe-coastal-opponents[data-crowded='true'] .toe-coastal-opponent-seat { width: 146px; }
+.toe-coastal-opponents[data-crowded='true'] .toe-coastal-opponent-seat + .toe-coastal-opponent-seat { margin-left: calc((100% - 146px) / (var(--coastal-opponent-count) - 1) - 146px); }
+.toe-coastal-opponent-seat:hover, .toe-coastal-opponent-seat:focus-within { z-index: 250 !important; }
+.toe-coastal-opponent-seat[data-current-turn='true'] { z-index: 300 !important; }
+/* Keep the native header ratio; the viewport trims only its outer ornaments. */
+.toe-coastal-turn { position: absolute; right: var(--toe-coastal-corner-right, -22px); top: var(--toe-coastal-corner-top, -3px); width: var(--toe-coastal-corner-width, 292px); pointer-events: none; z-index: 26; }
+.toe-coastal-turn > img { display: block; width: 100%; height: auto; filter: brightness(.7) saturate(.65); }
+.toe-coastal-turn-copy { position: absolute; top: 17px; left: 46px; width: 96px; height: 38px; text-align: center; display: flex; flex-direction: column; justify-content: center; gap: 1px; }
+.toe-coastal-turn strong { font-size: 22px; white-space: nowrap; }
+.toe-coastal-turn span { font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.toe-coastal-log { position: absolute; top: var(--toe-coastal-log-top, 92px); right: var(--toe-coastal-log-right, -12px); width: var(--toe-coastal-log-width, 224px); height: var(--toe-coastal-log-height, 323.25px); z-index: 10; }
+.toe-coastal-piles { position: absolute; left: var(--toe-coastal-piles-left, 29%); top: var(--toe-coastal-piles-top, 29%); width: var(--toe-coastal-piles-width, 43%); height: var(--toe-coastal-piles-height, 27%); z-index: 5; }
+.toe-coastal-effects { position: absolute; left: var(--toe-coastal-piles-left, 29%); top: var(--toe-coastal-effects-top, 156px); width: var(--toe-coastal-piles-width, 43%); z-index: 6; }
+.toe-coastal-effects:empty { display: none; }
+.toe-board-effects { display: flex; flex-direction: column; gap: 7px; }
+.toe-coastal-effects .toe-board-effects { flex-direction: row; justify-content: center; align-items: flex-start; gap: 12px; }
+.toe-coastal-effects .toe-board-effects > * { min-width: 108px; flex: 0 1 150px; }
+.toe-coastal-effects :is(.toe-board-effect, .toe-petrifying-formula) { position: relative !important; inset: auto !important; display: flex; flex-direction: row !important; align-items: center; gap: 6px !important; padding: 6px 3px; border-block: 1px solid #9b865b42; background: linear-gradient(90deg, #101c1a35, #15231fe6 22%, #15231fe6 78%, #101c1a35); }
+.toe-coastal-effects .toe-petrifying-formula > svg { flex-shrink: 0; }
+.toe-coastal-effects .toe-petrifying-formula > div,
+.toe-board-effect-copy { min-width: 0; font: 350 10px/1.5 var(--toe-coastal-panel-font); color: var(--toe-coastal-ink); text-shadow: 0 1px 2px #000; white-space: normal !important; }
+.toe-board-effect-copy { display: flex; flex-direction: column; }
+.toe-board-effect-copy strong { font-weight: 350; font-size: 12px; font-variant-numeric: tabular-nums; }
+.toe-board-effect-orb { width: 44px; height: 44px; flex-shrink: 0; }
+.toe-board-effect-orb > div { position: relative !important; inset: auto !important; transform: none !important; zoom: .5; }
+.toe-coastal-counts { position: absolute; bottom: 39px; left: 9px; width: 127px; padding: 14px 13px; box-sizing: border-box; background-size: 100% 100%; color: #c7b899; z-index: 25; }
+.toe-coastal-counts > div { display: grid; grid-template-columns: 18px 1fr auto; gap: 5px; padding: 5px 0; font-size: 15px; }
+.toe-coastal-counts > div + div { border-top: 1px solid #8c775330; }
+.toe-coastal-counts strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+.toe-coastal-counts { border-image: var(--toe-coastal-counter-image) 26 fill / 9px stretch; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-counts { transform: scale(.8); transform-origin: bottom left; }
+.toe-coastal-hand { position: absolute; bottom: var(--toe-coastal-hand-bottom, 18px); left: 0; width: 100%; z-index: 15; }
+.toe-board-composition-coastal .toe-coastal-piles .toe-pile-display { min-height: 0 !important; height: 100%; }
+.toe-board-composition-coastal .toe-self-faith { width: 175px; min-height: 265px; margin-left: 8px; padding: 25px 25px 65px; }
+.toe-board-composition-coastal .toe-self-faith [data-god-power-badge] > div:nth-child(-n+2) { font-size: 12px !important; color: #cbbb9c !important; text-shadow: 0 1px 2px #000 !important; }
+.toe-board-composition-coastal .toe-log-frame-shell { min-height: 0; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-log .toe-log-frame-shell { min-height: 0; max-height: 100%; }
+
+/* The viewport cuts through the outer ornaments; live content stays inset. */
+.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-self { top: var(--toe-coastal-self-top, 180px); left: var(--toe-coastal-self-left, -5px); width: var(--toe-coastal-self-width, 150px); height: var(--toe-coastal-self-height, 259px); }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content { grid-template-columns: 90px minmax(0, 1fr); grid-template-rows: 60px 40px auto; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content::before { top: 1px; left: -14px; width: calc(100% + 56px); }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content > .toe-coastal-portrait { width: 60px; height: 60px; margin: 33px 0 15px 13px; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-title { align-items: flex-end !important; padding: 0 0 4px; }
+.toe-board-composition-coastal:not([data-compact='true']) .toe-self-content .toe-self-faith {
+  width: 208px;
+  min-height: 0;
+  height: clamp(150px, calc(var(--toe-coastal-height, 680px) * .47 - 98px), 252px);
+  margin: 8px 4px 0 14px;
+  padding: 12px 40px 8px 24px;
+  background: none;
+}
+.toe-board-composition-coastal:not([data-compact='true']) .toe-coastal-roles { top: -12px; }
+
+/* Compact screens keep the same visual materials with scrolling, reachable regions. */
+.toe-board-composition-coastal[data-compact='true'] { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; box-sizing: border-box; min-height: 0; }
+.toe-board-composition-coastal[data-compact='true'] > :not(.toe-coastal-foreground, .toe-coastal-drapery, .toe-coastal-torch, .toe-coastal-torch-light-viewport, .toe-sailing-spray) { position: relative; inset: auto; width: auto; height: auto; min-width: 0; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-drapery { display: none; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-self { grid-column: 1; grid-row: 1 / span 2; }
+.toe-board-composition-coastal[data-compact='true'] .toe-self-player-panel { container-type: inline-size; }
+.toe-board-composition-coastal[data-compact='true'] .toe-self-content { grid-template-columns: 30% minmax(0, 1fr); grid-template-rows: calc((100cqw + 16px) * 170 / 806 - 5px) 43px auto; }
+.toe-board-composition-coastal[data-compact='true'] .toe-self-content > .toe-coastal-portrait { width: calc((100cqw + 16px) * 152 / 806); height: auto; aspect-ratio: 1; align-self: start; margin: calc((100cqw + 16px) * 84 / 806 - 5px) 0 0 calc((100cqw + 16px) * 70 / 806 - 8px); }
+.toe-board-composition-coastal[data-compact='true'] .toe-self-title { padding: calc((100cqw + 16px) * 82 / 806 - 5px) 8px 0 0; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-turn { grid-column: 2; grid-row: 1; width: min(240px, 100%); justify-self: end; align-self: start; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-log { grid-column: 2; grid-row: 2; height: 220px; }
+.toe-board-composition-coastal[data-compact='true'] .toe-self-faith { width: 90%; max-height: 250px; min-height: 210px; overflow-y: auto; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-roles { grid-column: 1 / -1; grid-row: 3; }
+.toe-coastal-opponents[data-compact='true'] { overflow-x: auto; justify-content: flex-start; padding-block: 18px 8px; }
+.toe-coastal-opponents[data-compact='true'] .toe-coastal-opponent-seat { width: 175px; margin-left: 0 !important; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-piles { grid-column: 1 / -1; min-height: 190px; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-counts { grid-column: 1 / -1; display: flex; justify-content: center; gap: 22px; padding: 10px; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-counts > div { border: 0; gap: 10px; }
+.toe-board-composition-coastal[data-compact='true'] .toe-coastal-hand { grid-column: 1 / -1; }
+[data-ui-layout='coastal'] .toe-battle-root:has(.toe-board-composition-coastal[data-compact='true']) { height: auto !important; overflow-y: auto !important; }
+.toe-settings-coastal { left: auto !important; transform: none !important; align-items: flex-end !important; }
+.toe-settings-coastal .toe-settings-triggers { display: flex; align-items: center; justify-content: flex-end; gap: 8px; zoom: var(--toe-coastal-system-scale, 1); }
+.toe-settings-coastal .toe-coastal-system-button { position: relative; flex: 0 0 54px; display: grid; place-items: center; box-sizing: border-box; width: 54px; height: 54px; min-width: 54px; min-height: 54px; padding: 0; border: 0; border-radius: 50%; background: transparent; box-shadow: none; }
+.toe-settings-coastal .toe-coastal-system-button img { display: block; position: absolute; object-fit: contain; pointer-events: none; transition: filter .15s ease; }
+.toe-settings-coastal .toe-coastal-system-disc { inset: 0; width: 100%; height: 100%; filter: brightness(.66) saturate(.7) drop-shadow(0 1px 2px #000); }
+.toe-settings-coastal .toe-coastal-system-glyph { width: 30px; height: 30px; filter: brightness(.88) drop-shadow(0 1px 1px #000); }
+.toe-settings-coastal .toe-coastal-system-button:hover { background: transparent; border: 0; box-shadow: none; }
+.toe-settings-coastal .toe-coastal-system-button:is(:hover, :focus-visible) .toe-coastal-system-disc { filter: brightness(.85) saturate(.8) drop-shadow(0 1px 2px #000); }
+.toe-settings-coastal .toe-coastal-system-button:focus-visible { outline: 2px solid #b8aa86; outline-offset: 2px; }
+.toe-settings-coastal .toe-coastal-system-button:disabled { opacity: .45; cursor: not-allowed; }
+.toe-settings-coastal .toe-settings-panel { width: min(295px, calc(100vw - 20px)); max-height: max(0px, calc(100dvh - var(--toe-coastal-settings-top, 0px) - 54px * var(--toe-coastal-system-scale, 1) - 20px)); padding: 12px; margin-top: 10px; }
+.toe-settings-coastal .toe-setting-row { margin-top: 8px; gap: 7px; font-size: 12px; grid-template-columns: 40px minmax(60px,1fr) 34px; }
+.toe-settings-coastal .toe-setting-row select { padding: 4px 8px !important; }
+.toe-settings-coastal .toe-settings-exit { width: 100%; padding: 6px 12px; margin-top: 7px; }
+@media (max-width: 579px) {
+  .toe-board-composition-coastal[data-compact='true'] { padding: 8px; gap: 8px; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-coastal-turn { width: min(175px, 100%); }
+  .toe-board-composition-coastal[data-compact='true'] .toe-coastal-turn strong { font-size: 16px; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-coastal-turn span { font-size: 10px; }
+  /* Reflow live stats below the small frame instead of stretching its portrait ring. */
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-content { grid-template-rows: calc((100cqw + 16px) * 280 / 806) 43px auto; gap: 3px; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-content > .toe-coastal-portrait { grid-row: 1; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-stats { grid-column: 1 / -1; padding-right: 8px !important; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-stats [data-stat-label] { grid-template-columns: 23px minmax(0,1fr) 12px !important; column-gap: 3px !important; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-self-content .toe-self-faith { width: 100%; padding-inline: 24px; max-height: 360px; }
+  .toe-board-composition-coastal[data-compact='true'] .toe-coastal-log { height: 260px; }
+}
+@media (pointer: coarse) { .toe-settings-coastal .toe-coastal-system-button { min-width: 44px; min-height: 44px; } }

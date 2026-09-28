@@ -1,11 +1,15 @@
 ﻿import React from 'react';
-import { CS, GOD_CS } from '../../constants/card';
+import { GOD_CS } from '../../constants/card';
+import { renderGameLayer } from '../../ui/gameLayers';
 import { CardBackLayer } from '../cards/AnimatedCardBack';
-import { CardCodeLabel, CardFaceImage } from '../cards';
+import { CardFaceImage } from '../cards';
 import { getZoneCardPolarity } from '../../game/coreUtils';
-import { getPileAnchorCenter, getPlayerHandAnchorCenter } from '../../utils/dom';
+import { shouldHideBlindZoneIdentity } from '../../game/blindZoneDecision';
+import { captureDecisionCardAnchors, captureRevealCardAnchor, getCardRevealMetrics, getPileCardAnchor, getPlayerHandCardAnchor, getRevealCardAnchor } from '../../utils/dom';
+import { useWindowSize } from '../../hooks/useWindowSize';
+import { getCardFlightStyle } from './cardSizing';
 import { SMOKE_COLS, FLOWER_CONFIGS } from './data';
-import { getInspectionCardDesc, petalPath } from './utils';
+import { getCardFlipGlowColor, getInspectionCardPolarity, petalPath } from './utils';
 import { GodHighlightBurst } from './GodHighlightBurst';
 
 function FlowerSVG({petals,hue,variant,size}){
@@ -64,100 +68,151 @@ function FlowerBloom(){
   );
 }
 
-function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',onSettled}){
-  const [traveled,setTraveled]=React.useState(skipTravel);
-  const settledRef=React.useRef(false);
-  const settleDelay=card?.isGod?2650:1250;
+function BlindFishScotoma({top}){
+  return(
+    <div
+      aria-hidden="true"
+      style={{
+        position:'absolute',left:0,right:0,top,bottom:0,
+        overflow:'hidden',borderRadius:'0 0 5px 5px',
+        background:'rgba(2,3,4,0.995)',
+        boxShadow:'inset 0 12px 30px rgba(0,0,0,0.9)',
+        WebkitMaskImage:'linear-gradient(180deg,transparent 0%,rgba(0,0,0,0.35) 2.5%,#000 7%)',
+        maskImage:'linear-gradient(180deg,transparent 0%,rgba(0,0,0,0.35) 2.5%,#000 7%)',
+        zIndex:3,
+      }}
+    >
+      <div style={{
+        position:'absolute',inset:'-15% -18%',
+        background:'radial-gradient(ellipse at 18% 14%,rgba(26,29,31,0.52) 0 4%,transparent 13%), radial-gradient(ellipse at 78% 24%,rgba(21,24,26,0.42) 0 5%,transparent 16%), radial-gradient(ellipse at 43% 67%,rgba(25,28,30,0.38) 0 7%,transparent 22%)',
+        filter:'blur(8px)',
+        animation:'blindFishScotomaDrift 4.6s ease-in-out infinite alternate',
+      }}/>
+      <div style={{
+        position:'absolute',inset:'-8%',
+        background:'radial-gradient(ellipse at 52% 45%,rgba(0,0,0,0.15) 0 14%,rgba(0,0,0,0.88) 38%,#000 70%), radial-gradient(ellipse at 24% 72%,rgba(32,34,35,0.22),transparent 28%)',
+        filter:'blur(7px)',
+        animation:'blindFishScotomaPulse 3.8s ease-in-out infinite alternate',
+      }}/>
+      <div style={{
+        position:'absolute',inset:0,
+        background:'radial-gradient(ellipse at 50% 0%,rgba(12,14,15,0.65) 0%,rgba(0,0,0,0.98) 28%,#000 58%)',
+        mixBlendMode:'multiply',
+      }}/>
+    </div>
+  );
+}
+
+const revealsDrawFace = (card, targetPid) => (targetPid ?? 0) === 0 && !card?.effect && !card?.hiddenDraw && !card?._back;
+
+export function CardDrawFlight({card,targetPid,from,to,expansionKey='地神的潜影'}){
+  const revealFace=revealsDrawFace(card,targetPid);
+  const hideIdentity=shouldHideBlindZoneIdentity(card,(targetPid??0)===0);
+  // Leave a little pitch for the following spin/rise reveal to finish.
+  const flight=getCardFlightStyle(from,{...to,tilt:18},0,'endpoints');
+  return <div data-card-draw-flight={revealFace?'reveal-front':'back'} style={{
+    ...flight,position:'absolute',borderRadius:4,
+    '--dest-x':`${to.x-flight.width/2}px`,'--dest-y':`${to.y-flight.height/2}px`,
+    '--src-x':`${from.x-flight.width/2}px`,'--src-y':`${from.y-flight.height/2}px`,
+    animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
+  }}>
+    {revealFace?<div data-card-draw-turn style={{
+      position:'absolute',inset:0,transformStyle:'preserve-3d',
+      animation:'cardDrawTurn 0.65s linear forwards',
+    }}>
+      <div data-card-flight-side="back" style={{position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateX(180deg)',borderRadius:4,overflow:'hidden',background:'#100c08',boxShadow:'0 4px 18px #000b'}}>
+        <CardBackLayer expansionKey={expansionKey} card={card}/>
+      </div>
+      <div data-card-flight-side="front" style={{position:'absolute',inset:0,backfaceVisibility:'hidden',borderRadius:4,overflow:'hidden',background:'#100c08',boxShadow:'0 4px 18px #000b'}}>
+        <CardFaceImage card={card} godLevel={1} width={flight.width} style={{borderRadius:4,boxShadow:'none'}}/>
+        {hideIdentity&&<BlindFishScotoma top={Math.round(flight.height*54/590)}/>}
+      </div>
+    </div>:<CardBackLayer expansionKey={expansionKey} card={card}/>}
+  </div>;
+}
+
+function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,travelOnly=false,guessCorrect,expansionKey='地神的潜影',sourcePile='deck',settled=false,preserveOnExit=false,showBackdrop=true,decisionKind,earlyActions=false,children}){
+  const [traveled,setTraveled]=React.useState(skipTravel||settled);
+  const [earlyActionsReady,setEarlyActionsReady]=React.useState(false);
+  const viewport=useWindowSize();
+  const revealRef=React.useRef(null);
+  React.useLayoutEffect(()=>{
+    const element=revealRef.current;
+    // Capture before React removes the face, including automatic AI reveals.
+    // Keep each card's last frame across intervening inspections/effects.
+    return()=>captureRevealCardAnchor(element,card);
+  },[card,traveled,settled,viewport.w,viewport.h]);
   React.useEffect(()=>{
+    if(settled)return undefined;
     if(skipTravel){setTraveled(true);return undefined;}
     const t=setTimeout(()=>setTraveled(true),650);
     return()=>clearTimeout(t);
-  },[skipTravel]);
+  },[skipTravel,settled]);
   React.useEffect(()=>{
-    if(!traveled||!onSettled||settledRef.current)return undefined;
-    const t=setTimeout(()=>{
-      settledRef.current=true;
-      onSettled();
-    },settleDelay);
+    if(!earlyActions||settled||!traveled||travelOnly)return undefined;
+    const t=setTimeout(()=>setEarlyActionsReady(true),850);
     return()=>clearTimeout(t);
-  },[traveled,onSettled,settleDelay]);
+  },[earlyActions,settled,traveled,travelOnly]);
+  const actionsVisible=!!children&&(!earlyActions||settled||earlyActionsReady);
+  React.useLayoutEffect(()=>{
+    if((settled||actionsVisible)&&decisionKind)captureDecisionCardAnchors();
+  },[settled,actionsVisible,decisionKind,viewport.w,viewport.h]);
 
   const isInspection=!!card?.effect;
   if(!card) return null;
-  const hideZoneIdentity=!!card.blindZoneIdentity&&!isInspection;
+  const hideZoneIdentity=shouldHideBlindZoneIdentity(card,targetPid===0)&&!isInspection;
   const displayTriggerName=isInspection&&(targetPid??0)===0?'你':triggerName;
-  const inspectionTone=isInspection?(card.type||'neutral'):null;
-  const s=isInspection
-    ?({
-      bg:inspectionTone==='positive'?'linear-gradient(135deg,#11331d,#08160d)':inspectionTone==='neutral'?'linear-gradient(135deg,#1a1d24,#0b0e13)':'linear-gradient(135deg,#241126,#0f0713)',
-      borderBright:inspectionTone==='positive'?'#56d184':inspectionTone==='neutral'?'#7b889b':'#d16acb',
-      border:inspectionTone==='positive'?'#3da865':inspectionTone==='neutral'?'#5d6978':'#9e4a92',
-      text:inspectionTone==='positive'?'#b8ffd1':inspectionTone==='neutral'?'#d7e0ef':'#ffd0ff',
-      glow:inspectionTone==='positive'?'#49d17d':inspectionTone==='neutral'?'#91a1c2':'#b24ad1',
-    })
-    :(CS[card.letter]||GOD_CS);
-  const cardPolarity=isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
+  const inspectionTone=isInspection?getInspectionCardPolarity(card):null;
+  // Blind Fish must not leak the concealed card's effect through reveal VFX.
+  const cardPolarity=hideZoneIdentity?'neutral':isInspection?inspectionTone:(card.isGod?'negative':getZoneCardPolarity(card));
+  // Zone and inspection cards share one semantic glow palette; god cards keep their bespoke glow.
+  const primaryGlow=card.isGod&&!isInspection?GOD_CS.glow:getCardFlipGlowColor(cardPolarity);
   const isEvil=cardPolarity==='negative';
-  const isNeutralCard=!isInspection&&cardPolarity==='neutral';
-  const isNeutralInspection=isInspection&&inspectionTone==='neutral';
-  const isPositiveInspection=isInspection&&inspectionTone==='positive';
-  const viewportScale=Math.min(window.innerWidth/1280,window.innerHeight/720);
-  const cardScale=Math.max(1.08,Math.min(1.85,viewportScale));
-  const travelScale=Math.max(1,Math.min(1.35,viewportScale));
-  const travelW=Math.round(70*travelScale);
-  const travelH=Math.round(94*travelScale);
-  const flipW=Math.round(152*cardScale);
-  const flipH=Math.round(flipW*590/392);
+  const isNeutralCard=cardPolarity==='neutral';
+  const showAtmosphereEffects=!settled;
+  const {x:centerX,y:centerY,width:flipW,height:flipH,scale:cardScale}=getCardRevealMetrics(viewport.w,viewport.h);
   const px=value=>Math.round(value*cardScale);
+  // Keep every atmosphere effect anchored to the card rather than the viewport.
+  // The unscaled frame is enlarged around the card, then scales with cardScale.
+  const atmosphereFrameStyle={
+    position:'absolute',
+    left:centerX,
+    top:centerY,
+    width:320,
+    height:208*590/392,
+    pointerEvents:'none',
+    transform:`translate(-50%,-50%) scale(${cardScale})`,
+    transformOrigin:'center',
+    zIndex:2,
+  };
 
   const getSourceCenter=()=>{
     if(!isInspection&&sourcePile==='discard'){
-      return getPileAnchorCenter(
+      return getPileCardAnchor(
         '[data-discard-pile]',
         {x:window.innerWidth*0.35,y:window.innerHeight*0.50}
       );
     }
-    return getPileAnchorCenter(
+    return getPileCardAnchor(
       isInspection?'[data-inspection-pile]':'[data-deck-pile]',
       isInspection
       ?{x:window.innerWidth*0.10,y:window.innerHeight*0.14}
       :{x:window.innerWidth*0.94-35,y:window.innerHeight*0.08}
     );
   };
-  const getHandCenter=pid=>{
-    return getPlayerHandAnchorCenter(pid);
-  };
-  const destStyle=(()=>{
-    const src=getSourceCenter();
-    const dest=getHandCenter(targetPid??0);
-    return{'--dest-x':`${dest.x-travelW/2}px`,'--dest-y':`${dest.y-travelH/2}px`,'--src-x':`${src.x-travelW/2}px`,'--src-y':`${src.y-travelH/2}px`};
-  })();
+  const src=getSourceCenter();
+  const dest=travelOnly ? getPlayerHandCardAnchor(targetPid??0,card) : getRevealCardAnchor();
 
-  if(!traveled) return(
+  if(!traveled&&!settled) return(
     <div style={{position:'fixed',inset:0,zIndex:999,background:'rgba(4,4,2,0)',pointerEvents:'none'}}>
-      <div style={{
-        position:'absolute',
-        width:travelW,height:travelH,borderRadius:4,
-        backgroundColor:isInspection?'#151c28':'#100c08',
-        backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
-        border:'1.5px solid #4a3010',
-        boxShadow:'0 4px 18px rgba(0,0,0,0.7)',
-        overflow:'hidden',
-        ...destStyle,
-        animation:'cardTravelToPlayer 0.65s cubic-bezier(0.3,0,0.2,1) forwards',
-      }}>
-        {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
-        {isInspection&&<>
-          <div style={{position:'absolute',inset:0,borderRadius:4,
-            background:'repeating-linear-gradient(45deg,#8ca4d220 0px,#8ca4d220 1px,transparent 1px,transparent 4px)'}}/>
-          <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',
-            fontFamily:"'Cinzel',serif",fontSize:14,color:'#d7e6ff',opacity:0.85}}>◈</div>
-        </>}
-      </div>
+      <CardDrawFlight card={card} targetPid={targetPid} from={src} to={dest} expansionKey={expansionKey}/>
     </div>
   );
 
-  const spirits=isNeutralInspection
+  // 暗抽直接落入手牌，不展示中央翻牌阶段。
+  if(travelOnly)return null;
+
+  const spirits=!showAtmosphereEffects||card.isGod
     ?[]
     :isEvil
     ?SMOKE_COLS.flatMap((col,i)=>[
@@ -218,28 +273,41 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
       }}>✦</div>
     ));
 
-  return(
-    <div style={{
+  return renderGameLayer(
+    <div data-ui-dialog={decisionKind} data-card-reveal-settled={settled?'true':undefined}
+      data-card-reveal-actions-ready={actionsVisible?'true':undefined}
+      role={decisionKind?'dialog':undefined} aria-modal={decisionKind?true:undefined}
+      aria-label={decisionKind==='god-choice'?'邪神牌决策':decisionKind?'区域牌决策':undefined}
+      onPointerDownCapture={decisionKind?captureDecisionCardAnchors:undefined}
+      onKeyDownCapture={decisionKind?captureDecisionCardAnchors:undefined}
+      style={{
       position:'fixed',inset:0,zIndex:999,
-      background:isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      background:!showBackdrop?'transparent':isEvil?'rgba(8,2,14,0.93)':'rgba(4,4,2,0.91)',
+      transition:'background-color 0.18s ease-out',
       display:'flex',alignItems:'center',justifyContent:'center',
-      animation:exiting?'animFadeOut 0.18s ease-in forwards':'animFadeIn 0.12s ease-out forwards',
-      overflow:'hidden',
+      animation:exiting&&!preserveOnExit?'animFadeOut 0.18s ease-in forwards':settled?'none':'animFadeIn 0.12s ease-out forwards',
+      overflow:'clip',
     }}>
-      <div style={{
-        position:'absolute',width:320,height:320,borderRadius:'50%',
-        background:(isNeutralInspection||isNeutralCard)
-          ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
-          :isEvil
-          ?'radial-gradient(circle,#7010aa44 0%,#3a0060 40%,transparent 70%)'
-          :'radial-gradient(circle,#e8c87a33 0%,#c8a96e22 40%,transparent 70%)',
-        animation:'burstPulse 1.0s ease-out 1.15s both',
-        pointerEvents:'none',
-      }}/>
+      {showAtmosphereEffects&&(
+        <div style={{
+          position:'absolute',left:centerX-px(320)/2,top:centerY-px(320)/2,width:px(320),height:px(320),borderRadius:'50%',
+          background:isNeutralCard
+            ?'radial-gradient(circle,rgba(140,155,180,0.12) 0%,rgba(70,80,98,0.08) 40%,transparent 70%)'
+            :isEvil
+            ?'radial-gradient(circle,#7010aa44 0%,#3a0060 40%,transparent 70%)'
+            :'radial-gradient(circle,#e8c87a33 0%,#c8a96e22 40%,transparent 70%)',
+          animation:'burstPulse 1.0s ease-out 1.15s both',
+          pointerEvents:'none',
+        }}/>
+      )}
 
-      {(isPositiveInspection||(!isInspection&&cardPolarity==='positive'))&&<FlowerBloom/>}
+      {showAtmosphereEffects&&cardPolarity==='positive'&&(
+        <div style={atmosphereFrameStyle}>
+          <FlowerBloom/>
+        </div>
+      )}
 
-      {triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
+      {!settled&&triggerName==='斯芬克斯'&&guessCorrect!==undefined&&(
         <div style={{
           position:'absolute',
           left:0,right:0,
@@ -250,7 +318,7 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
           zIndex:1000,
         }}>
           <div style={{
-            fontFamily:"'Cinzel Decorative','Cinzel',serif",
+            fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",
             fontSize:32,
             fontWeight:700,
             letterSpacing:2,
@@ -265,79 +333,83 @@ function CardFlipAnim({card,triggerName,targetPid,exiting,skipTravel=false,guess
         </div>
       )}
 
-      <div style={{position:'absolute',inset:0,pointerEvents:'none',transform:`scale(${cardScale})`,transformOrigin:'center'}}>{spirits}</div>
+      <div data-card-flip-atmosphere={cardPolarity} style={atmosphereFrameStyle}>{spirits}</div>
 
-      {displayTriggerName&&(
+      {displayTriggerName&&!children&&(
         <div style={{
           position:'absolute',bottom:'12%',left:'50%',transform:'translateX(-50%)',
-          fontFamily:"'Cinzel',serif",fontWeight:700,letterSpacing:3,fontSize:13,
+          fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,letterSpacing:3,fontSize:13,
           color:isInspection?(inspectionTone==='positive'?'#7ef2aa':inspectionTone==='neutral'?'#c7d3e8':'#e28cff'):(cardPolarity==='negative'?'#c060dd':cardPolarity==='neutral'?'#c7d3e8':'#c8a96e'),
           textShadow:isInspection?(inspectionTone==='positive'?'0 0 16px #2dbf6688':inspectionTone==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #9020cc88'):(cardPolarity==='negative'?'0 0 16px #9020cc88':cardPolarity==='neutral'?'0 0 16px #8fa0bf66':'0 0 16px #c8a96e88'),
           textTransform:'uppercase',whiteSpace:'nowrap',
-          animation:'animFadeIn 0.4s ease-out 1.2s both',
+          animation:settled?'none':'animFadeIn 0.4s ease-out 1.2s both',
         }}>{displayTriggerName} 翻开卡牌</div>
       )}
 
       <div
+        ref={revealRef}
+        data-card-reveal
         data-inspection-flip-card={isInspection ? 'true' : undefined}
-        style={{animation:'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',perspective:700}}
+        style={{
+          position:'absolute',left:centerX-flipW/2,top:centerY-flipH/2,
+          width:flipW,
+          height:flipH,
+          animation:settled?'none':'cardRise 1.2s cubic-bezier(0.15,0,0.35,1) forwards',
+          transform:settled?'translateY(0)':undefined,
+          perspective:700,
+          overflow:'visible',
+        }}
       >
         <div style={{
           width:flipW,height:flipH,position:'relative',
           transformStyle:'preserve-3d',
-          animation:'cardFlip 1.2s cubic-bezier(0.2,0,0.3,1) forwards',
+          animation:settled?'none':'cardFlip 1.2s cubic-bezier(0.2,0,0.3,1) forwards',
+          transform:settled?'rotateY(1080deg)':undefined,
         }}>
           <div style={{
             position:'absolute',inset:0,backfaceVisibility:'hidden',transform:'rotateY(180deg)',
-            backgroundColor:isInspection?'#151c28':'#100c08',
-            backgroundImage:isInspection?'linear-gradient(135deg,#151c28,#090d15)':undefined,
-            border:'2px solid #6a4a20',borderRadius:5,
+            backgroundColor:'#100c08',
+            borderRadius:5,
             display:'flex',alignItems:'center',justifyContent:'center',
             boxShadow:'0 0 20px #0a0600',
             overflow:'hidden',
           }}>
-            {!isInspection&&<CardBackLayer expansionKey={expansionKey}/>}
-            {isInspection&&<>
-              <div style={{position:'absolute',inset:px(6),border:'1px solid #6a7fa8',borderRadius:3,opacity:0.7}}/>
-              <div style={{position:'absolute',inset:px(12),border:'1px solid #8ca4d266',borderRadius:2}}/>
-              <div style={{textAlign:'center'}}>
-                <div style={{fontSize:px(36),color:'#d7e6ff',lineHeight:1,filter:'drop-shadow(0 0 6px #9dc1ff)'}}>◈</div>
-              </div>
-            </>}
+            <CardBackLayer expansionKey={expansionKey} card={card}/>
           </div>
-          {(!isInspection&&!hideZoneIdentity)?(
+          {!hideZoneIdentity?(
             <div style={{
               position:'absolute',inset:0,backfaceVisibility:'hidden',
               borderRadius:5,
-              boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+              boxShadow:(isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${primaryGlow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
             }}>
               <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
-              {card?.isGod&&<GodHighlightBurst godKey={card.godKey} delayMs={1260} durationMs={1320} intensity={1.05}/>}
             </div>
           ):(
             <div style={{
               position:'absolute',inset:0,backfaceVisibility:'hidden',
-              background:s.bg,border:`2px solid ${s.borderBright}`,borderRadius:5,
-              padding:`${px(12)}px ${px(10)}px`,
-              boxShadow:(isNeutralInspection||isNeutralCard)?'0 0 18px rgba(120,136,155,0.22)':`0 0 30px ${s.glow}88, 0 0 60px ${isEvil?'#6010aa':'#c8a96e'}44`,
+              borderRadius:5,overflow:'hidden',
+              boxShadow:'0 0 18px rgba(120,136,155,0.22)',
             }}>
-              <div style={{position:'absolute',top:px(4),right:px(6),fontSize:px(8),color:s.border,opacity:0.7}}>✦</div>
-              {isInspection
-                ? <div style={{fontFamily:"'Cinzel',serif",fontWeight:700,color:s.text,fontSize:px(18),lineHeight:1,letterSpacing:2}}>检定</div>
-                : <CardCodeLabel card={card} fontSize={px(28)} letterSpacing={0}/>
-              }
-              {!hideZoneIdentity&&<div style={{fontFamily:"'Cinzel',serif",color:isInspection?s.text:'#c8a96e',fontSize:isInspection?px(16):px(11.5),fontWeight:600,marginTop:px(6),lineHeight:1.3}}>{card.name}</div>}
-              {!hideZoneIdentity&&<div style={{fontFamily:"'IM Fell English','Georgia',serif",fontStyle:'italic',color:isInspection?(inspectionTone==='positive'?'#aeeac0':inspectionTone==='neutral'?'#b8c4d8':'#e2a8e8'):'#b89858',fontSize:px(9.5),marginTop:px(8),lineHeight:1.4}}>{isInspection?getInspectionCardDesc(card):card.desc}</div>}
-              {isInspection&&(
-                <div style={{position:'absolute',left:px(10),bottom:px(10),fontSize:px(9),color:s.border,letterSpacing:2,fontFamily:"'Cinzel',serif"}}>
-                  {inspectionTone==='positive'?'正面检定':inspectionTone==='neutral'?'中性检定':'负面检定'}
-                </div>
-              )}
-              <div style={{position:'absolute',bottom:px(4),left:'50%',transform:'translateX(-50%)',color:s.border,fontSize:px(7),opacity:0.5}}>— ✦ —</div>
+              <CardFaceImage card={card} godLevel={1} width={flipW} style={{borderRadius:5,boxShadow:'none'}}/>
+              <BlindFishScotoma top={Math.round(flipH*54/590)}/>
             </div>
           )}
         </div>
+        {!settled&&card?.isGod&&(
+          <GodHighlightBurst
+            godKey={card.godKey}
+            delayMs={1260}
+            durationMs={1320}
+            intensity={0.92}
+            style={{inset:0,zIndex:4}}
+          />
+        )}
       </div>
+      {actionsVisible&&<div data-card-reveal-options style={{
+        position:'absolute',left:centerX,top:centerY+flipH/2+14,
+        transform:'translateX(-50%)',width:Math.min(viewport.w-32,Math.max(flipW+160,360)),
+        zIndex:5,
+      }}>{children}</div>}
     </div>
   );
 }

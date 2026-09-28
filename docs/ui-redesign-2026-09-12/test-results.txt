@@ -1,0 +1,18 @@
+
+> toe@0.0.0 pretest:run
+> node scripts/check-animation-transactions.mjs
+
+[animation-transaction-gate] passed; legacy-merge baseline=0; migration debt=0, no growth
+
+> toe@0.0.0 test:run
+> vitest run
+
+
+ RUN  v4.1.6 C:/Users/zhuzi/Documents/ToE/ToE_client_main
+
+
+ Test Files  116 passed (116)
+      Tests  1513 passed (1513)
+   Start at  18:17:51
+   Duration  6.07s (transform 22.36s, setup 0ms, import 45.30s, tests 6.27s, environment 13ms)
+

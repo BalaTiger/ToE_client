@@ -9,7 +9,19 @@ function getBewitchEffectDesc(card) {
 }
 
 export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
-  const isActive = ['DRAW_SELECT_TARGET', 'SWAP_SELECT_TARGET', 'HUNT_SELECT_TARGET', 'BEWITCH_SELECT_TARGET', 'ROSE_THORN_SELECT_TARGET', 'ETHEREALIZE_SELECT_TARGET'].includes(phase);
+  const isActive = [
+    'SWAP_SELECT_TARGET',
+    'HUNT_SELECT_TARGET',
+    'BEWITCH_SELECT_TARGET',
+    'ZONE_SWAP_SELECT_TARGET',
+    'PEEK_HAND_SELECT_TARGET',
+    'CAVE_DUEL_SELECT_TARGET',
+    'DAMAGE_LINK_SELECT_TARGET',
+    'ROSE_THORN_SELECT_TARGET',
+    'MULTIPLY_SELECT_TARGET',
+    'SHU_SELECT_TARGET',
+    'ETHEREALIZE_SELECT_TARGET',
+  ].includes(phase);
   if (!isActive) return null;
   const isBewitch = phase === 'BEWITCH_SELECT_TARGET';
   const showCard = phase !== 'HUNT_SELECT_TARGET';
@@ -22,9 +34,12 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
     PEEK_HAND_SELECT_TARGET: '请点击目标角色以偷看其一张手牌',
     HUNT_SELECT_TARGET: '请点击目标角色以发动【追捕】',
     BEWITCH_SELECT_TARGET: '请选择蛊惑目标',
+    ZONE_SWAP_SELECT_TARGET: '请选择交换全部手牌的目标',
     CAVE_DUEL_SELECT_TARGET: '请选择一名有手牌的角色进行【穴居人战争】',
     DAMAGE_LINK_SELECT_TARGET: '请选择一名角色建立【两人一绳】链条',
     ROSE_THORN_SELECT_TARGET: '请选择承受【玫瑰倒刺】的目标',
+    MULTIPLY_SELECT_TARGET: '请选择传播黑山羊幼仔的目标',
+    SHU_SELECT_TARGET: '请选择获得黑山羊幼仔的角色',
     ETHEREALIZE_SELECT_TARGET: '请选择一名相邻角色承受这次伤害',
     FIRST_COME_PICK_SELECT: '请从翻开的牌中选择一张收入手牌',
   }[phase] || '请选择目标';
@@ -37,11 +52,8 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 102, pointerEvents: 'none',
       }}>
-        <div style={{
-          background: 'rgba(10,6,2,0.93)',
-          border: `1.5px solid ${s ? s.borderBright : '#5a3010'}`,
+        <div className="toe-dialog" data-ui-dialog="target-select" style={{
           borderRadius: 4, padding: '18px 28px',
-          boxShadow: `0 0 40px ${s ? s.glow + '66' : '#3a201044'}, 0 0 80px #000a`,
           textAlign: 'center', minWidth: 260, maxWidth: 340,
         }}>
           {card && (
@@ -78,7 +90,7 @@ export function TargetSelectOverlay({ drawReveal, phase, bewitchCard }) {
             fontFamily: "'Cinzel',serif", fontWeight: 700, fontSize: 18,
             color: '#e8cc88', letterSpacing: 2, textTransform: 'uppercase',
           }}>{phaseHint}</div>
-          <div style={{ fontFamily: "'Cinzel',serif", color: '#c8a055', fontSize: 13.5, letterSpacing: 1, marginTop: 6 }}>↑ 点击上方高亮角色</div>
+          <div style={{ fontFamily: "'Cinzel',serif", color: '#c8a055', fontSize: 13.5, letterSpacing: 1, marginTop: 6 }}>点击高亮角色选择目标</div>
         </div>
       </div>
     </>

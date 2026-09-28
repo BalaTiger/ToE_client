@@ -1,12 +1,19 @@
 ﻿import React from 'react';
 import { CardFlipAnim } from './CardFlipAnim';
+import { renderGameLayer } from '../../ui/gameLayers';
 import { DiceRollAnim, GenericAnimOverlay, TorchWardOverlay, VritraImmortalRevealOverlay, YourTurnAnim } from './GenericAnimOverlay';
 import { BuryToDeckOverlay, DiscardMoveOverlay, HuntRevealCardOverlay, TsathogguaSlimePopOverlay, ZhuHideCardOverlay } from './MoveOverlays';
-import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, VolcanoAnim } from './AreaCardOverlays';
+import { CaveDuelAnim, GeomagneticReversalAnim, GeomagneticRestoreShuffleAnim, StartledBatsAnim, UndergroundSpringAnim, VolcanoAnim } from './AreaCardOverlays';
 import { ApophisEclipseAnim } from './ApophisOverlays';
 import { SnakeTrapOverlay } from './SnakeTrapOverlay';
 import { EndlessCorridorTunnelAnim } from './EndlessCorridorOverlay';
 import { RandomTargetOverlay } from './RandomTargetOverlay';
+import { ThrowStoneOverlay } from './ThrowStoneOverlay';
+import { CthRlyehDreamOverlay } from './CthRlyehDreamOverlay';
+import { NightWindAnim } from './NightWindOverlay';
+import { EtherealizeGainAnim, EtherealizeConsumeAnim } from './EtherealizeOverlay';
+import { BurrowingWormAnim } from './BurrowingWormOverlay';
+import { DeckReshuffleOverlay } from './DeckReshuffleOverlay';
 
 const NO_OVERLAY_TYPES = new Set([
   'CARD_TRANSFER',
@@ -17,10 +24,17 @@ const NO_OVERLAY_TYPES = new Set([
   'SAN_HEAL',
   'SAN_DAMAGE',
   'BLACK_GOAT_PULSE',
+  'PETRIFY_DEATH',
+  // GOD_HIGHLIGHT is rendered against the target player's panel by App.
+  // Letting it fall through to GenericAnimOverlay also paints a second,
+  // screen-centered burst for the same timeline step.
+  'GOD_HIGHLIGHT',
 ]);
 
 const ANIM_RENDERERS = {
-  YOUR_TURN: ({ anim }) => <YourTurnAnim name={anim.name} local={!!anim.local} />,
+  // Consecutive turn banners must remount so the CSS fade animation restarts.
+  // Every queued step receives a unique playback id at the playback boundary.
+  YOUR_TURN: ({ anim }) => <YourTurnAnim key={anim._playbackId} name={anim.name} local={!!anim.local} />,
   DRAW_CARD: ({ anim, exiting, expansionKey }) => (
     <CardFlipAnim
       key={[
@@ -34,10 +48,10 @@ const ANIM_RENDERERS = {
       targetPid={anim.targetPid ?? 0}
       exiting={exiting}
       skipTravel={!!anim.skipTravel}
+      travelOnly={!!anim.travelOnly}
       sourcePile={anim.sourcePile}
       guessCorrect={anim.guessCorrect}
       expansionKey={expansionKey}
-      onSettled={anim.onSettled}
     />
   ),
   DICE_ROLL: ({ anim, exiting }) => <DiceRollAnim anim={anim} exiting={exiting} />,
@@ -48,21 +62,40 @@ const ANIM_RENDERERS = {
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_REVERSAL: ({ anim, exiting }) => <GeomagneticReversalAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_RESTORE_SHUFFLE: ({ anim, exiting }) => <GeomagneticRestoreShuffleAnim anim={anim} exiting={exiting} />,
+  UNDERGROUND_SPRING: ({ exiting }) => <UndergroundSpringAnim exiting={exiting} />,
+  STARTLED_BATS: ({ exiting }) => <StartledBatsAnim exiting={exiting} />,
+  NIGHT_WIND: ({ exiting }) => <NightWindAnim exiting={exiting} />,
+  BURROWING_WORM: ({ exiting }) => <BurrowingWormAnim exiting={exiting} />,
+  ETHEREALIZE_GAIN: ({ anim, exiting }) => <EtherealizeGainAnim anim={anim} exiting={exiting} />,
+  ETHEREALIZE_CONSUME: ({ anim }) => <EtherealizeConsumeAnim anim={anim} />,
   VOLCANO: ({ anim, exiting }) => <VolcanoAnim anim={anim} exiting={exiting} />,
   SNAKE_TRAP: ({ anim, exiting }) => <SnakeTrapOverlay anim={anim} exiting={exiting} />,
   RANDOM_TARGET: ({ anim, exiting }) => <RandomTargetOverlay anim={anim} exiting={exiting} />,
+  THROW_STONE: ({ anim, exiting }) => <ThrowStoneOverlay anim={anim} exiting={exiting} />,
   APOPHIS_ECLIPSE: ({ exiting }) => <ApophisEclipseAnim exiting={exiting} />,
-  ENDLESS_CORRIDOR_TUNNEL: ({ exiting }) => <EndlessCorridorTunnelAnim exiting={exiting} />,
+  ENDLESS_CORRIDOR_TUNNEL: ({ exiting, playEndlessCorridorTunnelSound }) => (
+    <EndlessCorridorTunnelAnim exiting={exiting} onTunnelRush={playEndlessCorridorTunnelSound} />
+  ),
+  CTH_RLYEH_DREAM: ({ anim, exiting }) => <CthRlyehDreamOverlay anim={anim} exiting={exiting} />,
   GOD_POWER_BLOCKED: ({ anim, exiting }) => <TorchWardOverlay anim={anim} exiting={exiting} />,
   TSG_SLIME_POP: ({ anim, exiting }) => <TsathogguaSlimePopOverlay anim={anim} exiting={exiting} />,
   VRI_IMMORTAL_REVEAL: ({ anim, exiting }) => <VritraImmortalRevealOverlay anim={anim} exiting={exiting} />,
+  DECK_RESHUFFLE: ({ anim, exiting, expansionKey }) => <DeckReshuffleOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
 };
 
-function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
+// Local card/board motion remains below the decorative flame. Full-screen
+// transitions belong above it; CardFlipAnim changes layer only after travel.
+const SCENE_ANIM_TYPES = new Set([
+  'DRAW_CARD', 'DISCARD', 'BURY_TO_DECK', 'ZHU_HIDE_CARD',
+  'ETHEREALIZE_GAIN', 'ETHEREALIZE_CONSUME', 'THROW_STONE', 'TSG_SLIME_POP',
+]);
+
+function AnimOverlay({ anim, exiting, expansionKey = '地神的潜影', playEndlessCorridorTunnelSound }) {
   if (!anim || NO_OVERLAY_TYPES.has(anim.type)) return null;
   const render = ANIM_RENDERERS[anim.type];
-  if (render) return render({ anim, exiting, expansionKey });
-  return <GenericAnimOverlay anim={anim} exiting={exiting} />;
+  const content = render ? render({ anim, exiting, expansionKey, playEndlessCorridorTunnelSound })
+    : <GenericAnimOverlay anim={anim} exiting={exiting} />;
+  return SCENE_ANIM_TYPES.has(anim.type) ? content : renderGameLayer(content);
 }
 
 

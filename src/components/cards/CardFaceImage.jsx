@@ -1,6 +1,7 @@
 import React from 'react';
-import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle } from '../../constants/card';
+import { GOD_DEFS, getCardDisplayKey, getGodDisplaySubtitle, getInspectionCardDescription } from '../../constants/card';
 import { buildPublicUrl } from '../../utils/url';
+import illustrationWidths from './illustrationWidths.json';
 import {
   CARD_FACE_BACKGROUND_FILES,
   CARD_FACE_HEIGHT,
@@ -32,7 +33,10 @@ function useIllustrationReady(path) {
 }
 
 function getCardFaceKind(card) {
-  return card?.isGod ? 'god' : 'zone';
+  if (card?.isGod) return 'god';
+  if (card?.isBlackGoatYoung || card?.isTsathogguaSlime) return 'token';
+  if (card?.effect && !card?.isZone) return 'inspection';
+  return 'zone';
 }
 
 function clampLevel(level) {
@@ -62,12 +66,17 @@ function getEffectText(card, godLevel) {
     if (/待设计/.test(desc)) return '';
     return desc;
   }
+  if (card.type === 'geomagneticRestore') return card.desc || '这张牌消失并消除当前"地磁反转"效果';
   if (card.type === 'blankZone') return card.desc || '任意字母与数字';
+  if (card.effect && !card.isZone) {
+    return getInspectionCardDescription(card);
+  }
   return card.desc || '';
 }
 
 function getCodeText(card) {
   if (!card) return '';
+  if (card.type === 'geomagneticRestore') return '';
   return getCardDisplayKey(card);
 }
 
@@ -88,11 +97,7 @@ function getGodTitleFontSize(name) {
 
 function getEffectFontSize(text, isGod) {
   const len = [...(text || '')].length;
-  if (isGod) {
-    if (len > 76) return 17;
-    if (len > 56) return 18.5;
-    return 20.5;
-  }
+  if (isGod) return 20.5;
   if (len > 72) return 16.5;
   if (len > 48) return 18;
   if (len > 30) return 20;
@@ -108,7 +113,7 @@ function estimateEffectLineCount(text, fontSize, boxWidth) {
 
 function getAdaptiveEffectFontSize(text, isGod, box) {
   let fontSize = getEffectFontSize(text, isGod);
-  const lineHeight = 1.48;
+  const lineHeight = isGod ? 1.24 : 1.48;
   const minFontSize = isGod ? 12.5 : 13;
   while (fontSize > minFontSize) {
     const lines = estimateEffectLineCount(text, fontSize, box.width);
@@ -151,6 +156,8 @@ const CODE_FONT = "'Cinzel Decorative','Cinzel','Times New Roman',serif";
 const EFFECT_BOX = {
   zone: { left: 45, top: 382, width: 302, height: 104 },
   god: { left: 46, top: 392, width: 300, height: 96 },
+  inspection: { left: 45, top: 445, width: 302, height: 72 },
+  token: { left: 42, top: 392, width: 308, height: 142 },
 };
 
 const FLAVOR_BOX = {
@@ -158,21 +165,46 @@ const FLAVOR_BOX = {
   god: { left: 41, top: 508, width: 310, height: 54 },
 };
 
-// Fixed masks derived once from the immutable cardbg art windows.
+// Fixed masks traced from the inner edge of the immutable card-frame windows.
+// The additional points around the lower corners and centre crest avoid exposing
+// the dark frame texture between an illustration and its gold border.
+const ILLUSTRATION_CLIP_PATH = 'polygon(4.773% 0, 95.227% 0, 96.462% 0.25%, 97.614% 1%, 98.602% 2.1%, 99.36% 3.5%, 99.837% 5.2%, 100% 7%, 100% 93%, 99.837% 94.8%, 99.36% 96.5%, 98.602% 97.9%, 97.614% 99%, 96.462% 99.75%, 95.227% 100%, 53.939% 102.972%, 53.411% 100.083%, 52.785% 98.886%, 51.97% 97.968%, 51.02% 97.39%, 50% 97.194%, 48.98% 97.39%, 48.03% 97.968%, 47.215% 98.886%, 46.589% 100.083%, 46.061% 102.972%, 4.773% 100%, 3.538% 99.75%, 2.386% 99%, 1.398% 97.9%, 0.64% 96.5%, 0.163% 94.8%, 0 93%, 0 7%, 0.163% 5.2%, 0.64% 3.5%, 1.398% 2.1%, 2.386% 1%, 3.538% 0.25%)';
+
 const ILLUSTRATION_LAYOUT = {
   zone: {
     left: 31,
     top: 137,
     width: 330,
     height: 225,
-    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 95%, 96% 95%, 93% 100%, 55% 100%, 54% 98%, 52% 96%, 50% 95%, 48% 96%, 46% 98%, 45% 100%, 7% 100%, 4% 95%, 0 95%, 0 4%)',
+    clipPath: ILLUSTRATION_CLIP_PATH,
   },
   god: {
     left: 31,
     top: 139,
     width: 330,
     height: 229,
-    clipPath: 'polygon(4% 4%, 7% 0, 93% 0, 96% 4%, 100% 4%, 100% 95%, 96% 95%, 93% 100%, 55% 100%, 54% 98%, 52% 95%, 50% 94%, 48% 95%, 46% 98%, 45% 100%, 7% 100%, 4% 95%, 0 95%, 0 4%)',
+    clipPath: ILLUSTRATION_CLIP_PATH,
+  },
+  // The inspection frame's central window is taller and its lower edge has
+  // only shallow rounded corners (no zone-card centre crest).
+  inspection: {
+    left: 31,
+    top: 137,
+    width: 330,
+    height: 284,
+    clipPath: 'polygon(4.8% 0,95.2% 0,97.1% 0.5%,98.6% 2%,99.6% 4.8%,100% 8%,100% 92%,99.6% 95.2%,98.6% 98%,97.1% 99.5%,95.2% 100%,4.8% 100%,2.9% 99.5%,1.4% 98%,0.4% 95.2%,0 92%,0 8%,0.4% 4.8%,1.4% 2%,2.9% 0.5%)',
+    objectPosition: 'center 52%',
+  },
+  // The token frame has a taller window with softly rounded corners and no
+  // centre crest. Keep a small inset so artwork never paints over its thin
+  // copper-green inner line at compact hand-card sizes.
+  token: {
+    left: 31,
+    top: 128,
+    width: 330,
+    height: 268,
+    clipPath: 'polygon(5% 0,95% 0,97.2% 0.6%,98.7% 2.2%,99.6% 4.8%,100% 8%,100% 92%,99.6% 95.2%,98.7% 97.8%,97.2% 99.4%,95% 100%,5% 100%,2.8% 99.4%,1.3% 97.8%,0.4% 95.2%,0 92%,0 8%,0.4% 4.8%,1.3% 2.2%,2.8% 0.6%)',
+    objectPosition: 'center 50%',
   },
 };
 
@@ -198,6 +230,7 @@ function ScaledText({ children, style }) {
 function EffectTextBlock({ text, isGod, box }) {
   return (
     <div
+      data-card-effect
       style={{
         position: 'absolute',
         left: box.left,
@@ -209,7 +242,7 @@ function EffectTextBlock({ text, isGod, box }) {
         justifyContent: 'center',
         textAlign: 'center',
         color: TEXT_COLOR,
-        textShadow: SHADOW,
+        textShadow: '0 1px 1px #000',
         pointerEvents: 'none',
       }}
     >
@@ -219,7 +252,7 @@ function EffectTextBlock({ text, isGod, box }) {
           fontFamily: BODY_FONT,
           fontSize: getAdaptiveEffectFontSize(text, isGod, box),
           fontWeight: 700,
-          lineHeight: 1.48,
+          lineHeight: isGod ? 1.24 : 1.48,
           whiteSpace: 'pre-wrap',
           overflowWrap: 'anywhere',
         }}
@@ -272,9 +305,15 @@ function CardIllustration({ card, kind, scale }) {
   const meta = getCardFaceMeta(card);
   const ready = useIllustrationReady(meta?.illustration);
   const layout = ILLUSTRATION_LAYOUT[kind];
-  if (!meta?.illustration || !ready) return null;
-  // Positioned in real display px (design coords × scale), NOT inside the scaled 392 layer,
-  // so the 1448px source stays sharp at any card size. clipPath is %-based → scale-independent.
+  if (!meta?.illustration || !ready || !layout) return null;
+  const file = meta.illustration.split('/').pop();
+  const sourceWidth = illustrationWidths[file];
+  // Low-pass resized sources avoid sparkling fine detail on small, rotated cards.
+  // Native srcset selection retains the full source for larger / high-DPI views.
+  const srcSet = sourceWidth ? [
+    ...[256, 512].map(width => `${buildPublicUrl(`/img/card/illustration/display-${width}/${file}`)} ${width}w`),
+    `${buildPublicUrl(meta.illustration)} ${sourceWidth}w`,
+  ].join(', ') : undefined;
   return (
     <div
       style={{
@@ -290,14 +329,17 @@ function CardIllustration({ card, kind, scale }) {
     >
       <img
         src={buildPublicUrl(meta.illustration)}
+        srcSet={srcSet}
+        sizes={`${layout.width * scale}px`}
         alt=""
         draggable={false}
         style={{
           width: '100%',
           height: '100%',
           objectFit: 'cover',
-          objectPosition: 'center',
+          objectPosition: layout.objectPosition || 'center',
           display: 'block',
+          transform: 'translateZ(0)',
           userSelect: 'none',
           pointerEvents: 'none',
         }}
@@ -413,6 +455,50 @@ function GodCardText({ card, godLevel }) {
   );
 }
 
+function InspectionCardText({ card }) {
+  const name = getDisplayName(card);
+  return (
+    <>
+      <ScaledText
+        style={{
+          top: 78,
+          padding: '0 42px',
+          fontFamily: TITLE_FONT,
+          fontSize: getZoneTitleFontSize(name) + 2,
+          fontWeight: 800,
+          lineHeight: 1.08,
+          letterSpacing: 7,
+        }}
+      >
+        {name}
+      </ScaledText>
+      <EffectTextBlock text={getEffectText(card, 1)} isGod={false} box={EFFECT_BOX.inspection} />
+    </>
+  );
+}
+
+function TokenCardText({ card }) {
+  const name = getDisplayName(card);
+  return (
+    <>
+      <ScaledText
+        style={{
+          top: 74,
+          padding: '0 38px',
+          fontFamily: TITLE_FONT,
+          fontSize: getZoneTitleFontSize(name),
+          fontWeight: 800,
+          lineHeight: 1.06,
+          letterSpacing: name.length > 7 ? 3 : 6,
+        }}
+      >
+        {name}
+      </ScaledText>
+      <EffectTextBlock text={getEffectText(card, 1)} isGod={false} box={EFFECT_BOX.token} />
+    </>
+  );
+}
+
 function CardFaceImage({
   card,
   godLevel = 1,
@@ -422,23 +508,35 @@ function CardFaceImage({
 }) {
   if (!card) return null;
   const kind = getCardFaceKind(card);
-  const backgroundPath = kind === 'god' ? CARD_FACE_BACKGROUND_FILES[1] : CARD_FACE_BACKGROUND_FILES[0];
-  const height = Math.round(width * CARD_FACE_RATIO);
+  const backgroundPath = {
+    zone: CARD_FACE_BACKGROUND_FILES[0],
+    god: CARD_FACE_BACKGROUND_FILES[1],
+    inspection: CARD_FACE_BACKGROUND_FILES[2],
+    token: CARD_FACE_BACKGROUND_FILES[3],
+  }[kind];
+  const height = width * CARD_FACE_RATIO;
   const scale = width / CARD_FACE_WIDTH;
+  // The token frame already defines its silhouette with transparent pixels.
+  // Do not fill or clip those pixels with the generic rectangular card shell.
+  const hasTransparentFrame = kind === 'token';
   return (
     <div
       className={className}
+      data-card-face
+      data-card-face-id={card?.id}
       style={{
-        width,
-        height,
         position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 12 * scale,
-        background: '#07100d',
-        boxShadow: '0 18px 38px rgba(0,0,0,0.76), 0 0 32px rgba(190,150,86,0.20)',
+        overflow: hasTransparentFrame ? 'visible' : 'hidden',
+        borderRadius: hasTransparentFrame ? 0 : 12 * scale,
+        background: hasTransparentFrame ? 'transparent' : '#07100d',
+        boxShadow: hasTransparentFrame ? 'none' : '0 18px 38px rgba(0,0,0,0.76), 0 0 32px rgba(190,150,86,0.20)',
         transformOrigin: 'top left',
         userSelect: 'none',
         ...style,
+        width,
+        height,
+        minWidth: width,
+        flexShrink: 0,
       }}
     >
       <div
@@ -447,8 +545,7 @@ function CardFaceImage({
           inset: 0,
           width: CARD_FACE_WIDTH,
           height: CARD_FACE_HEIGHT,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
+          zoom: scale,
           zIndex: 0,
         }}
       >
@@ -475,8 +572,8 @@ function CardFaceImage({
           inset: 0,
           width: CARD_FACE_WIDTH,
           height: CARD_FACE_HEIGHT,
-          transform: `scale(${scale})`,
-          transformOrigin: 'top left',
+          // Lay out glyphs at their displayed size instead of shrinking a rasterized text layer.
+          zoom: scale,
           zIndex: 2,
         }}
       >
@@ -491,7 +588,11 @@ function CardFaceImage({
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>
           {kind === 'god'
             ? <GodCardText card={card} godLevel={godLevel} />
-            : <ZoneCardText card={card} />}
+            : kind === 'inspection'
+              ? <InspectionCardText card={card} />
+              : kind === 'token'
+                ? <TokenCardText card={card} />
+                : <ZoneCardText card={card} />}
         </div>
       </div>
     </div>

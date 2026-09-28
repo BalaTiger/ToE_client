@@ -1,0 +1,8 @@
+{
+  "mode": "built-in",
+  "key": "portraits",
+  "references": [
+    "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-dlc-proposals-2026-09-14/stars_call.png"
+  ],
+  "prompt": "Use case: background-extraction. Extract/reconstruct ONLY the five anonymous character portrait illustrations in this approved game mockup as a production portrait atlas. EXACT 1536x1024 image, SIX square cells of512x512 (3 columns2rows), no gutters, each cell opaque charcoal-black background. Cell1 upper-left: anonymous adult investigator in worn dark fedora and coat, face partially lit; cell2 upper-middle: anonymous weary adult man with swept dark hair, short beard, rough coat; cell3 upper-right: anonymous serious adult woman with dark hair and rough dark robe; cell4 lower-left: anonymous older adult bearded man with angular face and dark coat; cell5 lower-middle: anonymous adult woman beneath dark hood, face dimly visible; cell6 lower-right entirely plain charcoal black. Each is head and shoulders, same scale, centered within its square with face arounduppercenter. These are atmosphere-only portraits, NOT game roles or factions: no role symbols, no occult badges, no names, no text, no frame, no circles, no stats or cards. Match supplied reference realistic highly textured oil-painted game portrait, desaturated sea-grey/charcoal, subdued worn skin, faint warm old bronze highlights. Less cartoon/smooth rendering; no bright saturated colors. Each image will be cropped into separate512square reusable avatars for actual player panels."
+}

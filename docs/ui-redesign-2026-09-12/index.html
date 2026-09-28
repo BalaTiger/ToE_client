@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>邪神的宝藏 · 全界面样板册</title>
+<style>
+:root{color-scheme:dark;--bg:#0b0a08;--panel:#17140e;--line:#57452d;--ink:#eadbc0;--muted:#b2a186;--gold:#cfb279}*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:radial-gradient(ellipse at top,#31241650,transparent 48%),var(--bg);color:var(--ink);font:15px/1.7 "Microsoft YaHei","PingFang SC",sans-serif}a{color:#dec28b;text-underline-offset:4px}a:hover{color:#fff0cd}button,input,select{font:inherit}button,a,input,select{touch-action:manipulation}a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid #edcd85;outline-offset:4px}button,input,select{border:1px solid var(--line);border-radius:4px;background:#110f0b;color:var(--ink)}input,select{padding:10px 12px}button{padding:10px 16px;cursor:pointer}button:hover{background:#342918}header,main,footer{width:min(1440px,calc(100% - 64px));margin:auto}header{padding:52px 0 28px;border-bottom:1px solid var(--line)}.eyebrow{color:var(--gold);font-size:12px;letter-spacing:3px}.hero-line{display:flex;align-items:end;justify-content:space-between;gap:20px}.hero-line h1{font-family:"Noto Serif SC","SimSun",serif;font-size:clamp(26px,3.5vw,46px);font-weight:500;letter-spacing:3px;margin:10px 0}.date{color:var(--muted);white-space:nowrap}.intro{max-width:1000px;color:#c9b797;margin:10px 0 24px}.counts{display:flex;gap:32px;flex-wrap:wrap}.counts strong{color:#e8cc94;font-size:25px;font-family:Georgia,serif;margin-right:8px}.counts span{color:var(--muted)}.basis{display:grid;grid-template-columns:1.7fr 1fr;gap:20px;margin:28px 0}.note,.resources,.filter-panel{background:linear-gradient(135deg,#231c1255,#14120df5);border:1px solid var(--line);border-radius:6px;padding:22px}.note h2,.resources h2{font-family:"Noto Serif SC","SimSun",serif;font-weight:500;font-size:19px;margin:0 0 12px;color:#e5c68f}.note p{margin:8px 0;color:#c8b79a}.note strong{color:#f0d6a3}.resource-links{display:grid;gap:8px}.resource-links a{display:block}.filter-panel{position:sticky;top:0;z-index:10;backdrop-filter:blur(16px);padding:16px 18px;margin:28px 0 22px}.filters{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.field{display:grid;gap:5px}.field label{font-size:12px;color:var(--muted)}.search-field{flex:1;min-width:230px}.search-field input{width:100%}.filter-status{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;align-items:center;margin-top:13px;color:var(--muted);font-size:12px}.filter-status p{margin:0}.dev-settings{margin-top:10px;font-size:12px;color:var(--muted)}.dev-settings summary{cursor:pointer}.dev-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}.dev-row label{white-space:nowrap}.dev-row input{width:min(400px,100%);padding:6px 8px}.dev-row button{padding:6px 12px}.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:20px}.scene{border:1px solid #463a29;border-radius:6px;overflow:hidden;background:#15120e;display:flex;flex-direction:column;box-shadow:0 6px 20px #0003}.scene[hidden]{display:none}.thumbnail{display:flex;aspect-ratio:16/10;align-items:center;justify-content:center;background:#070605;border-bottom:1px solid #3d3021;padding:5px}.thumbnail img{display:block;max-width:100%;max-height:100%;width:100%;height:100%;object-fit:contain}.scene-body{padding:15px 16px 16px;display:flex;flex:1;flex-direction:column}.scene-meta{display:flex;justify-content:space-between;font-size:11px;letter-spacing:1px;color:#b8a07a}.scene h3{font-size:15px;line-height:1.65;margin:7px 0;font-weight:500;color:#ecddc2}.scene code{font:11px/1.5 Consolas,monospace;color:#928571;word-break:break-all;margin-bottom:14px}.scene-links{margin-top:auto;display:flex;flex-wrap:wrap;gap:16px;font-size:12px}.responsive-links{display:flex;flex-wrap:wrap;gap:6px 12px;border-top:1px solid #352b1e;padding-top:10px;margin-top:12px;font-size:11px}.responsive-links a{color:#aaa78d}.empty{padding:64px 0;text-align:center;color:var(--muted)}.empty[hidden]{display:none}.extras{border:1px solid var(--line);border-radius:6px;margin:36px 0;background:#14110c;padding:20px}.extras summary{color:#dabc84;cursor:pointer;font-size:16px}.extras p{color:var(--muted);font-size:13px}.reference-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin-top:16px}.reference-grid figure{margin:0}.reference-grid img{display:block;width:100%;height:220px;object-fit:contain;background:#080705;border:1px solid #3e3222}.reference-grid figcaption{margin-top:8px;font-size:12px;color:var(--muted)}footer{border-top:1px solid var(--line);margin-top:36px;padding:22px 0 40px;display:flex;justify-content:space-between;gap:20px;color:#9d8f78;font-size:12px}noscript{display:block;padding:14px;color:#e6c28a}.skip{position:absolute;left:12px;top:-60px;background:#21190d;padding:10px;z-index:20}.skip:focus{top:12px}@media(max-width:700px){header,main,footer{width:calc(100% - 28px)}header{padding-top:28px}.hero-line{display:block}.counts{gap:12px 20px}.counts strong{font-size:21px}.basis{grid-template-columns:1fr;gap:14px}.note,.resources{padding:18px}.grid{grid-template-columns:repeat(auto-fill,minmax(245px,1fr));gap:14px}.filter-panel{position:static;padding:14px}.filters{gap:10px}.field:not(.search-field){flex:1}.field select{width:100%}.reference-grid{grid-template-columns:1fr}.reference-grid img{height:240px}.date{font-size:12px}footer{flex-direction:column}.dev-row input{width:100%}}
+</style></head>
+<body><a class="skip" href="#gallery">跳至界面样板</a>
+<header><div class="eyebrow">TREASURES OF EVILS · UI ATLAS</div><div class="hero-line"><h1>邪神的宝藏 · 全界面样板册</h1><span class="date">2026 · 09 · 12</span></div><p class="intro">以当前主界面的深色遗迹、旧铜浮雕与羊皮色文字统一其他功能界面。这里收录实际组件渲染的完整界面与状态，供素材制作、切图和接入验收时逐项对照。</p><div class="counts"><span><strong>167</strong>个实际状态</span><span><strong>10</strong>类功能</span><span><strong>32</strong>张手机视口样板</span><span><strong>392 : 590</strong>固定卡牌比例</span></div></header>
+<main><section class="basis" aria-label="制作依据与文件入口"><div class="note"><h2>制作依据</h2><p><strong>真实组件样板是制作时的几何依据。</strong>控件位置、文字区域、留白、卡牌大小与移动端布局，以本页实际 PNG 和开发预览为准。</p><p>AI 参考图用于材质、纹样和造型。<strong>AI 图中的卡牌比例不作为制作标准。</strong>所有牌面与牌背固定为 <strong>392:590</strong>，只允许等比缩放；空间不足时换行或滚动。</p><p>卡内规则、编号与等级继续由代码绘制。制作纹理或九宫边框时，不将这些可变文字烘焙进图片。</p></div><nav class="resources" aria-label="制作文件"><h2>制作与验收文件</h2><div class="resource-links"><a href="asset-slices.json" target="_blank" rel="noopener">九宫切图坐标与尺寸 · asset-slices.json ↗</a><a href="panel-master.png" target="_blank" rel="noopener">可切图面板母版 ↗</a><a href="CARD-CLARITY.md" target="_blank" rel="noopener">现有卡面清晰度评估 ↗</a><a href="card-clarity-comparison.png" target="_blank" rel="noopener">82 / 124 / 196 / 300 px 卡牌对照 · 上部视口 ↗</a><a href="cards-secondary.png" target="_blank" rel="noopener">邪神牌与衍生牌对照 · 下部视口 ↗</a><a href="browser-geometry.json" target="_blank" rel="noopener">桌面几何检查记录 ↗</a><a href="responsive-geometry.json" target="_blank" rel="noopener">手机横竖屏几何检查记录 ↗</a><a href="../visual-beautification-2026-09-12/UI-CATALOG.md" target="_blank" rel="noopener">完整场景索引与组件边界 ↗</a></div></nav></section>
+<section id="gallery" aria-label="实际界面样板"><div class="filter-panel"><form id="filter-form" class="filters" role="search"><div class="field search-field"><label for="search">搜索界面、状态或场景 ID</label><input id="search" type="search" placeholder="例如：摸牌、联机、card-clarity" autocomplete="off"></div><div class="field"><label for="group">功能分类</label><select id="group"><option value="">全部分类</option><option>对局</option><option>系统</option><option>联机</option><option>决策</option><option>目标</option><option>信息</option><option>教学</option><option>演出</option><option>结算</option><option>开发</option></select></div><div class="field"><label for="device">截图范围</label><select id="device"><option value="all">全部桌面样板</option><option value="responsive">含手机横竖屏</option></select></div><button type="reset">重置</button></form><div class="filter-status"><p id="result-count" aria-live="polite">显示 167 / 167 个状态</p><p>桌面 1440 × 900 视口 · 手机为视口截图 · 缩略图完整保留画面</p></div><details class="dev-settings"><summary>开发预览地址设置</summary><div class="dev-row"><label for="dev-base">本地服务地址</label><input id="dev-base" type="url" value="http://127.0.0.1:5174/" spellcheck="false"><button type="button" id="apply-base">应用</button><span id="dev-status" role="status">开发预览需要先启动项目开发服务；若端口不同，在此修改。</span></div></details></div><noscript>图片和文件链接可离线查看；搜索与筛选需要启用 JavaScript。</noscript><div class="grid"><article class="scene" data-group="对局" data-search="行动阶段 battle 对局" data-responsive="true">
+ <a class="thumbnail" href="screens/battle.png" target="_blank" rel="noopener" aria-label="打开行动阶段原图"><img src="screens/battle.png" alt="行动阶段真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>001</span></div><h3>行动阶段</h3><code>battle</code>
+ <div class="scene-links"><a href="screens/battle.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/battle-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/battle-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="对局" data-search="选择本局身份 role 对局" data-responsive="true">
+ <a class="thumbnail" href="screens/role.png" target="_blank" rel="noopener" aria-label="打开选择本局身份原图"><img src="screens/role.png" alt="选择本局身份真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>002</span></div><h3>选择本局身份</h3><code>role</code>
+ <div class="scene-links"><a href="screens/role.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="role" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=role" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/role-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/role-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="对局" data-search="联机行动与倒计时 battle-mp 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/battle-mp.png" target="_blank" rel="noopener" aria-label="打开联机行动与倒计时原图"><img src="screens/battle-mp.png" alt="联机行动与倒计时真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>003</span></div><h3>联机行动与倒计时</h3><code>battle-mp</code>
+ <div class="scene-links"><a href="screens/battle-mp.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle-mp" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle-mp" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="死亡旁观 battle-spectate 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/battle-spectate.png" target="_blank" rel="noopener" aria-label="打开死亡旁观原图"><img src="screens/battle-spectate.png" alt="死亡旁观真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>004</span></div><h3>死亡旁观</h3><code>battle-spectate</code>
+ <div class="scene-links"><a href="screens/battle-spectate.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle-spectate" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle-spectate" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="信仰、翻面与状态标记 battle-status 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/battle-status.png" target="_blank" rel="noopener" aria-label="打开信仰、翻面与状态标记原图"><img src="screens/battle-status.png" alt="信仰、翻面与状态标记真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>005</span></div><h3>信仰、翻面与状态标记</h3><code>battle-status</code>
+ <div class="scene-links"><a href="screens/battle-status.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle-status" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle-status" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="等待其他旅者行动 battle-ai 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/battle-ai.png" target="_blank" rel="noopener" aria-label="打开等待其他旅者行动原图"><img src="screens/battle-ai.png" alt="等待其他旅者行动真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>006</span></div><h3>等待其他旅者行动</h3><code>battle-ai</code>
+ <div class="scene-links"><a href="screens/battle-ai.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle-ai" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle-ai" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="空手牌 battle-empty 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/battle-empty.png" target="_blank" rel="noopener" aria-label="打开空手牌原图"><img src="screens/battle-empty.png" alt="空手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>007</span></div><h3>空手牌</h3><code>battle-empty</code>
+ <div class="scene-links"><a href="screens/battle-empty.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="battle-empty" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=battle-empty" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="超出手牌上限 · 选择弃牌 discard 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/discard.png" target="_blank" rel="noopener" aria-label="打开超出手牌上限 · 选择弃牌原图"><img src="screens/discard.png" alt="超出手牌上限 · 选择弃牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>008</span></div><h3>超出手牌上限 · 选择弃牌</h3><code>discard</code>
+ <div class="scene-links"><a href="screens/discard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="discard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=discard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="追捕 · 亮出手牌 hunt-reveal 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/hunt-reveal.png" target="_blank" rel="noopener" aria-label="打开追捕 · 亮出手牌原图"><img src="screens/hunt-reveal.png" alt="追捕 · 亮出手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>009</span></div><h3>追捕 · 亮出手牌</h3><code>hunt-reveal</code>
+ <div class="scene-links"><a href="screens/hunt-reveal.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="hunt-reveal" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=hunt-reveal" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="追捕 · 等待亮牌 hunt-wait 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/hunt-wait.png" target="_blank" rel="noopener" aria-label="打开追捕 · 等待亮牌原图"><img src="screens/hunt-wait.png" alt="追捕 · 等待亮牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>010</span></div><h3>追捕 · 等待亮牌</h3><code>hunt-wait</code>
+ <div class="scene-links"><a href="screens/hunt-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="hunt-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=hunt-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="追捕 · 匹配与放弃 hunt-confirm 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/hunt-confirm.png" target="_blank" rel="noopener" aria-label="打开追捕 · 匹配与放弃原图"><img src="screens/hunt-confirm.png" alt="追捕 · 匹配与放弃真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>011</span></div><h3>追捕 · 匹配与放弃</h3><code>hunt-confirm</code>
+ <div class="scene-links"><a href="screens/hunt-confirm.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="hunt-confirm" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=hunt-confirm" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="活埋 · 手牌选择 bury-alive 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/bury-alive.png" target="_blank" rel="noopener" aria-label="打开活埋 · 手牌选择原图"><img src="screens/bury-alive.png" alt="活埋 · 手牌选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>012</span></div><h3>活埋 · 手牌选择</h3><code>bury-alive</code>
+ <div class="scene-links"><a href="screens/bury-alive.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="bury-alive" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=bury-alive" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="引燃火炬 · 手牌选择 ignite-torch 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/ignite-torch.png" target="_blank" rel="noopener" aria-label="打开引燃火炬 · 手牌选择原图"><img src="screens/ignite-torch.png" alt="引燃火炬 · 手牌选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>013</span></div><h3>引燃火炬 · 手牌选择</h3><code>ignite-torch</code>
+ <div class="scene-links"><a href="screens/ignite-torch.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="ignite-torch" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=ignite-torch" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="白化生物 · 火焰牌响应 albino-creature 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/albino-creature.png" target="_blank" rel="noopener" aria-label="打开白化生物 · 火焰牌响应原图"><img src="screens/albino-creature.png" alt="白化生物 · 火焰牌响应真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>014</span></div><h3>白化生物 · 火焰牌响应</h3><code>albino-creature</code>
+ <div class="scene-links"><a href="screens/albino-creature.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="albino-creature" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=albino-creature" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="穴居人战争 · 手牌选择 cave-duel-card 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/cave-duel-card.png" target="_blank" rel="noopener" aria-label="打开穴居人战争 · 手牌选择原图"><img src="screens/cave-duel-card.png" alt="穴居人战争 · 手牌选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>015</span></div><h3>穴居人战争 · 手牌选择</h3><code>cave-duel-card</code>
+ <div class="scene-links"><a href="screens/cave-duel-card.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="cave-duel-card" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=cave-duel-card" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="穴居人战争 · 等待亮牌 cave-duel-wait 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/cave-duel-wait.png" target="_blank" rel="noopener" aria-label="打开穴居人战争 · 等待亮牌原图"><img src="screens/cave-duel-wait.png" alt="穴居人战争 · 等待亮牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>016</span></div><h3>穴居人战争 · 等待亮牌</h3><code>cave-duel-wait</code>
+ <div class="scene-links"><a href="screens/cave-duel-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="cave-duel-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=cave-duel-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="掉包 · 交回一张牌 swap-give 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/swap-give.png" target="_blank" rel="noopener" aria-label="打开掉包 · 交回一张牌原图"><img src="screens/swap-give.png" alt="掉包 · 交回一张牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>017</span></div><h3>掉包 · 交回一张牌</h3><code>swap-give</code>
+ <div class="scene-links"><a href="screens/swap-give.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="swap-give" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=swap-give" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="对局" data-search="蛊惑 · 选择手牌 bewitch-card 对局" data-responsive="false">
+ <a class="thumbnail" href="screens/bewitch-card.png" target="_blank" rel="noopener" aria-label="打开蛊惑 · 选择手牌原图"><img src="screens/bewitch-card.png" alt="蛊惑 · 选择手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>对局</span><span>018</span></div><h3>蛊惑 · 选择手牌</h3><code>bewitch-card</code>
+ <div class="scene-links"><a href="screens/bewitch-card.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="bewitch-card" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=bewitch-card" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="单人暂停 pause 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/pause.png" target="_blank" rel="noopener" aria-label="打开单人暂停原图"><img src="screens/pause.png" alt="单人暂停真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>019</span></div><h3>单人暂停</h3><code>pause</code>
+ <div class="scene-links"><a href="screens/pause.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="pause" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=pause" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="退出对局确认 exit 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/exit.png" target="_blank" rel="noopener" aria-label="打开退出对局确认原图"><img src="screens/exit.png" alt="退出对局确认真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>020</span></div><h3>退出对局确认</h3><code>exit</code>
+ <div class="scene-links"><a href="screens/exit.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="exit" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=exit" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="恢复当前对局连接 reconnect 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/reconnect.png" target="_blank" rel="noopener" aria-label="打开恢复当前对局连接原图"><img src="screens/reconnect.png" alt="恢复当前对局连接真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>021</span></div><h3>恢复当前对局连接</h3><code>reconnect</code>
+ <div class="scene-links"><a href="screens/reconnect.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="reconnect" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=reconnect" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="连接失败 connection-error 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/connection-error.png" target="_blank" rel="noopener" aria-label="打开连接失败原图"><img src="screens/connection-error.png" alt="连接失败真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>022</span></div><h3>连接失败</h3><code>connection-error</code>
+ <div class="scene-links"><a href="screens/connection-error.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="connection-error" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=connection-error" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="视听设置 settings 系统" data-responsive="true">
+ <a class="thumbnail" href="screens/settings.png" target="_blank" rel="noopener" aria-label="打开视听设置原图"><img src="screens/settings.png" alt="视听设置真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>023</span></div><h3>视听设置</h3><code>settings</code>
+ <div class="scene-links"><a href="screens/settings.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="settings" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=settings" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/settings-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/settings-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="系统" data-search="联机表情选择 emoji 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/emoji.png" target="_blank" rel="noopener" aria-label="打开联机表情选择原图"><img src="screens/emoji.png" alt="联机表情选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>024</span></div><h3>联机表情选择</h3><code>emoji</code>
+ <div class="scene-links"><a href="screens/emoji.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="emoji" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=emoji" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="系统" data-search="服务器公告 announcement 系统" data-responsive="false">
+ <a class="thumbnail" href="screens/announcement.png" target="_blank" rel="noopener" aria-label="打开服务器公告原图"><img src="screens/announcement.png" alt="服务器公告真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>系统</span><span>025</span></div><h3>服务器公告</h3><code>announcement</code>
+ <div class="scene-links"><a href="screens/announcement.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="announcement" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=announcement" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机入口 · 创建与加入 online 联机" data-responsive="true">
+ <a class="thumbnail" href="screens/online.png" target="_blank" rel="noopener" aria-label="打开联机入口 · 创建与加入原图"><img src="screens/online.png" alt="联机入口 · 创建与加入真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>026</span></div><h3>联机入口 · 创建与加入</h3><code>online</code>
+ <div class="scene-links"><a href="screens/online.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="online" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=online" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/online-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/online-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="联机" data-search="联机入口 · 连接中 online-loading 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/online-loading.png" target="_blank" rel="noopener" aria-label="打开联机入口 · 连接中原图"><img src="screens/online-loading.png" alt="联机入口 · 连接中真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>027</span></div><h3>联机入口 · 连接中</h3><code>online-loading</code>
+ <div class="scene-links"><a href="screens/online-loading.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="online-loading" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=online-loading" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机用户名编辑 online-rename 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/online-rename.png" target="_blank" rel="noopener" aria-label="打开联机用户名编辑原图"><img src="screens/online-rename.png" alt="联机用户名编辑真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>028</span></div><h3>联机用户名编辑</h3><code>online-rename</code>
+ <div class="scene-links"><a href="screens/online-rename.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="online-rename" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=online-rename" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机改名 · 冷却中 online-rename-cooldown 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/online-rename-cooldown.png" target="_blank" rel="noopener" aria-label="打开联机改名 · 冷却中原图"><img src="screens/online-rename-cooldown.png" alt="联机改名 · 冷却中真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>029</span></div><h3>联机改名 · 冷却中</h3><code>online-rename-cooldown</code>
+ <div class="scene-links"><a href="screens/online-rename-cooldown.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="online-rename-cooldown" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=online-rename-cooldown" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机用户名 · 特殊名字 online-special-name 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/online-special-name.png" target="_blank" rel="noopener" aria-label="打开联机用户名 · 特殊名字原图"><img src="screens/online-special-name.png" alt="联机用户名 · 特殊名字真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>030</span></div><h3>联机用户名 · 特殊名字</h3><code>online-special-name</code>
+ <div class="scene-links"><a href="screens/online-special-name.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="online-special-name" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=online-special-name" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="游戏大厅 · 房间列表 lobby 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/lobby.png" target="_blank" rel="noopener" aria-label="打开游戏大厅 · 房间列表原图"><img src="screens/lobby.png" alt="游戏大厅 · 房间列表真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>031</span></div><h3>游戏大厅 · 房间列表</h3><code>lobby</code>
+ <div class="scene-links"><a href="screens/lobby.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="lobby" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=lobby" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="游戏大厅 · 暂无房间 lobby-empty 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/lobby-empty.png" target="_blank" rel="noopener" aria-label="打开游戏大厅 · 暂无房间原图"><img src="screens/lobby-empty.png" alt="游戏大厅 · 暂无房间真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>032</span></div><h3>游戏大厅 · 暂无房间</h3><code>lobby-empty</code>
+ <div class="scene-links"><a href="screens/lobby-empty.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="lobby-empty" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=lobby-empty" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="游戏大厅 · 加载中 lobby-loading 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/lobby-loading.png" target="_blank" rel="noopener" aria-label="打开游戏大厅 · 加载中原图"><img src="screens/lobby-loading.png" alt="游戏大厅 · 加载中真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>033</span></div><h3>游戏大厅 · 加载中</h3><code>lobby-loading</code>
+ <div class="scene-links"><a href="screens/lobby-loading.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="lobby-loading" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=lobby-loading" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 房主未准备 room 联机" data-responsive="true">
+ <a class="thumbnail" href="screens/room.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 房主未准备原图"><img src="screens/room.png" alt="联机房间 · 房主未准备真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>034</span></div><h3>联机房间 · 房主未准备</h3><code>room</code>
+ <div class="scene-links"><a href="screens/room.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/room-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/room-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 已准备 room-ready 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/room-ready.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 已准备原图"><img src="screens/room-ready.png" alt="联机房间 · 已准备真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>035</span></div><h3>联机房间 · 已准备</h3><code>room-ready</code>
+ <div class="scene-links"><a href="screens/room-ready.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room-ready" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room-ready" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 成员视角 room-member 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/room-member.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 成员视角原图"><img src="screens/room-member.png" alt="联机房间 · 成员视角真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>036</span></div><h3>联机房间 · 成员视角</h3><code>room-member</code>
+ <div class="scene-links"><a href="screens/room-member.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room-member" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room-member" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 私密 room-private 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/room-private.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 私密原图"><img src="screens/room-private.png" alt="联机房间 · 私密真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>037</span></div><h3>联机房间 · 私密</h3><code>room-private</code>
+ <div class="scene-links"><a href="screens/room-private.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room-private" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room-private" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 开始倒计时 room-start 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/room-start.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 开始倒计时原图"><img src="screens/room-start.png" alt="联机房间 · 开始倒计时真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>038</span></div><h3>联机房间 · 开始倒计时</h3><code>room-start</code>
+ <div class="scene-links"><a href="screens/room-start.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room-start" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room-start" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="联机房间 · 准备截止倒计时 room-kick 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/room-kick.png" target="_blank" rel="noopener" aria-label="打开联机房间 · 准备截止倒计时原图"><img src="screens/room-kick.png" alt="联机房间 · 准备截止倒计时真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>039</span></div><h3>联机房间 · 准备截止倒计时</h3><code>room-kick</code>
+ <div class="scene-links"><a href="screens/room-kick.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="room-kick" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=room-kick" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="联机" data-search="公开房间确认 privacy 联机" data-responsive="false">
+ <a class="thumbnail" href="screens/privacy.png" target="_blank" rel="noopener" aria-label="打开公开房间确认原图"><img src="screens/privacy.png" alt="公开房间确认真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>联机</span><span>040</span></div><h3>公开房间确认</h3><code>privacy</code>
+ <div class="scene-links"><a href="screens/privacy.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="privacy" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=privacy" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="区域探寻 · 取舍 draw 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/draw.png" target="_blank" rel="noopener" aria-label="打开区域探寻 · 取舍原图"><img src="screens/draw.png" alt="区域探寻 · 取舍真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>041</span></div><h3>区域探寻 · 取舍</h3><code>draw</code>
+ <div class="scene-links"><a href="screens/draw.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="draw" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=draw" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/draw-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/draw-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="区域探寻 · 等待他人 draw-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/draw-wait.png" target="_blank" rel="noopener" aria-label="打开区域探寻 · 等待他人原图"><img src="screens/draw-wait.png" alt="区域探寻 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>042</span></div><h3>区域探寻 · 等待他人</h3><code>draw-wait</code>
+ <div class="scene-links"><a href="screens/draw-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="draw-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=draw-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="区域探寻 · 可重试错误 draw-error 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/draw-error.png" target="_blank" rel="noopener" aria-label="打开区域探寻 · 可重试错误原图"><img src="screens/draw-error.png" alt="区域探寻 · 可重试错误真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>043</span></div><h3>区域探寻 · 可重试错误</h3><code>draw-error</code>
+ <div class="scene-links"><a href="screens/draw-error.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="draw-error" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=draw-error" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="邪神降临 · 信仰 god 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/god.png" target="_blank" rel="noopener" aria-label="打开邪神降临 · 信仰原图"><img src="screens/god.png" alt="邪神降临 · 信仰真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>044</span></div><h3>邪神降临 · 信仰</h3><code>god</code>
+ <div class="scene-links"><a href="screens/god.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/god-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/god-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="邪祀者 · 邪神收入手牌 god-keep 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/god-keep.png" target="_blank" rel="noopener" aria-label="打开邪祀者 · 邪神收入手牌原图"><img src="screens/god-keep.png" alt="邪祀者 · 邪神收入手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>045</span></div><h3>邪祀者 · 邪神收入手牌</h3><code>god-keep</code>
+ <div class="scene-links"><a href="screens/god-keep.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god-keep" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god-keep" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="邪神之力升级 god-upgrade 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/god-upgrade.png" target="_blank" rel="noopener" aria-label="打开邪神之力升级原图"><img src="screens/god-upgrade.png" alt="邪神之力升级真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>046</span></div><h3>邪神之力升级</h3><code>god-upgrade</code>
+ <div class="scene-links"><a href="screens/god-upgrade.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god-upgrade" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god-upgrade" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="改信新神 god-convert 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/god-convert.png" target="_blank" rel="noopener" aria-label="打开改信新神原图"><img src="screens/god-convert.png" alt="改信新神真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>047</span></div><h3>改信新神</h3><code>god-convert</code>
+ <div class="scene-links"><a href="screens/god-convert.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god-convert" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god-convert" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="被迫改信 god-forced 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/god-forced.png" target="_blank" rel="noopener" aria-label="打开被迫改信原图"><img src="screens/god-forced.png" alt="被迫改信真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>048</span></div><h3>被迫改信</h3><code>god-forced</code>
+ <div class="scene-links"><a href="screens/god-forced.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god-forced" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god-forced" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="邪神降临 · 等待他人 god-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/god-wait.png" target="_blank" rel="noopener" aria-label="打开邪神降临 · 等待他人原图"><img src="screens/god-wait.png" alt="邪神降临 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>049</span></div><h3>邪神降临 · 等待他人</h3><code>god-wait</code>
+ <div class="scene-links"><a href="screens/god-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="god-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=god-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="寻宝者闪避选择 dodge 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/dodge.png" target="_blank" rel="noopener" aria-label="打开寻宝者闪避选择原图"><img src="screens/dodge.png" alt="寻宝者闪避选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>050</span></div><h3>寻宝者闪避选择</h3><code>dodge</code>
+ <div class="scene-links"><a href="screens/dodge.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="dodge" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=dodge" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="群体效果闪避 dodge-aoe 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/dodge-aoe.png" target="_blank" rel="noopener" aria-label="打开群体效果闪避原图"><img src="screens/dodge-aoe.png" alt="群体效果闪避真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>051</span></div><h3>群体效果闪避</h3><code>dodge-aoe</code>
+ <div class="scene-links"><a href="screens/dodge-aoe.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="dodge-aoe" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=dodge-aoe" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="群体效果 · 等待闪避 dodge-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/dodge-wait.png" target="_blank" rel="noopener" aria-label="打开群体效果 · 等待闪避原图"><img src="screens/dodge-wait.png" alt="群体效果 · 等待闪避真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>052</span></div><h3>群体效果 · 等待闪避</h3><code>dodge-wait</code>
+ <div class="scene-links"><a href="screens/dodge-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="dodge-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=dodge-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="千人千貌 · 借用身份 nya-borrow 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/nya-borrow.png" target="_blank" rel="noopener" aria-label="打开千人千貌 · 借用身份原图"><img src="screens/nya-borrow.png" alt="千人千貌 · 借用身份真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>053</span></div><h3>千人千貌 · 借用身份</h3><code>nya-borrow</code>
+ <div class="scene-links"><a href="screens/nya-borrow.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="nya-borrow" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=nya-borrow" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="衔烛照幽 · 藏到牌底 zhu-hide 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/zhu-hide.png" target="_blank" rel="noopener" aria-label="打开衔烛照幽 · 藏到牌底原图"><img src="screens/zhu-hide.png" alt="衔烛照幽 · 藏到牌底真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>054</span></div><h3>衔烛照幽 · 藏到牌底</h3><code>zhu-hide</code>
+ <div class="scene-links"><a href="screens/zhu-hide.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="zhu-hide" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=zhu-hide" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="衔烛照幽 · 等待他人 zhu-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/zhu-wait.png" target="_blank" rel="noopener" aria-label="打开衔烛照幽 · 等待他人原图"><img src="screens/zhu-wait.png" alt="衔烛照幽 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>055</span></div><h3>衔烛照幽 · 等待他人</h3><code>zhu-wait</code>
+ <div class="scene-links"><a href="screens/zhu-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="zhu-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=zhu-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="赐福黏液 · HP/SAN 平分 slime 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/slime.png" target="_blank" rel="noopener" aria-label="打开赐福黏液 · HP/SAN 平分原图"><img src="screens/slime.png" alt="赐福黏液 · HP/SAN 平分真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>056</span></div><h3>赐福黏液 · HP/SAN 平分</h3><code>slime</code>
+ <div class="scene-links"><a href="screens/slime.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="slime" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=slime" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/slime-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/slime-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="赐福黏液 · 等待他人 slime-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/slime-wait.png" target="_blank" rel="noopener" aria-label="打开赐福黏液 · 等待他人原图"><img src="screens/slime-wait.png" alt="赐福黏液 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>057</span></div><h3>赐福黏液 · 等待他人</h3><code>slime-wait</code>
+ <div class="scene-links"><a href="screens/slime-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="slime-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=slime-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="半物质化 · 转移伤害 etherealize 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/etherealize.png" target="_blank" rel="noopener" aria-label="打开半物质化 · 转移伤害原图"><img src="screens/etherealize.png" alt="半物质化 · 转移伤害真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>058</span></div><h3>半物质化 · 转移伤害</h3><code>etherealize</code>
+ <div class="scene-links"><a href="screens/etherealize.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="etherealize" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=etherealize" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="半物质化 · 连续转移 etherealize-chain 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/etherealize-chain.png" target="_blank" rel="noopener" aria-label="打开半物质化 · 连续转移原图"><img src="screens/etherealize-chain.png" alt="半物质化 · 连续转移真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>059</span></div><h3>半物质化 · 连续转移</h3><code>etherealize-chain</code>
+ <div class="scene-links"><a href="screens/etherealize-chain.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="etherealize-chain" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=etherealize-chain" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="半物质化 · 等待他人 etherealize-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/etherealize-wait.png" target="_blank" rel="noopener" aria-label="打开半物质化 · 等待他人原图"><img src="screens/etherealize-wait.png" alt="半物质化 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>060</span></div><h3>半物质化 · 等待他人</h3><code>etherealize-wait</code>
+ <div class="scene-links"><a href="screens/etherealize-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="etherealize-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=etherealize-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="灵龟卜祝 · 选择编号 tortoise 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/tortoise.png" target="_blank" rel="noopener" aria-label="打开灵龟卜祝 · 选择编号原图"><img src="screens/tortoise.png" alt="灵龟卜祝 · 选择编号真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>061</span></div><h3>灵龟卜祝 · 选择编号</h3><code>tortoise</code>
+ <div class="scene-links"><a href="screens/tortoise.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tortoise" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tortoise" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/tortoise-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/tortoise-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="灵龟卜祝 · 等待他人 tortoise-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/tortoise-wait.png" target="_blank" rel="noopener" aria-label="打开灵龟卜祝 · 等待他人原图"><img src="screens/tortoise-wait.png" alt="灵龟卜祝 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>062</span></div><h3>灵龟卜祝 · 等待他人</h3><code>tortoise-wait</code>
+ <div class="scene-links"><a href="screens/tortoise-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tortoise-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tortoise-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="血之窥探 peek 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/peek.png" target="_blank" rel="noopener" aria-label="打开血之窥探原图"><img src="screens/peek.png" alt="血之窥探真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>063</span></div><h3>血之窥探</h3><code>peek</code>
+ <div class="scene-links"><a href="screens/peek.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="peek" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=peek" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/peek-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/peek-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="先到先得 · 选牌 first-come 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/first-come.png" target="_blank" rel="noopener" aria-label="打开先到先得 · 选牌原图"><img src="screens/first-come.png" alt="先到先得 · 选牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>064</span></div><h3>先到先得 · 选牌</h3><code>first-come</code>
+ <div class="scene-links"><a href="screens/first-come.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="first-come" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=first-come" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/first-come-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/first-come-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="先到先得 · 等待他人 first-come-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/first-come-wait.png" target="_blank" rel="noopener" aria-label="打开先到先得 · 等待他人原图"><img src="screens/first-come-wait.png" alt="先到先得 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>065</span></div><h3>先到先得 · 等待他人</h3><code>first-come-wait</code>
+ <div class="scene-links"><a href="screens/first-come-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="first-come-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=first-come-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="掘墓 · 选邪神牌 grave-dig 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/grave-dig.png" target="_blank" rel="noopener" aria-label="打开掘墓 · 选邪神牌原图"><img src="screens/grave-dig.png" alt="掘墓 · 选邪神牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>066</span></div><h3>掘墓 · 选邪神牌</h3><code>grave-dig</code>
+ <div class="scene-links"><a href="screens/grave-dig.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="grave-dig" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=grave-dig" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="掘墓 · 等待他人 grave-dig-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/grave-dig-wait.png" target="_blank" rel="noopener" aria-label="打开掘墓 · 等待他人原图"><img src="screens/grave-dig-wait.png" alt="掘墓 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>067</span></div><h3>掘墓 · 等待他人</h3><code>grave-dig-wait</code>
+ <div class="scene-links"><a href="screens/grave-dig-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="grave-dig-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=grave-dig-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="同归深渊 · 手牌或 HP same-abyss 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/same-abyss.png" target="_blank" rel="noopener" aria-label="打开同归深渊 · 手牌或 HP原图"><img src="screens/same-abyss.png" alt="同归深渊 · 手牌或 HP真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>068</span></div><h3>同归深渊 · 手牌或 HP</h3><code>same-abyss</code>
+ <div class="scene-links"><a href="screens/same-abyss.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="same-abyss" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=same-abyss" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="同归深渊 · 等待他人 same-abyss-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/same-abyss-wait.png" target="_blank" rel="noopener" aria-label="打开同归深渊 · 等待他人原图"><img src="screens/same-abyss-wait.png" alt="同归深渊 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>069</span></div><h3>同归深渊 · 等待他人</h3><code>same-abyss-wait</code>
+ <div class="scene-links"><a href="screens/same-abyss-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="same-abyss-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=same-abyss-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="斯芬克斯 · 猜测牌堆 sphinx 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/sphinx.png" target="_blank" rel="noopener" aria-label="打开斯芬克斯 · 猜测牌堆原图"><img src="screens/sphinx.png" alt="斯芬克斯 · 猜测牌堆真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>070</span></div><h3>斯芬克斯 · 猜测牌堆</h3><code>sphinx</code>
+ <div class="scene-links"><a href="screens/sphinx.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="sphinx" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=sphinx" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="斯芬克斯 · 等待他人 sphinx-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/sphinx-wait.png" target="_blank" rel="noopener" aria-label="打开斯芬克斯 · 等待他人原图"><img src="screens/sphinx-wait.png" alt="斯芬克斯 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>071</span></div><h3>斯芬克斯 · 等待他人</h3><code>sphinx-wait</code>
+ <div class="scene-links"><a href="screens/sphinx-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="sphinx-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=sphinx-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="决策" data-search="解读石刻 · 卡牌分配 decipher 决策" data-responsive="true">
+ <a class="thumbnail" href="screens/decipher.png" target="_blank" rel="noopener" aria-label="打开解读石刻 · 卡牌分配原图"><img src="screens/decipher.png" alt="解读石刻 · 卡牌分配真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>072</span></div><h3>解读石刻 · 卡牌分配</h3><code>decipher</code>
+ <div class="scene-links"><a href="screens/decipher.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="decipher" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=decipher" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/decipher-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/decipher-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="决策" data-search="解读石刻 · 等待他人 decipher-wait 决策" data-responsive="false">
+ <a class="thumbnail" href="screens/decipher-wait.png" target="_blank" rel="noopener" aria-label="打开解读石刻 · 等待他人原图"><img src="screens/decipher-wait.png" alt="解读石刻 · 等待他人真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>决策</span><span>073</span></div><h3>解读石刻 · 等待他人</h3><code>decipher-wait</code>
+ <div class="scene-links"><a href="screens/decipher-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="decipher-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=decipher-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="掉包 · 暗抽选择 swap-blind 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/swap-blind.png" target="_blank" rel="noopener" aria-label="打开掉包 · 暗抽选择原图"><img src="screens/swap-blind.png" alt="掉包 · 暗抽选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>074</span></div><h3>掉包 · 暗抽选择</h3><code>swap-blind</code>
+ <div class="scene-links"><a href="screens/swap-blind.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="swap-blind" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=swap-blind" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="掉包 · 洗牌 swap-shuffle 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/swap-shuffle.png" target="_blank" rel="noopener" aria-label="打开掉包 · 洗牌原图"><img src="screens/swap-shuffle.png" alt="掉包 · 洗牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>075</span></div><h3>掉包 · 洗牌</h3><code>swap-shuffle</code>
+ <div class="scene-links"><a href="screens/swap-shuffle.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="swap-shuffle" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=swap-shuffle" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="掉包 · 公开手牌选择 swap-public 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/swap-public.png" target="_blank" rel="noopener" aria-label="打开掉包 · 公开手牌选择原图"><img src="screens/swap-public.png" alt="掉包 · 公开手牌选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>076</span></div><h3>掉包 · 公开手牌选择</h3><code>swap-public</code>
+ <div class="scene-links"><a href="screens/swap-public.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="swap-public" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=swap-public" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="追捕 · 死者手牌选择 hunt-public 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/hunt-public.png" target="_blank" rel="noopener" aria-label="打开追捕 · 死者手牌选择原图"><img src="screens/hunt-public.png" alt="追捕 · 死者手牌选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>077</span></div><h3>追捕 · 死者手牌选择</h3><code>hunt-public</code>
+ <div class="scene-links"><a href="screens/hunt-public.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="hunt-public" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=hunt-public" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="掉包 · 目标选择 target-swap 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-swap.png" target="_blank" rel="noopener" aria-label="打开掉包 · 目标选择原图"><img src="screens/target-swap.png" alt="掉包 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>078</span></div><h3>掉包 · 目标选择</h3><code>target-swap</code>
+ <div class="scene-links"><a href="screens/target-swap.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-swap" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-swap" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="追捕 · 目标选择 target-hunt 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-hunt.png" target="_blank" rel="noopener" aria-label="打开追捕 · 目标选择原图"><img src="screens/target-hunt.png" alt="追捕 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>079</span></div><h3>追捕 · 目标选择</h3><code>target-hunt</code>
+ <div class="scene-links"><a href="screens/target-hunt.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-hunt" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-hunt" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="蛊惑 · 目标选择 target-bewitch 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-bewitch.png" target="_blank" rel="noopener" aria-label="打开蛊惑 · 目标选择原图"><img src="screens/target-bewitch.png" alt="蛊惑 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>080</span></div><h3>蛊惑 · 目标选择</h3><code>target-bewitch</code>
+ <div class="scene-links"><a href="screens/target-bewitch.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-bewitch" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-bewitch" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="交换手牌 · 目标选择 target-zone-swap 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-zone-swap.png" target="_blank" rel="noopener" aria-label="打开交换手牌 · 目标选择原图"><img src="screens/target-zone-swap.png" alt="交换手牌 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>081</span></div><h3>交换手牌 · 目标选择</h3><code>target-zone-swap</code>
+ <div class="scene-links"><a href="screens/target-zone-swap.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-zone-swap" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-zone-swap" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="血之窥探 · 目标选择 target-peek 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-peek.png" target="_blank" rel="noopener" aria-label="打开血之窥探 · 目标选择原图"><img src="screens/target-peek.png" alt="血之窥探 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>082</span></div><h3>血之窥探 · 目标选择</h3><code>target-peek</code>
+ <div class="scene-links"><a href="screens/target-peek.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-peek" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-peek" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="穴居人战争 · 目标选择 target-cave-duel 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-cave-duel.png" target="_blank" rel="noopener" aria-label="打开穴居人战争 · 目标选择原图"><img src="screens/target-cave-duel.png" alt="穴居人战争 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>083</span></div><h3>穴居人战争 · 目标选择</h3><code>target-cave-duel</code>
+ <div class="scene-links"><a href="screens/target-cave-duel.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-cave-duel" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-cave-duel" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="两人一绳 · 目标选择 target-damage-link 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-damage-link.png" target="_blank" rel="noopener" aria-label="打开两人一绳 · 目标选择原图"><img src="screens/target-damage-link.png" alt="两人一绳 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>084</span></div><h3>两人一绳 · 目标选择</h3><code>target-damage-link</code>
+ <div class="scene-links"><a href="screens/target-damage-link.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-damage-link" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-damage-link" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="玫瑰倒刺 · 目标选择 target-rose-thorn 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-rose-thorn.png" target="_blank" rel="noopener" aria-label="打开玫瑰倒刺 · 目标选择原图"><img src="screens/target-rose-thorn.png" alt="玫瑰倒刺 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>085</span></div><h3>玫瑰倒刺 · 目标选择</h3><code>target-rose-thorn</code>
+ <div class="scene-links"><a href="screens/target-rose-thorn.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-rose-thorn" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-rose-thorn" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="繁衍 · 目标选择 target-multiply 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-multiply.png" target="_blank" rel="noopener" aria-label="打开繁衍 · 目标选择原图"><img src="screens/target-multiply.png" alt="繁衍 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>086</span></div><h3>繁衍 · 目标选择</h3><code>target-multiply</code>
+ <div class="scene-links"><a href="screens/target-multiply.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-multiply" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-multiply" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="黑山羊幼仔 · 目标选择 target-shu 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-shu.png" target="_blank" rel="noopener" aria-label="打开黑山羊幼仔 · 目标选择原图"><img src="screens/target-shu.png" alt="黑山羊幼仔 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>087</span></div><h3>黑山羊幼仔 · 目标选择</h3><code>target-shu</code>
+ <div class="scene-links"><a href="screens/target-shu.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-shu" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-shu" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="目标" data-search="半物质化 · 目标选择 target-etherealize 目标" data-responsive="false">
+ <a class="thumbnail" href="screens/target-etherealize.png" target="_blank" rel="noopener" aria-label="打开半物质化 · 目标选择原图"><img src="screens/target-etherealize.png" alt="半物质化 · 目标选择真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>目标</span><span>088</span></div><h3>半物质化 · 目标选择</h3><code>target-etherealize</code>
+ <div class="scene-links"><a href="screens/target-etherealize.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="target-etherealize" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=target-etherealize" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="信息" data-search="关于游戏与规则 about 信息" data-responsive="true">
+ <a class="thumbnail" href="screens/about.png" target="_blank" rel="noopener" aria-label="打开关于游戏与规则原图"><img src="screens/about.png" alt="关于游戏与规则真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>089</span></div><h3>关于游戏与规则</h3><code>about</code>
+ <div class="scene-links"><a href="screens/about.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="about" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=about" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/about-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/about-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="信息" data-search="版本更新计划 roadmap 信息" data-responsive="true">
+ <a class="thumbnail" href="screens/roadmap.png" target="_blank" rel="noopener" aria-label="打开版本更新计划原图"><img src="screens/roadmap.png" alt="版本更新计划真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>090</span></div><h3>版本更新计划</h3><code>roadmap</code>
+ <div class="scene-links"><a href="screens/roadmap.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="roadmap" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=roadmap" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/roadmap-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/roadmap-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="信息" data-search="完整游戏日志 full-log 信息" data-responsive="false">
+ <a class="thumbnail" href="screens/full-log.png" target="_blank" rel="noopener" aria-label="打开完整游戏日志原图"><img src="screens/full-log.png" alt="完整游戏日志真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>091</span></div><h3>完整游戏日志</h3><code>full-log</code>
+ <div class="scene-links"><a href="screens/full-log.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="full-log" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=full-log" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="信息" data-search="完整游戏日志 · 空状态 full-log-empty 信息" data-responsive="false">
+ <a class="thumbnail" href="screens/full-log-empty.png" target="_blank" rel="noopener" aria-label="打开完整游戏日志 · 空状态原图"><img src="screens/full-log-empty.png" alt="完整游戏日志 · 空状态真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>092</span></div><h3>完整游戏日志 · 空状态</h3><code>full-log-empty</code>
+ <div class="scene-links"><a href="screens/full-log-empty.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="full-log-empty" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=full-log-empty" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="信息" data-search="弃牌堆浏览 discard-pile 信息" data-responsive="false">
+ <a class="thumbnail" href="screens/discard-pile.png" target="_blank" rel="noopener" aria-label="打开弃牌堆浏览原图"><img src="screens/discard-pile.png" alt="弃牌堆浏览真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>093</span></div><h3>弃牌堆浏览</h3><code>discard-pile</code>
+ <div class="scene-links"><a href="screens/discard-pile.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="discard-pile" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=discard-pile" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="信息" data-search="区域牌详情 card-zone-detail 信息" data-responsive="true">
+ <a class="thumbnail" href="screens/card-zone-detail.png" target="_blank" rel="noopener" aria-label="打开区域牌详情原图"><img src="screens/card-zone-detail.png" alt="区域牌详情真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>094</span></div><h3>区域牌详情</h3><code>card-zone-detail</code>
+ <div class="scene-links"><a href="screens/card-zone-detail.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="card-zone-detail" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=card-zone-detail" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/card-zone-detail-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/card-zone-detail-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="信息" data-search="邪神牌详情与等级 card-god-detail 信息" data-responsive="false">
+ <a class="thumbnail" href="screens/card-god-detail.png" target="_blank" rel="noopener" aria-label="打开邪神牌详情与等级原图"><img src="screens/card-god-detail.png" alt="邪神牌详情与等级真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>095</span></div><h3>邪神牌详情与等级</h3><code>card-god-detail</code>
+ <div class="scene-links"><a href="screens/card-god-detail.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="card-god-detail" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=card-god-detail" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="信息" data-search="卡牌清晰度 · 82 / 124 / 196 / 300 px card-clarity 信息" data-responsive="false">
+ <a class="thumbnail" href="screens/card-clarity.png" target="_blank" rel="noopener" aria-label="打开卡牌清晰度 · 82 / 124 / 196 / 300 px原图"><img src="screens/card-clarity.png" alt="卡牌清晰度 · 82 / 124 / 196 / 300 px真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>信息</span><span>096</span></div><h3>卡牌清晰度 · 82 / 124 / 196 / 300 px</h3><code>card-clarity</code>
+ <div class="scene-links"><a href="screens/card-clarity.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="card-clarity" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=card-clarity" target="_blank" rel="noopener">开发预览 ↗</a><a href="card-clarity-comparison.png" target="_blank" rel="noopener">区域牌对照 ↗</a><a href="cards-secondary.png" target="_blank" rel="noopener">神牌与衍生牌 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="教学欢迎 tutorial-welcome 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-welcome.png" target="_blank" rel="noopener" aria-label="打开教学欢迎原图"><img src="screens/tutorial-welcome.png" alt="教学欢迎真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>097</span></div><h3>教学欢迎</h3><code>tutorial-welcome</code>
+ <div class="scene-links"><a href="screens/tutorial-welcome.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-welcome" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-welcome" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="休息提示 soft-rest 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/soft-rest.png" target="_blank" rel="noopener" aria-label="打开休息提示原图"><img src="screens/soft-rest.png" alt="休息提示真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>098</span></div><h3>休息提示</h3><code>soft-rest</code>
+ <div class="scene-links"><a href="screens/soft-rest.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="soft-rest" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=soft-rest" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="翻面提示 soft-flip 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/soft-flip.png" target="_blank" rel="noopener" aria-label="打开翻面提示原图"><img src="screens/soft-flip.png" alt="翻面提示真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>099</span></div><h3>翻面提示</h3><code>soft-flip</code>
+ <div class="scene-links"><a href="screens/soft-flip.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="soft-flip" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=soft-flip" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="遗迹入口 tutorial-intro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-intro.png" target="_blank" rel="noopener" aria-label="打开遗迹入口原图"><img src="screens/tutorial-intro.png" alt="遗迹入口真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>100</span></div><h3>遗迹入口</h3><code>tutorial-intro</code>
+ <div class="scene-links"><a href="screens/tutorial-intro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-intro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-intro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="心智 tutorial-boardSelf 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-boardSelf.png" target="_blank" rel="noopener" aria-label="打开心智原图"><img src="screens/tutorial-boardSelf.png" alt="心智真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>101</span></div><h3>心智</h3><code>tutorial-boardSelf</code>
+ <div class="scene-links"><a href="screens/tutorial-boardSelf.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-boardSelf" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-boardSelf" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="丧失心智 tutorial-boardStats 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-boardStats.png" target="_blank" rel="noopener" aria-label="打开丧失心智原图"><img src="screens/tutorial-boardStats.png" alt="丧失心智真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>102</span></div><h3>丧失心智</h3><code>tutorial-boardStats</code>
+ <div class="scene-links"><a href="screens/tutorial-boardStats.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-boardStats" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-boardStats" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="身份 tutorial-boardRole 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-boardRole.png" target="_blank" rel="noopener" aria-label="打开身份原图"><img src="screens/tutorial-boardRole.png" alt="身份真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>103</span></div><h3>身份</h3><code>tutorial-boardRole</code>
+ <div class="scene-links"><a href="screens/tutorial-boardRole.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-boardRole" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-boardRole" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="寻宝者 tutorial-boardHand 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-boardHand.png" target="_blank" rel="noopener" aria-label="打开寻宝者原图"><img src="screens/tutorial-boardHand.png" alt="寻宝者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>104</span></div><h3>寻宝者</h3><code>tutorial-boardHand</code>
+ <div class="scene-links"><a href="screens/tutorial-boardHand.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-boardHand" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-boardHand" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="宝藏 tutorial-boardDecks 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-boardDecks.png" target="_blank" rel="noopener" aria-label="打开宝藏原图"><img src="screens/tutorial-boardDecks.png" alt="宝藏真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>105</span></div><h3>宝藏</h3><code>tutorial-boardDecks</code>
+ <div class="scene-links"><a href="screens/tutorial-boardDecks.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-boardDecks" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-boardDecks" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="追猎者 tutorial-cardTypes 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cardTypes.png" target="_blank" rel="noopener" aria-label="打开追猎者原图"><img src="screens/tutorial-cardTypes.png" alt="追猎者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>106</span></div><h3>追猎者</h3><code>tutorial-cardTypes</code>
+ <div class="scene-links"><a href="screens/tutorial-cardTypes.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cardTypes" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cardTypes" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="肃清 tutorial-hunterGoal 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterGoal.png" target="_blank" rel="noopener" aria-label="打开肃清原图"><img src="screens/tutorial-hunterGoal.png" alt="肃清真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>107</span></div><h3>肃清</h3><code>tutorial-hunterGoal</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterGoal.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterGoal" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterGoal" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="邪祀者 tutorial-cultistIntroRules 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistIntroRules.png" target="_blank" rel="noopener" aria-label="打开邪祀者原图"><img src="screens/tutorial-cultistIntroRules.png" alt="邪祀者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>108</span></div><h3>邪祀者</h3><code>tutorial-cultistIntroRules</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistIntroRules.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistIntroRules" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistIntroRules" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="复苏 tutorial-cultistGoalRules 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGoalRules.png" target="_blank" rel="noopener" aria-label="打开复苏原图"><img src="screens/tutorial-cultistGoalRules.png" alt="复苏真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>109</span></div><h3>复苏</h3><code>tutorial-cultistGoalRules</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGoalRules.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGoalRules" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGoalRules" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="探索 tutorial-drawZoneCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-drawZoneCard.png" target="_blank" rel="noopener" aria-label="打开探索原图"><img src="screens/tutorial-drawZoneCard.png" alt="探索真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>110</span></div><h3>探索</h3><code>tutorial-drawZoneCard</code>
+ <div class="scene-links"><a href="screens/tutorial-drawZoneCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-drawZoneCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-drawZoneCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="邪神化身 tutorial-drawGodCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-drawGodCard.png" target="_blank" rel="noopener" aria-label="打开邪神化身原图"><img src="screens/tutorial-drawGodCard.png" alt="邪神化身真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>111</span></div><h3>邪神化身</h3><code>tutorial-drawGodCard</code>
+ <div class="scene-links"><a href="screens/tutorial-drawGodCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-drawGodCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-drawGodCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="行囊有限 tutorial-bagLimit 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-bagLimit.png" target="_blank" rel="noopener" aria-label="打开行囊有限原图"><img src="screens/tutorial-bagLimit.png" alt="行囊有限真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>112</span></div><h3>行囊有限</h3><code>tutorial-bagLimit</code>
+ <div class="scene-links"><a href="screens/tutorial-bagLimit.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-bagLimit" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-bagLimit" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="寻宝者：只差一步 tutorial-treasureIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureIntro.png" target="_blank" rel="noopener" aria-label="打开寻宝者：只差一步原图"><img src="screens/tutorial-treasureIntro.png" alt="寻宝者：只差一步真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>113</span></div><h3>寻宝者：只差一步</h3><code>tutorial-treasureIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="回合开始 tutorial-treasureStartTurn 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureStartTurn.png" target="_blank" rel="noopener" aria-label="打开回合开始原图"><img src="screens/tutorial-treasureStartTurn.png" alt="回合开始真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>114</span></div><h3>回合开始</h3><code>tutorial-treasureStartTurn</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureStartTurn.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureStartTurn" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureStartTurn" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="收入手牌 tutorial-treasureDrawReveal 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureDrawReveal.png" target="_blank" rel="noopener" aria-label="打开收入手牌原图"><img src="screens/tutorial-treasureDrawReveal.png" alt="收入手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>115</span></div><h3>收入手牌</h3><code>tutorial-treasureDrawReveal</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureDrawReveal.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureDrawReveal" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureDrawReveal" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="求生技能 tutorial-treasureDodgePrompt 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureDodgePrompt.png" target="_blank" rel="noopener" aria-label="打开求生技能原图"><img src="screens/tutorial-treasureDodgePrompt.png" alt="求生技能真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>116</span></div><h3>求生技能</h3><code>tutorial-treasureDodgePrompt</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureDodgePrompt.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureDodgePrompt" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureDodgePrompt" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="求生成功 tutorial-treasureDodgeResult 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureDodgeResult.png" target="_blank" rel="noopener" aria-label="打开求生成功原图"><img src="screens/tutorial-treasureDodgeResult.png" alt="求生成功真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>117</span></div><h3>求生成功</h3><code>tutorial-treasureDodgeResult</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureDodgeResult.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureDodgeResult" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureDodgeResult" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="发动掉包 tutorial-treasureUseSkill 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureUseSkill.png" target="_blank" rel="noopener" aria-label="打开发动掉包原图"><img src="screens/tutorial-treasureUseSkill.png" alt="发动掉包真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>118</span></div><h3>发动掉包</h3><code>tutorial-treasureUseSkill</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureUseSkill.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureUseSkill" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureUseSkill" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择目标 tutorial-treasureSelectTarget 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureSelectTarget.png" target="_blank" rel="noopener" aria-label="打开选择目标原图"><img src="screens/tutorial-treasureSelectTarget.png" alt="选择目标真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>119</span></div><h3>选择目标</h3><code>tutorial-treasureSelectTarget</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureSelectTarget.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureSelectTarget" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureSelectTarget" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="抽取对手手牌 tutorial-treasureStealCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureStealCard.png" target="_blank" rel="noopener" aria-label="打开抽取对手手牌原图"><img src="screens/tutorial-treasureStealCard.png" alt="抽取对手手牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>120</span></div><h3>抽取对手手牌</h3><code>tutorial-treasureStealCard</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureStealCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureStealCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureStealCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="交还一张牌 tutorial-treasureGiveCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureGiveCard.png" target="_blank" rel="noopener" aria-label="打开交还一张牌原图"><img src="screens/tutorial-treasureGiveCard.png" alt="交还一张牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>121</span></div><h3>交还一张牌</h3><code>tutorial-treasureGiveCard</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureGiveCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureGiveCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureGiveCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="宝藏完成 tutorial-treasureResult 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-treasureResult.png" target="_blank" rel="noopener" aria-label="打开宝藏完成原图"><img src="screens/tutorial-treasureResult.png" alt="宝藏完成真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>122</span></div><h3>宝藏完成</h3><code>tutorial-treasureResult</code>
+ <div class="scene-links"><a href="screens/tutorial-treasureResult.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-treasureResult" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-treasureResult" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="追猎者：连续进攻 tutorial-hunterIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterIntro.png" target="_blank" rel="noopener" aria-label="打开追猎者：连续进攻原图"><img src="screens/tutorial-hunterIntro.png" alt="追猎者：连续进攻真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>123</span></div><h3>追猎者：连续进攻</h3><code>tutorial-hunterIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="发动追捕 tutorial-hunterUseSkill 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterUseSkill.png" target="_blank" rel="noopener" aria-label="打开发动追捕原图"><img src="screens/tutorial-hunterUseSkill.png" alt="发动追捕真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>124</span></div><h3>发动追捕</h3><code>tutorial-hunterUseSkill</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterUseSkill.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterUseSkill" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterUseSkill" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择猎物 tutorial-hunterSelectTarget 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterSelectTarget.png" target="_blank" rel="noopener" aria-label="打开选择猎物原图"><img src="screens/tutorial-hunterSelectTarget.png" alt="选择猎物真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>125</span></div><h3>选择猎物</h3><code>tutorial-hunterSelectTarget</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterSelectTarget.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterSelectTarget" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterSelectTarget" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="对手亮牌 tutorial-hunterReveal 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterReveal.png" target="_blank" rel="noopener" aria-label="打开对手亮牌原图"><img src="screens/tutorial-hunterReveal.png" alt="对手亮牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>126</span></div><h3>对手亮牌</h3><code>tutorial-hunterReveal</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterReveal.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterReveal" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterReveal" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="弃牌造成伤害 tutorial-hunterConfirmCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterConfirmCard.png" target="_blank" rel="noopener" aria-label="打开弃牌造成伤害原图"><img src="screens/tutorial-hunterConfirmCard.png" alt="弃牌造成伤害真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>127</span></div><h3>弃牌造成伤害</h3><code>tutorial-hunterConfirmCard</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterConfirmCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterConfirmCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterConfirmCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="继续追捕 tutorial-hunterSecondHuntIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterSecondHuntIntro.png" target="_blank" rel="noopener" aria-label="打开继续追捕原图"><img src="screens/tutorial-hunterSecondHuntIntro.png" alt="继续追捕真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>128</span></div><h3>继续追捕</h3><code>tutorial-hunterSecondHuntIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterSecondHuntIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterSecondHuntIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterSecondHuntIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="再次发动追捕 tutorial-hunterUseSkill2 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterUseSkill2.png" target="_blank" rel="noopener" aria-label="打开再次发动追捕原图"><img src="screens/tutorial-hunterUseSkill2.png" alt="再次发动追捕真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>129</span></div><h3>再次发动追捕</h3><code>tutorial-hunterUseSkill2</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterUseSkill2.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterUseSkill2" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterUseSkill2" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择猎物 tutorial-hunterSelectTarget2 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterSelectTarget2.png" target="_blank" rel="noopener" aria-label="打开选择猎物原图"><img src="screens/tutorial-hunterSelectTarget2.png" alt="选择猎物真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>130</span></div><h3>选择猎物</h3><code>tutorial-hunterSelectTarget2</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterSelectTarget2.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterSelectTarget2" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterSelectTarget2" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="对手亮牌 tutorial-hunterReveal2 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterReveal2.png" target="_blank" rel="noopener" aria-label="打开对手亮牌原图"><img src="screens/tutorial-hunterReveal2.png" alt="对手亮牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>131</span></div><h3>对手亮牌</h3><code>tutorial-hunterReveal2</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterReveal2.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterReveal2" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterReveal2" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="完成击杀 tutorial-hunterConfirmCard2 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterConfirmCard2.png" target="_blank" rel="noopener" aria-label="打开完成击杀原图"><img src="screens/tutorial-hunterConfirmCard2.png" alt="完成击杀真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>132</span></div><h3>完成击杀</h3><code>tutorial-hunterConfirmCard2</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterConfirmCard2.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterConfirmCard2" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterConfirmCard2" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="猎物倒下 tutorial-hunterResult 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-hunterResult.png" target="_blank" rel="noopener" aria-label="打开猎物倒下原图"><img src="screens/tutorial-hunterResult.png" alt="猎物倒下真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>133</span></div><h3>猎物倒下</h3><code>tutorial-hunterResult</code>
+ <div class="scene-links"><a href="screens/tutorial-hunterResult.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-hunterResult" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-hunterResult" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="邪祀者：蛊惑区域牌 tutorial-cultistZoneIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistZoneIntro.png" target="_blank" rel="noopener" aria-label="打开邪祀者：蛊惑区域牌原图"><img src="screens/tutorial-cultistZoneIntro.png" alt="邪祀者：蛊惑区域牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>134</span></div><h3>邪祀者：蛊惑区域牌</h3><code>tutorial-cultistZoneIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistZoneIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistZoneIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistZoneIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="发动蛊惑 tutorial-cultistZoneUseSkill 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistZoneUseSkill.png" target="_blank" rel="noopener" aria-label="打开发动蛊惑原图"><img src="screens/tutorial-cultistZoneUseSkill.png" alt="发动蛊惑真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>135</span></div><h3>发动蛊惑</h3><code>tutorial-cultistZoneUseSkill</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistZoneUseSkill.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistZoneUseSkill" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistZoneUseSkill" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择蛊惑牌 tutorial-cultistZoneSelectCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistZoneSelectCard.png" target="_blank" rel="noopener" aria-label="打开选择蛊惑牌原图"><img src="screens/tutorial-cultistZoneSelectCard.png" alt="选择蛊惑牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>136</span></div><h3>选择蛊惑牌</h3><code>tutorial-cultistZoneSelectCard</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistZoneSelectCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistZoneSelectCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistZoneSelectCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择目标 tutorial-cultistZoneSelectTarget 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistZoneSelectTarget.png" target="_blank" rel="noopener" aria-label="打开选择目标原图"><img src="screens/tutorial-cultistZoneSelectTarget.png" alt="选择目标真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>137</span></div><h3>选择目标</h3><code>tutorial-cultistZoneSelectTarget</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistZoneSelectTarget.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistZoneSelectTarget" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistZoneSelectTarget" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="SAN 归零 tutorial-cultistZoneResult 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistZoneResult.png" target="_blank" rel="noopener" aria-label="打开SAN 归零原图"><img src="screens/tutorial-cultistZoneResult.png" alt="SAN 归零真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>138</span></div><h3>SAN 归零</h3><code>tutorial-cultistZoneResult</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistZoneResult.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistZoneResult" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistZoneResult" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="邪神牌、骷髅头与改信 tutorial-cultistGodIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodIntro.png" target="_blank" rel="noopener" aria-label="打开邪神牌、骷髅头与改信原图"><img src="screens/tutorial-cultistGodIntro.png" alt="邪神牌、骷髅头与改信真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>139</span></div><h3>邪神牌、骷髅头与改信</h3><code>tutorial-cultistGodIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="骷髅与邪神之力 tutorial-cultistGodStatusMarkers 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodStatusMarkers.png" target="_blank" rel="noopener" aria-label="打开骷髅与邪神之力原图"><img src="screens/tutorial-cultistGodStatusMarkers.png" alt="骷髅与邪神之力真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>140</span></div><h3>骷髅与邪神之力</h3><code>tutorial-cultistGodStatusMarkers</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodStatusMarkers.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodStatusMarkers" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodStatusMarkers" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="遭遇邪神 tutorial-cultistGodOpponentDraw 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodOpponentDraw.png" target="_blank" rel="noopener" aria-label="打开遭遇邪神原图"><img src="screens/tutorial-cultistGodOpponentDraw.png" alt="遭遇邪神真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>141</span></div><h3>遭遇邪神</h3><code>tutorial-cultistGodOpponentDraw</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodOpponentDraw.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodOpponentDraw" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodOpponentDraw" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="检定牌 tutorial-cultistGodCheckIntro 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodCheckIntro.png" target="_blank" rel="noopener" aria-label="打开检定牌原图"><img src="screens/tutorial-cultistGodCheckIntro.png" alt="检定牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>142</span></div><h3>检定牌</h3><code>tutorial-cultistGodCheckIntro</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodCheckIntro.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodCheckIntro" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodCheckIntro" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="改信代价 tutorial-cultistGodConvertCheck 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodConvertCheck.png" target="_blank" rel="noopener" aria-label="打开改信代价原图"><img src="screens/tutorial-cultistGodConvertCheck.png" alt="改信代价真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>143</span></div><h3>改信代价</h3><code>tutorial-cultistGodConvertCheck</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodConvertCheck.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodConvertCheck" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodConvertCheck" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="轮到你 tutorial-cultistGodPlayerDraw 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodPlayerDraw.png" target="_blank" rel="noopener" aria-label="打开轮到你原图"><img src="screens/tutorial-cultistGodPlayerDraw.png" alt="轮到你真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>144</span></div><h3>轮到你</h3><code>tutorial-cultistGodPlayerDraw</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodPlayerDraw.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodPlayerDraw" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodPlayerDraw" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="收入邪神牌 tutorial-cultistGodKeepHand 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodKeepHand.png" target="_blank" rel="noopener" aria-label="打开收入邪神牌原图"><img src="screens/tutorial-cultistGodKeepHand.png" alt="收入邪神牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>145</span></div><h3>收入邪神牌</h3><code>tutorial-cultistGodKeepHand</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodKeepHand.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodKeepHand" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodKeepHand" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="蛊惑邪神牌 tutorial-cultistGodSelectCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodSelectCard.png" target="_blank" rel="noopener" aria-label="打开蛊惑邪神牌原图"><img src="screens/tutorial-cultistGodSelectCard.png" alt="蛊惑邪神牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>146</span></div><h3>蛊惑邪神牌</h3><code>tutorial-cultistGodSelectCard</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodSelectCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodSelectCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodSelectCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="选择邪神牌 tutorial-cultistGodChooseCard 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodChooseCard.png" target="_blank" rel="noopener" aria-label="打开选择邪神牌原图"><img src="screens/tutorial-cultistGodChooseCard.png" alt="选择邪神牌真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>147</span></div><h3>选择邪神牌</h3><code>tutorial-cultistGodChooseCard</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodChooseCard.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodChooseCard" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodChooseCard" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="强迫改信 tutorial-cultistGodSelectTarget 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodSelectTarget.png" target="_blank" rel="noopener" aria-label="打开强迫改信原图"><img src="screens/tutorial-cultistGodSelectTarget.png" alt="强迫改信真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>148</span></div><h3>强迫改信</h3><code>tutorial-cultistGodSelectTarget</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodSelectTarget.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodSelectTarget" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodSelectTarget" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="邪神复苏 tutorial-cultistGodResult 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-cultistGodResult.png" target="_blank" rel="noopener" aria-label="打开邪神复苏原图"><img src="screens/tutorial-cultistGodResult.png" alt="邪神复苏真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>149</span></div><h3>邪神复苏</h3><code>tutorial-cultistGodResult</code>
+ <div class="scene-links"><a href="screens/tutorial-cultistGodResult.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-cultistGodResult" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-cultistGodResult" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="最后忠告 tutorial-finalAdvice 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-finalAdvice.png" target="_blank" rel="noopener" aria-label="打开最后忠告原图"><img src="screens/tutorial-finalAdvice.png" alt="最后忠告真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>150</span></div><h3>最后忠告</h3><code>tutorial-finalAdvice</code>
+ <div class="scene-links"><a href="screens/tutorial-finalAdvice.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-finalAdvice" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-finalAdvice" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="教学" data-search="开始探索 tutorial-complete 教学" data-responsive="false">
+ <a class="thumbnail" href="screens/tutorial-complete.png" target="_blank" rel="noopener" aria-label="打开开始探索原图"><img src="screens/tutorial-complete.png" alt="开始探索真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>教学</span><span>151</span></div><h3>开始探索</h3><code>tutorial-complete</code>
+ <div class="scene-links"><a href="screens/tutorial-complete.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="tutorial-complete" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=tutorial-complete" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="寻宝者 · 藏宝图揭示 treasure-win 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/treasure-win.png" target="_blank" rel="noopener" aria-label="打开寻宝者 · 藏宝图揭示原图"><img src="screens/treasure-win.png" alt="寻宝者 · 藏宝图揭示真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>152</span></div><h3>寻宝者 · 藏宝图揭示</h3><code>treasure-win</code>
+ <div class="scene-links"><a href="screens/treasure-win.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="treasure-win" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=treasure-win" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="藏宝图 · 等待获胜者 treasure-wait 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/treasure-wait.png" target="_blank" rel="noopener" aria-label="打开藏宝图 · 等待获胜者原图"><img src="screens/treasure-wait.png" alt="藏宝图 · 等待获胜者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>153</span></div><h3>藏宝图 · 等待获胜者</h3><code>treasure-wait</code>
+ <div class="scene-links"><a href="screens/treasure-wait.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="treasure-wait" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=treasure-wait" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="邪神复活 resurrection 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/resurrection.png" target="_blank" rel="noopener" aria-label="打开邪神复活原图"><img src="screens/resurrection.png" alt="邪神复活真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>154</span></div><h3>邪神复活</h3><code>resurrection</code>
+ <div class="scene-links"><a href="screens/resurrection.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="resurrection" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=resurrection" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="身份揭示 · 寻宝者 role-reveal-0 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/role-reveal-0.png" target="_blank" rel="noopener" aria-label="打开身份揭示 · 寻宝者原图"><img src="screens/role-reveal-0.png" alt="身份揭示 · 寻宝者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>155</span></div><h3>身份揭示 · 寻宝者</h3><code>role-reveal-0</code>
+ <div class="scene-links"><a href="screens/role-reveal-0.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="role-reveal-0" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=role-reveal-0" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="身份揭示 · 追猎者 role-reveal-1 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/role-reveal-1.png" target="_blank" rel="noopener" aria-label="打开身份揭示 · 追猎者原图"><img src="screens/role-reveal-1.png" alt="身份揭示 · 追猎者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>156</span></div><h3>身份揭示 · 追猎者</h3><code>role-reveal-1</code>
+ <div class="scene-links"><a href="screens/role-reveal-1.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="role-reveal-1" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=role-reveal-1" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="演出" data-search="身份揭示 · 邪祀者 role-reveal-2 演出" data-responsive="false">
+ <a class="thumbnail" href="screens/role-reveal-2.png" target="_blank" rel="noopener" aria-label="打开身份揭示 · 邪祀者原图"><img src="screens/role-reveal-2.png" alt="身份揭示 · 邪祀者真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>演出</span><span>157</span></div><h3>身份揭示 · 邪祀者</h3><code>role-reveal-2</code>
+ <div class="scene-links"><a href="screens/role-reveal-2.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="role-reveal-2" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=role-reveal-2" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 寻宝者获胜 result-treasure 结算" data-responsive="true">
+ <a class="thumbnail" href="screens/result-treasure.png" target="_blank" rel="noopener" aria-label="打开结算 · 寻宝者获胜原图"><img src="screens/result-treasure.png" alt="结算 · 寻宝者获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>158</span></div><h3>结算 · 寻宝者获胜</h3><code>result-treasure</code>
+ <div class="scene-links"><a href="screens/result-treasure.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-treasure" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-treasure" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ <div class="responsive-links"><a href="responsive/result-treasure-390x844.png" target="_blank" rel="noopener">手机竖屏视口 · 390 × 844</a><a href="responsive/result-treasure-844x390.png" target="_blank" rel="noopener">手机横屏视口 · 844 × 390</a></div><div class="responsive-links"><a href="responsive/result-treasure-390x844-bottom.png" target="_blank" rel="noopener">竖屏底部操作区 · 390 × 844</a><a href="responsive/result-treasure-844x390-bottom.png" target="_blank" rel="noopener">横屏底部操作区 · 844 × 390</a></div></div></article>
+<article class="scene" data-group="结算" data-search="结算 · 其他寻宝者获胜 result-treasure-other 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-treasure-other.png" target="_blank" rel="noopener" aria-label="打开结算 · 其他寻宝者获胜原图"><img src="screens/result-treasure-other.png" alt="结算 · 其他寻宝者获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>159</span></div><h3>结算 · 其他寻宝者获胜</h3><code>result-treasure-other</code>
+ <div class="scene-links"><a href="screens/result-treasure-other.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-treasure-other" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-treasure-other" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 两名寻宝者共同获胜 result-treasure-joint 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-treasure-joint.png" target="_blank" rel="noopener" aria-label="打开结算 · 两名寻宝者共同获胜原图"><img src="screens/result-treasure-joint.png" alt="结算 · 两名寻宝者共同获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>160</span></div><h3>结算 · 两名寻宝者共同获胜</h3><code>result-treasure-joint</code>
+ <div class="scene-links"><a href="screens/result-treasure-joint.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-treasure-joint" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-treasure-joint" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 追猎者获胜 result-hunter 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-hunter.png" target="_blank" rel="noopener" aria-label="打开结算 · 追猎者获胜原图"><img src="screens/result-hunter.png" alt="结算 · 追猎者获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>161</span></div><h3>结算 · 追猎者获胜</h3><code>result-hunter</code>
+ <div class="scene-links"><a href="screens/result-hunter.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-hunter" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-hunter" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 邪祀者获胜 result-cultist 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-cultist.png" target="_blank" rel="noopener" aria-label="打开结算 · 邪祀者获胜原图"><img src="screens/result-cultist.png" alt="结算 · 邪祀者获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>162</span></div><h3>结算 · 邪祀者获胜</h3><code>result-cultist</code>
+ <div class="scene-links"><a href="screens/result-cultist.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-cultist" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-cultist" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 其他阵营获胜 result-other-team 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-other-team.png" target="_blank" rel="noopener" aria-label="打开结算 · 其他阵营获胜原图"><img src="screens/result-other-team.png" alt="结算 · 其他阵营获胜真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>163</span></div><h3>结算 · 其他阵营获胜</h3><code>result-other-team</code>
+ <div class="scene-links"><a href="screens/result-other-team.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-other-team" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-other-team" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 英魂殒落 result-defeat 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-defeat.png" target="_blank" rel="noopener" aria-label="打开结算 · 英魂殒落原图"><img src="screens/result-defeat.png" alt="结算 · 英魂殒落真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>164</span></div><h3>结算 · 英魂殒落</h3><code>result-defeat</code>
+ <div class="scene-links"><a href="screens/result-defeat.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-defeat" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-defeat" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 全员覆灭 result-all-dead 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-all-dead.png" target="_blank" rel="noopener" aria-label="打开结算 · 全员覆灭原图"><img src="screens/result-all-dead.png" alt="结算 · 全员覆灭真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>165</span></div><h3>结算 · 全员覆灭</h3><code>result-all-dead</code>
+ <div class="scene-links"><a href="screens/result-all-dead.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-all-dead" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-all-dead" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="结算" data-search="结算 · 返回联机房间 result-mp 结算" data-responsive="false">
+ <a class="thumbnail" href="screens/result-mp.png" target="_blank" rel="noopener" aria-label="打开结算 · 返回联机房间原图"><img src="screens/result-mp.png" alt="结算 · 返回联机房间真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>结算</span><span>166</span></div><h3>结算 · 返回联机房间</h3><code>result-mp</code>
+ <div class="scene-links"><a href="screens/result-mp.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="result-mp" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=result-mp" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article>
+<article class="scene" data-group="开发" data-search="本地调试设置 debug-settings 开发" data-responsive="false">
+ <a class="thumbnail" href="screens/debug-settings.png" target="_blank" rel="noopener" aria-label="打开本地调试设置原图"><img src="screens/debug-settings.png" alt="本地调试设置真实组件样板" loading="lazy" decoding="async"></a>
+ <div class="scene-body"><div class="scene-meta"><span>开发</span><span>167</span></div><h3>本地调试设置</h3><code>debug-settings</code>
+ <div class="scene-links"><a href="screens/debug-settings.png" target="_blank" rel="noopener">查看原图 ↗</a><a data-dev-scene="debug-settings" href="http://127.0.0.1:5174/?ui-gallery=1&amp;scene=debug-settings" target="_blank" rel="noopener">开发预览 ↗</a></div>
+ </div></article></div><p id="empty" class="empty" hidden>没有匹配的界面。请尝试其他关键词或重置筛选。</p></section>
+<details class="extras"><summary>AI 风格参考与可切图母版</summary><p>下面的 AI 图用于指导材质和整体气氛；界面几何与卡牌 392:590 比例仍以真实组件样板为准。母版的九宫切图坐标记录在 <a href="asset-slices.json">asset-slices.json</a>。</p><div class="reference-grid"><figure><a href="interface-dialogs-reference.png" target="_blank" rel="noopener"><img src="interface-dialogs-reference.png" alt="AI 决策与弹窗风格参考" loading="lazy"></a><figcaption>决策与弹窗 · AI 风格参考</figcaption></figure><figure><a href="interface-utilities-reference.png" target="_blank" rel="noopener"><img src="interface-utilities-reference.png" alt="AI 功能界面风格参考" loading="lazy"></a><figcaption>功能界面 · AI 风格参考</figcaption></figure><figure><a href="panel-master.png" target="_blank" rel="noopener"><img src="panel-master.png" alt="可按九宫坐标切图的面板母版" loading="lazy"></a><figcaption>面板母版 · <a href="asset-slices.json">九宫切图坐标</a></figcaption></figure></div></details>
+</main><footer><span>所有缩略图来自同目录实际 PNG；打开本文件即可离线浏览，无外部字体或脚本依赖。</span><a href="#gallery">返回筛选与样板 ↑</a></footer>
+<script>
+const items = [...document.querySelectorAll('.scene')];
+const search = document.getElementById('search');
+const group = document.getElementById('group');
+const device = document.getElementById('device');
+function filterScenes() {
+ const query = search.value.trim().toLocaleLowerCase('zh-CN');
+ let visible = 0;
+ for (const item of items) {
+  item.hidden = !!((group.value && item.dataset.group !== group.value) || (device.value === 'responsive' && item.dataset.responsive !== 'true') || (query && !item.dataset.search.toLocaleLowerCase('zh-CN').includes(query)));
+  if (!item.hidden) visible++;
+ }
+ document.getElementById('result-count').textContent = '显示 ' + visible + ' / ' + items.length + ' 个状态';
+ document.getElementById('empty').hidden = visible > 0;
+}
+document.getElementById('filter-form').addEventListener('submit', event => event.preventDefault());
+search.addEventListener('input', filterScenes);
+group.addEventListener('change', filterScenes);
+device.addEventListener('change', filterScenes);
+document.getElementById('filter-form').addEventListener('reset', () => requestAnimationFrame(filterScenes));
+function applyDevBase() {
+ try {
+  const base = new URL(document.getElementById('dev-base').value);
+  if (!['http:', 'https:'].includes(base.protocol)) throw new Error('scheme');
+  base.search = ''; base.hash = '';
+  for (const link of document.querySelectorAll('[data-dev-scene]')) {
+   const target = new URL(base);
+   target.searchParams.set('ui-gallery', '1');
+   target.searchParams.set('scene', link.dataset.devScene);
+   link.href = target.href;
+  }
+  document.getElementById('dev-status').textContent = '开发预览链接已更新；需要该地址的项目开发服务正在运行。';
+ } catch {
+  document.getElementById('dev-status').textContent = '请输入完整的 http 或 https 开发服务地址。';
+ }
+}
+document.getElementById('apply-base').addEventListener('click', applyDevBase);
+document.getElementById('dev-base').addEventListener('keydown', event => { if (event.key === 'Enter') { event.preventDefault(); applyDevBase(); } });
+</script></body></html>

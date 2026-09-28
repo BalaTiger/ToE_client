@@ -2,6 +2,27 @@ import { cardLogText, isZoneCard } from './coreUtils.js';
 
 export const CARD_HINT_TEXT = '鼠标悬停查看卡牌详情（移动端请点击卡牌）';
 
+export function getHuntRevealPromptId(gs) {
+  const phase = gs?.phase;
+  if (phase !== 'PLAYER_REVEAL_FOR_HUNT' && phase !== 'HUNT_WAIT_REVEAL') return null;
+  const abilityData = gs?.abilityData || {};
+  if (abilityData.huntPromptId != null) return String(abilityData.huntPromptId);
+
+  // Older/local snapshots may not carry the explicit prompt id yet. Keep a
+  // stable fallback for the lifetime of that prompt, while ensuring a later
+  // hunt in the same turn gets a different UI-session identity.
+  const promptLogIndex = (gs?.log || []).findLastIndex(line => (
+    typeof line === 'string' && (line.includes('向你发动【追捕】') || line.includes('等待对方亮出一张手牌'))
+  ));
+  return [
+    'hunt-prompt',
+    gs?._turnKey ?? gs?.turn ?? 0,
+    gs?.currentTurn ?? 0,
+    abilityData.huntingAI ?? abilityData.huntTi ?? 'unknown',
+    promptLogIndex,
+  ].join(':');
+}
+
 export function getPhasePromptColors(expansionKey) {
   const isStarsCallTheme = expansionKey === '群星呼唤';
   return {
@@ -17,7 +38,8 @@ const BASE_CANCELABLE_PHASES = new Set([
   'SWAP_SELECT_TARGET',
   'SWAP_STEAL_CARD',
   'SWAP_SELECT_TARGET_CARD',
-  'SWAP_GIVE_CARD',
+  // SWAP_GIVE_CARD 故意不在此列：暗抽已经发生、玩家已看到抽到的手牌，
+  // 若此时还能取消，等于无代价窥探目标手牌（可反复发动掉包再取消）。
   'HUNT_SELECT_TARGET',
   'ZONE_SWAP_SELECT_TARGET',
   'PEEK_HAND_SELECT_TARGET',
@@ -56,28 +78,45 @@ export function buildPhaseUiState({
   pendingAfterDiscardGs = null,
   isDiscardPhaseResolving = false,
   isLocalHuntRevealPrompt = false,
+  huntRevealPromptActive = true,
   isScriptedTutorial = false,
   isBlocked = false,
   isVisualPlayerTurn = false,
   localCurrentTurn = false,
   committedTargetAction = false,
   committedAction = false,
+  decisionSubmitting = false,
+  decisionContext = null,
   local = {},
 } = {}) {
   const players = gs?.players || [];
   const abilityData = gs?.abilityData || {};
-  const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !anim && !animExiting && animQueueLength === 0;
-  const isPhaseWarningText = (!isDiscardPhaseResolving && ['DISCARD_PHASE', 'PLAYER_REVEAL_FOR_HUNT', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(phase)) || isLocalHuntRevealPrompt;
+  const canShowTurnDecisionModal = !isSpectating && !softGuidePauseActive && !decisionSubmitting && !anim && !animExiting && animQueueLength === 0;
+  const isPhaseWarningText = (
+    !isDiscardPhaseResolving
+    && (
+      ['DISCARD_PHASE', 'CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(phase)
+      || (phase === 'PLAYER_REVEAL_FOR_HUNT' && huntRevealPromptActive)
+    )
+  ) || (isLocalHuntRevealPrompt && huntRevealPromptActive);
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
   const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
+  const localOwnsCurrentDecision = decisionContext ? decisionContext.localCanAct : localCurrentTurn;
+  const decisionPrompt = localText => {
+    if (localOwnsCurrentDecision) return localText;
+    const ownerIdx = decisionContext?.ownerSeats?.[0];
+    return isMultiplayer
+      ? `等待 ${players[ownerIdx]?.name || '其他玩家'} 选择…`
+      : thinkingText(ownerIdx);
+  };
 
   const label = (() => {
     switch (phase) {
       case 'ACTION':
         return localCurrentTurn ? '你的回合 — 可发动技能、休息，或结束回合' : '等候其他旅者…';
       case 'SWAP_SELECT_TARGET':
-        return '【掉包】选择目标角色';
+        return decisionPrompt('【掉包】选择目标角色');
       case 'SWAP_STEAL_CARD':
         return `【掉包】从 ${players[abilityData.swapTi]?.name} 的手牌中暗抽一张`;
       case 'SWAP_SELECT_TARGET_CARD':
@@ -87,7 +126,7 @@ export function buildPhaseUiState({
           ? `${players[abilityData.swapTi]?.revealHand ? '抽到' : '暗抽到'} ${cardLogText(abilityData.takenCard)}，选一张手牌还给对方`
           : '等待掉包者归还手牌…';
       case 'HUNT_SELECT_TARGET':
-        return '【追捕】选择猎物';
+        return decisionPrompt('【追捕】选择猎物');
       case 'HUNT_CONFIRM':
         return local.huntConfirm
           ? `${cardLogText(abilityData.revCard, { alwaysShowName: true })} 已亮出！${abilityData.revCard && !isZoneCard(abilityData.revCard) ? '弃出任意手牌' : '弃出匹配手牌'}造成3HP，或放弃`
@@ -95,22 +134,30 @@ export function buildPhaseUiState({
       case 'HUNT_SELECT_CARD_FROM_PUBLIC':
         return `【追捕】从 ${players[abilityData.huntTi]?.name} 的公开手牌中选择一张`;
       case 'PLAYER_REVEAL_FOR_HUNT':
-        return `⚠ ${abilityData.aiHunterName || '追猎者'} 正在追捕你！请选择一张手牌亮出`;
+        return huntRevealPromptActive
+          ? `⚠ ${abilityData.aiHunterName || '追猎者'} 正在追捕你！请选择一张手牌亮出`
+          : `已亮出手牌，${abilityData.aiHunterName || '追猎者'} 正在结算追捕…`;
       case 'HUNT_WAIT_REVEAL':
         if (localCurrentTurn) return `等待 ${players[abilityData.huntTi ?? 1]?.name || '对方'} 亮出手牌…`;
         return local.huntTarget
-          ? '⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）'
+          ? (huntRevealPromptActive
+            ? '⚠ 追猎者正在追捕你！请选择一张手牌亮出（20秒）'
+            : '已亮出手牌，等待追捕结算…')
           : `等待 ${players[abilityData.huntTi ?? 1]?.name || '对方'} 亮出手牌…`;
       case 'TREASURE_DODGE_DECISION':
         return local.treasureDodge
-          ? (canShowTurnDecisionModal ? '【寻宝者】触发负面区域牌！是否掷骰子规避？' : '规避判定中…')
+          ? (canShowTurnDecisionModal ? '【寻宝者】即将承受负面效果！是否掷骰子规避？' : '规避判定中…')
           : (isMultiplayer ? `等候 ${players[gs?.currentTurn]?.name} 做出选择…` : `${players[gs?.currentTurn]?.name} 正在思考…`);
       case 'BEWITCH_SELECT_CARD':
-        return '【蛊惑】选择要赠送的手牌';
+        return decisionPrompt('【蛊惑】选择要赠送的手牌');
+      case 'BEWITCH_SELECT_TARGET':
+        return decisionPrompt('【蛊惑】选择目标角色');
       case 'MULTIPLY_SELECT_TARGET':
-        return '【繁衍】选择另一名角色传播黑山羊幼仔';
+        return decisionPrompt('【繁衍】选择另一名角色传播黑山羊幼仔');
       case 'SHU_SELECT_TARGET':
-        return '【黑暗子嗣】选择一名角色获得黑山羊幼仔';
+        return decisionPrompt('【黑暗子嗣】选择一名角色获得黑山羊幼仔');
+      case 'TORTOISE_ORACLE_SELECT':
+        return decisionPrompt('【灵龟卜祝】选择一个字母或数字编号');
       case 'IGNITE_TORCH_DISCARD':
         return local.igniteTorch ? '【引燃火把】选择一张手牌弃置' : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(abilityData.playerIndex));
       case 'DECIPHER_STONE_CARVING':
@@ -132,7 +179,9 @@ export function buildPhaseUiState({
       case 'ZHU_HIDE_AI_DRAW':
         return visualMe?.godName === 'ZHU'
           ? (canShowTurnDecisionModal ? '【衔烛照幽】是否藏牌？' : '衔烛照幽判定中…')
-          : (isMultiplayer ? '请等待其他玩家选择…' : thinkingText(gs?.currentTurn));
+          : (isMultiplayer
+            ? `请等待${players?.[gs?.zhuLight?.ownerIdx]?.name || '其他'}玩家选择…`
+            : thinkingText(gs?.currentTurn));
       case 'NYA_BORROW':
         return local.nyaBorrow
           ? (canShowTurnDecisionModal ? '「千人千貌」——借用已死角色的身份？' : '身份借用中…')
@@ -155,7 +204,7 @@ export function buildPhaseUiState({
       case 'PLAYER_WIN_PENDING':
         return '✦ 你已集齐全部编号！';
       case 'MP_PLAYER_WIN_WAIT':
-        return '等待其他玩家……';
+        return `正在等待 ${players?.[abilityData?.winnerIdx ?? -1]?.name || '其他玩家'} ……`;
       case 'DRAW_REVEAL':
         return local.drawDecision
           ? (canShowTurnDecisionModal ? '摸牌 — 请确认' : '摸牌中…')
@@ -163,24 +212,33 @@ export function buildPhaseUiState({
       case 'TREASURE_WIN':
         return '✦ 你已集齐全部编号！';
       case 'ZONE_SWAP_SELECT_TARGET':
-        return '【触底反弹】选择要交换全部手牌的目标';
+        return decisionPrompt('【触底反弹】选择要交换全部手牌的目标');
+      case 'PEEK_HAND_SELECT_TARGET':
+        return decisionPrompt('【血之窥探】选择要偷看手牌的目标');
       case 'DAMAGE_LINK_SELECT_TARGET':
-        return '请选择绳索连接目标';
+        return decisionPrompt('请选择绳索连接目标');
       case 'CAVE_DUEL_SELECT_TARGET':
-        return '请选择“穴居人战争”的目标';
+        return decisionPrompt('请选择“穴居人战争”的目标');
       case 'CAVE_DUEL_SELECT_CARD':
         return local.caveDuel
-          ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！无编号可赢4但会输给1~3，如果落败将失去这张牌`
+          ? `⚠ 和${players[abilityData.caveDuelSource]?.name || '对手'}来一场穴居人式的对决！亮出一张牌，数字大者胜；无编号卡牌可赢4但会输给1~3；胜者收下两张牌`
           : '等待穴居人战争双方亮牌…';
       case 'CAVE_DUEL_WAIT_REVEAL':
         return local.caveDuel
           ? '⚠ 请选择穴居人战争要亮出的手牌（20秒）'
           : '等待穴居人战争双方亮牌…';
       case 'ROSE_THORN_SELECT_TARGET':
-        return '【玫瑰倒刺】选择承受倒刺的目标';
+        return decisionPrompt('【玫瑰倒刺】选择承受倒刺的目标');
       case 'GRAVE_DIG_SELECT':
         return local.graveDig ? '【掘墓】从弃牌堆选择一张邪神牌' : (isMultiplayer ? '等待掘墓选择…' : thinkingText(abilityData.playerIndex));
       case 'BURY_ALIVE_SELECT': {
+        const choices = abilityData.buryAliveChoices;
+        if (isMultiplayer && Array.isArray(choices)) {
+          const pending = (abilityData.targets || []).filter(idx => !choices[idx]);
+          return local.buryAlive
+            ? '【活埋】选择一张手牌放到牌堆底'
+            : `已完成选择，等待其他玩家…（剩余 ${pending.length} 人）`;
+        }
         const target = abilityData.targets?.[abilityData.targetIndex || 0];
         return local.buryAlive ? '【活埋】选择一张手牌放到牌堆底' : (isMultiplayer ? `等待 ${players[target]?.name || '目标'} 选择活埋手牌…` : thinkingText(target));
       }
@@ -203,7 +261,7 @@ export function buildPhaseUiState({
     !committedAction &&
     phase !== 'HUNT_CONFIRM' &&
     !isSpectating &&
-    localCurrentTurn &&
+    localOwnsCurrentDecision &&
     (!(phase || '').includes('DAMAGE_LINK') || local.damageLinkSelect) &&
     !anim
   );

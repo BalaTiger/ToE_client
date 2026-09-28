@@ -1,0 +1,6694 @@
+{
+  "started": "2026-09-13T07:31:36.667Z",
+  "frames": [
+    {
+      "at": "2026-09-13T07:31:43.530Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.539Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.547Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00236, -0.00414084, 0.00414084, 1.00236, -3.29855, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.553Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00236, -0.00414084, 0.00414084, 1.00236, -3.29855, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.559Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00236, -0.00414084, 0.00414084, 1.00236, -3.29855, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.567Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00933, -0.0166733, 0.0166733, 1.00933, -13.189, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.573Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00933, -0.0166733, 0.0166733, 1.00933, -13.189, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.580Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.01997, -0.03675, 0.03675, 1.01997, -28.7568, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.587Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.01997, -0.03675, 0.03675, 1.01997, -28.7568, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.594Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.01997, -0.03675, 0.03675, 1.01997, -28.7568, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.602Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.03236, -0.0617081, 0.0617081, 1.03236, -47.6708, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.608Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.03236, -0.0617081, 0.0617081, 1.03236, -47.6708, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.615Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.04463, -0.0883773, 0.0883773, 1.04463, -67.3917, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.622Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.04463, -0.0883773, 0.0883773, 1.04463, -67.3917, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.628Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.04463, -0.0883773, 0.0883773, 1.04463, -67.3917, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.635Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.05561, -0.114251, 0.114251, 1.05561, -86.0856, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.642Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.05561, -0.114251, 0.114251, 1.05561, -86.0856, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.650Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.06494, -0.138024, 0.138024, 1.06494, -102.914, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.656Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.06494, -0.138024, 0.138024, 1.06494, -102.914, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.663Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07261, -0.15903, 0.15903, 1.07261, -117.529, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.671Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07261, -0.15903, 0.15903, 1.07261, -117.529, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.678Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07261, -0.15903, 0.15903, 1.07261, -117.529, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.686Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07874, -0.176945, 0.176945, 1.07874, -129.817, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.692Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07874, -0.176945, 0.176945, 1.07874, -129.817, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.699Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08357, -0.191922, 0.191922, 1.08357, -139.973, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.707Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08357, -0.191922, 0.191922, 1.08357, -139.973, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.714Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08736, -0.204209, 0.204209, 1.08736, -148.229, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.721Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08736, -0.204209, 0.204209, 1.08736, -148.229, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.727Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08736, -0.204209, 0.204209, 1.08736, -148.229, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.735Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09026, -0.214034, 0.214034, 1.09026, -154.784, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.742Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09026, -0.214034, 0.214034, 1.09026, -154.784, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.749Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0924, -0.221517, 0.221517, 1.0924, -159.749, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.757Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0924, -0.221517, 0.221517, 1.0924, -159.749, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.764Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09392, -0.226974, 0.226974, 1.09392, -163.354, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.770Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09392, -0.226974, 0.226974, 1.09392, -163.354, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.776Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09392, -0.226974, 0.226974, 1.09392, -163.354, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.784Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09491, -0.230573, 0.230573, 1.09491, -165.727, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.790Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09491, -0.230573, 0.230573, 1.09491, -165.727, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.797Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09542, -0.232462, 0.232462, 1.09542, -166.969, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.803Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09542, -0.232462, 0.232462, 1.09542, -166.969, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.809Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09542, -0.232462, 0.232462, 1.09542, -166.969, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.817Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.999131",
+          "text": "",
+          "transform": "matrix(1.09515, -0.232955, 0.232955, 1.09515, -167.35, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.823Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.999131",
+          "text": "",
+          "transform": "matrix(1.09515, -0.232955, 0.232955, 1.09515, -167.35, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.830Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.979041",
+          "text": "",
+          "transform": "matrix(1.08647, -0.235094, 0.235094, 1.08647, -170.099, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.837Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.979041",
+          "text": "",
+          "transform": "matrix(1.08647, -0.235094, 0.235094, 1.08647, -170.099, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.843Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.979041",
+          "text": "",
+          "transform": "matrix(1.08647, -0.235094, 0.235094, 1.08647, -170.099, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.851Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.932358",
+          "text": "",
+          "transform": "matrix(1.0663, -0.239841, 0.239841, 1.0663, -176.487, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.857Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.932358",
+          "text": "",
+          "transform": "matrix(1.0663, -0.239841, 0.239841, 1.0663, -176.487, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.864Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.861688",
+          "text": "",
+          "transform": "matrix(1.03576, -0.246431, 0.246431, 1.03576, -186.156, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.871Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.861688",
+          "text": "",
+          "transform": "matrix(1.03576, -0.246431, 0.246431, 1.03576, -186.156, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.877Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.861688",
+          "text": "",
+          "transform": "matrix(1.03576, -0.246431, 0.246431, 1.03576, -186.156, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.884Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.774343",
+          "text": "",
+          "transform": "matrix(0.998024, -0.253588, 0.253588, 0.998024, -198.107, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.890Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.774343",
+          "text": "",
+          "transform": "matrix(0.998024, -0.253588, 0.253588, 0.998024, -198.107, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.896Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.67941",
+          "text": "",
+          "transform": "matrix(0.957042, -0.260128, 0.260128, 0.957042, -211.096, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.903Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.67941",
+          "text": "",
+          "transform": "matrix(0.957042, -0.260128, 0.260128, 0.957042, -211.096, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.909Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.67941",
+          "text": "",
+          "transform": "matrix(0.957042, -0.260128, 0.260128, 0.957042, -211.096, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.917Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.582868",
+          "text": "",
+          "transform": "matrix(0.915434, -0.265461, 0.265461, 0.915434, -224.306, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.924Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.582868",
+          "text": "",
+          "transform": "matrix(0.915434, -0.265461, 0.265461, 0.915434, -224.306, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.931Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.491245",
+          "text": "",
+          "transform": "matrix(0.876041, -0.269297, 0.269297, 0.876041, -236.842, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.939Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.491245",
+          "text": "",
+          "transform": "matrix(0.876041, -0.269297, 0.269297, 0.876041, -236.842, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.946Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.407489",
+          "text": "",
+          "transform": "matrix(0.840135, -0.271763, 0.271763, 0.840135, -248.302, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.953Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.407489",
+          "text": "",
+          "transform": "matrix(0.840135, -0.271763, 0.271763, 0.840135, -248.302, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.959Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.407489",
+          "text": "",
+          "transform": "matrix(0.840135, -0.271763, 0.271763, 0.840135, -248.302, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.967Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.332531",
+          "text": "",
+          "transform": "matrix(0.808103, -0.27313, 0.27313, 0.808103, -258.558, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.973Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.332531",
+          "text": "",
+          "transform": "matrix(0.808103, -0.27313, 0.27313, 0.808103, -258.558, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.979Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266765",
+          "text": "",
+          "transform": "matrix(0.780092, -0.273679, 0.273679, 0.780092, -267.557, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.987Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266516",
+          "text": "",
+          "transform": "matrix(0.779985, -0.27368, 0.27368, 0.779985, -267.591, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:43.993Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266516",
+          "text": "",
+          "transform": "matrix(0.779985, -0.27368, 0.27368, 0.779985, -267.591, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.000Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.209867",
+          "text": "",
+          "transform": "matrix(0.755935, -0.273665, 0.273665, 0.755935, -275.342, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.007Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.209867",
+          "text": "",
+          "transform": "matrix(0.755935, -0.273665, 0.273665, 0.755935, -275.342, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.014Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161288",
+          "text": "",
+          "transform": "matrix(0.735373, -0.273295, 0.273295, 0.735373, -281.989, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.020Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161288",
+          "text": "",
+          "transform": "matrix(0.735373, -0.273295, 0.273295, 0.735373, -281.989, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.026Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161288",
+          "text": "",
+          "transform": "matrix(0.735373, -0.273295, 0.273295, 0.735373, -281.989, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.033Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.120222",
+          "text": "",
+          "transform": "matrix(0.71804, -0.272726, 0.272726, 0.71804, -287.608, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.040Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.120222",
+          "text": "",
+          "transform": "matrix(0.71804, -0.272726, 0.272726, 0.71804, -287.608, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.047Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0863549",
+          "text": "",
+          "transform": "matrix(0.70378, -0.27208, 0.27208, 0.70378, -292.242, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.053Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0863549",
+          "text": "",
+          "transform": "matrix(0.70378, -0.27208, 0.27208, 0.70378, -292.242, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.059Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0863549",
+          "text": "",
+          "transform": "matrix(0.70378, -0.27208, 0.27208, 0.70378, -292.242, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.066Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0589416",
+          "text": "",
+          "transform": "matrix(0.692261, -0.271442, 0.271442, 0.692261, -295.993, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.072Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0589416",
+          "text": "",
+          "transform": "matrix(0.692261, -0.271442, 0.271442, 0.692261, -295.993, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.079Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.03732",
+          "text": "",
+          "transform": "matrix(0.683192, -0.270865, 0.270865, 0.683192, -298.951, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.087Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.03732",
+          "text": "",
+          "transform": "matrix(0.683192, -0.270865, 0.270865, 0.683192, -298.951, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.094Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.03732",
+          "text": "",
+          "transform": "matrix(0.683192, -0.270865, 0.270865, 0.683192, -298.951, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.101Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0210467",
+          "text": "",
+          "transform": "matrix(0.676376, -0.270388, 0.270388, 0.676376, -301.178, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.107Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0210467",
+          "text": "",
+          "transform": "matrix(0.676376, -0.270388, 0.270388, 0.676376, -301.178, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.114Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00972688",
+          "text": "",
+          "transform": "matrix(0.671639, -0.270034, 0.270034, 0.671639, -302.726, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.121Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00972688",
+          "text": "",
+          "transform": "matrix(0.671639, -0.270034, 0.270034, 0.671639, -302.726, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.127Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00972688",
+          "text": "",
+          "transform": "matrix(0.671639, -0.270034, 0.270034, 0.671639, -302.726, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.134Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00281975",
+          "text": "",
+          "transform": "matrix(0.668751, -0.26981, 0.26981, 0.668751, -303.671, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.140Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00281975",
+          "text": "",
+          "transform": "matrix(0.668751, -0.26981, 0.26981, 0.668751, -303.671, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.147Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.732e-05",
+          "text": "",
+          "transform": "matrix(0.667605, -0.269719, 0.269719, 0.667605, -304.047, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.153Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.732e-05",
+          "text": "",
+          "transform": "matrix(0.667605, -0.269719, 0.269719, 0.667605, -304.047, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.159Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.732e-05",
+          "text": "",
+          "transform": "matrix(0.667605, -0.269719, 0.269719, 0.667605, -304.047, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.167Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.173Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.179Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.186Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.192Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.199Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.205Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.210Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.218Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.223Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.230Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.236Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.243Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.251Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.257Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.264Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.270Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.277Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.285Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.291Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.298Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.304Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.310Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.318Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.325Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.333Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.339Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.348Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.355Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.362Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.369Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.376Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.386Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.392Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.399Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.405Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.412Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.419Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.425Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.447Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.454Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.460Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.467Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.474Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.481Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.487Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.496Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.504Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.511Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.518Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.525Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.532Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.538Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.544Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.551Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.557Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.564Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.570Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.577Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.585Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.591Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.598Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.604Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.610Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.617Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.623Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.630Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.636Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.642Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.650Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.656Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.663Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.670Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.677Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.684Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.690Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.697Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.703Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.709Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.717Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.723Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.730Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.737Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.745Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.752Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.758Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.765Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.771Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.777Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.785Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.791Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.798Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.804Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.810Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.818Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.825Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.833Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.840Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "2",
+      "status": "playing",
+      "to": "1"
+    },
+    {
+      "at": "2026-09-13T07:31:44.857Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.872Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.879Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.894Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.902Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.908Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.916Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00237, -0.00415692, 0.00415692, 1.00237, 3.31133, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.924Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00237, -0.00415692, 0.00415692, 1.00237, 3.31133, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.931Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00931, -0.0166395, 0.0166395, 1.00931, 13.1624, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.938Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00931, -0.0166395, 0.0166395, 1.00931, 13.1624, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.944Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.00931, -0.0166395, 0.0166395, 1.00931, 13.1624, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.952Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.01995, -0.036703, 0.036703, 1.01995, 28.7207, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.958Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.01995, -0.036703, 0.036703, 1.01995, 28.7207, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.966Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.03234, -0.0616544, 0.0616544, 1.03234, 47.6306, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.973Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "-304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, -304.057, 0)"
+        },
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.03234, -0.0616544, 0.0616544, 1.03234, 47.6306, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.990Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.04462, -0.0883741, 0.0883741, 1.04462, 67.3894, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:44.997Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.05565, -0.11435, 0.11435, 1.05565, 86.1564, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.005Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.05565, -0.11435, 0.11435, 1.05565, 86.1564, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.011Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.05565, -0.11435, 0.11435, 1.05565, 86.1564, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.018Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.06497, -0.138113, 0.138113, 1.06497, 102.976, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.025Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.06497, -0.138113, 0.138113, 1.06497, 102.976, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.032Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07255, -0.158874, 0.158874, 1.07255, 117.421, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.038Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07255, -0.158874, 0.158874, 1.07255, 117.421, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.044Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07255, -0.158874, 0.158874, 1.07255, 117.421, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.052Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07869, -0.176813, 0.176813, 1.07869, 129.727, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.058Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.07869, -0.176813, 0.176813, 1.07869, 129.727, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.066Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08359, -0.191976, 0.191976, 1.08359, 140.009, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.072Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08359, -0.191976, 0.191976, 1.08359, 140.009, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.079Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08737, -0.204253, 0.204253, 1.08737, 148.258, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.087Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08737, -0.204253, 0.204253, 1.08737, 148.258, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.093Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.08737, -0.204253, 0.204253, 1.08737, 148.258, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.101Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09026, -0.214033, 0.214033, 1.09026, 154.783, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.107Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09026, -0.214033, 0.214033, 1.09026, 154.783, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.114Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0924, -0.221543, 0.221543, 1.0924, 159.766, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.120Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0924, -0.221543, 0.221543, 1.0924, 159.766, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.126Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0924, -0.221543, 0.221543, 1.0924, 159.766, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.134Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09392, -0.226991, 0.226991, 1.09392, 163.366, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.140Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09392, -0.226991, 0.226991, 1.09392, 163.366, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.147Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0949, -0.230568, 0.230568, 1.0949, 165.723, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.154Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0949, -0.230568, 0.230568, 1.0949, 165.723, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.160Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.0949, -0.230568, 0.230568, 1.0949, 165.723, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.167Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09542, -0.232462, 0.232462, 1.09542, 166.969, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.174Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "1",
+          "text": "",
+          "transform": "matrix(1.09542, -0.232462, 0.232462, 1.09542, 166.969, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.182Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.999119",
+          "text": "",
+          "transform": "matrix(1.09514, -0.232956, 0.232956, 1.09514, 167.352, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.188Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.999119",
+          "text": "",
+          "transform": "matrix(1.09514, -0.232956, 0.232956, 1.09514, 167.352, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.194Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.999119",
+          "text": "",
+          "transform": "matrix(1.09514, -0.232956, 0.232956, 1.09514, 167.352, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.201Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.979109",
+          "text": "",
+          "transform": "matrix(1.0865, -0.235087, 0.235087, 1.0865, 170.09, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.207Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.979109",
+          "text": "",
+          "transform": "matrix(1.0865, -0.235087, 0.235087, 1.0865, 170.09, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.215Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.932479",
+          "text": "",
+          "transform": "matrix(1.06635, -0.239829, 0.239829, 1.06635, 176.47, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.230Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.862179",
+          "text": "",
+          "transform": "matrix(1.03598, -0.246388, 0.246388, 1.03598, 186.089, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.237Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.862179",
+          "text": "",
+          "transform": "matrix(1.03598, -0.246388, 0.246388, 1.03598, 186.089, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.243Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.862179",
+          "text": "",
+          "transform": "matrix(1.03598, -0.246388, 0.246388, 1.03598, 186.089, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.252Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.774343",
+          "text": "",
+          "transform": "matrix(0.998024, -0.253588, 0.253588, 0.998024, 198.107, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.258Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.774343",
+          "text": "",
+          "transform": "matrix(0.998024, -0.253588, 0.253588, 0.998024, 198.107, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.265Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.678641",
+          "text": "",
+          "transform": "matrix(0.95671, -0.260176, 0.260176, 0.95671, 211.202, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.271Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.678641",
+          "text": "",
+          "transform": "matrix(0.95671, -0.260176, 0.260176, 0.95671, 211.202, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.277Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.678641",
+          "text": "",
+          "transform": "matrix(0.95671, -0.260176, 0.260176, 0.95671, 211.202, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.285Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.583061",
+          "text": "",
+          "transform": "matrix(0.915517, -0.265452, 0.265452, 0.915517, 224.28, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.291Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.583061",
+          "text": "",
+          "transform": "matrix(0.915517, -0.265452, 0.265452, 0.915517, 224.28, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.298Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.491425",
+          "text": "",
+          "transform": "matrix(0.876118, -0.269291, 0.269291, 0.876118, 236.818, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.304Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.491425",
+          "text": "",
+          "transform": "matrix(0.876118, -0.269291, 0.269291, 0.876118, 236.818, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.310Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.491425",
+          "text": "",
+          "transform": "matrix(0.876118, -0.269291, 0.269291, 0.876118, 236.818, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.318Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.407651",
+          "text": "",
+          "transform": "matrix(0.840204, -0.271759, 0.271759, 0.840204, 248.28, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.324Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.407651",
+          "text": "",
+          "transform": "matrix(0.840204, -0.271759, 0.271759, 0.840204, 248.28, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.334Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.332109",
+          "text": "",
+          "transform": "matrix(0.807923, -0.273135, 0.273135, 0.807923, 258.616, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.340Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.332109",
+          "text": "",
+          "transform": "matrix(0.807923, -0.273135, 0.273135, 0.807923, 258.616, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.348Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266398",
+          "text": "",
+          "transform": "matrix(0.779936, -0.27368, 0.27368, 0.779936, 267.607, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.354Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266398",
+          "text": "",
+          "transform": "matrix(0.779936, -0.27368, 0.27368, 0.779936, 267.607, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.360Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.266398",
+          "text": "",
+          "transform": "matrix(0.779936, -0.27368, 0.27368, 0.779936, 267.607, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.368Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.209659",
+          "text": "",
+          "transform": "matrix(0.755847, -0.273664, 0.273664, 0.755847, 275.371, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.374Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.209659",
+          "text": "",
+          "transform": "matrix(0.755847, -0.273664, 0.273664, 0.755847, 275.371, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.381Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161111",
+          "text": "",
+          "transform": "matrix(0.735299, -0.273293, 0.273293, 0.735299, 282.013, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.388Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161111",
+          "text": "",
+          "transform": "matrix(0.735299, -0.273293, 0.273293, 0.735299, 282.013, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.395Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.161111",
+          "text": "",
+          "transform": "matrix(0.735299, -0.273293, 0.273293, 0.735299, 282.013, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.403Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.120298",
+          "text": "",
+          "transform": "matrix(0.718072, -0.272727, 0.272727, 0.718072, 287.597, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.409Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.120298",
+          "text": "",
+          "transform": "matrix(0.718072, -0.272727, 0.272727, 0.718072, 287.597, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.416Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0863549",
+          "text": "",
+          "transform": "matrix(0.70378, -0.27208, 0.27208, 0.70378, 292.242, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.423Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0863549",
+          "text": "",
+          "transform": "matrix(0.70378, -0.27208, 0.27208, 0.70378, 292.242, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.431Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0588947",
+          "text": "",
+          "transform": "matrix(0.692242, -0.271441, 0.271441, 0.692242, 295.999, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.437Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0588947",
+          "text": "",
+          "transform": "matrix(0.692242, -0.271441, 0.271441, 0.692242, 295.999, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.443Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0588947",
+          "text": "",
+          "transform": "matrix(0.692242, -0.271441, 0.271441, 0.692242, 295.999, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.451Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.03732",
+          "text": "",
+          "transform": "matrix(0.683192, -0.270865, 0.270865, 0.683192, 298.951, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.457Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.03732",
+          "text": "",
+          "transform": "matrix(0.683192, -0.270865, 0.270865, 0.683192, 298.951, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.464Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0210467",
+          "text": "",
+          "transform": "matrix(0.676376, -0.270388, 0.270388, 0.676376, 301.178, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.471Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0210467",
+          "text": "",
+          "transform": "matrix(0.676376, -0.270388, 0.270388, 0.676376, 301.178, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.477Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.0210467",
+          "text": "",
+          "transform": "matrix(0.676376, -0.270388, 0.270388, 0.676376, 301.178, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.485Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00969093",
+          "text": "",
+          "transform": "matrix(0.671624, -0.270033, 0.270033, 0.671624, 302.731, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.491Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00969093",
+          "text": "",
+          "transform": "matrix(0.671624, -0.270033, 0.270033, 0.671624, 302.731, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.498Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00277255",
+          "text": "",
+          "transform": "matrix(0.668731, -0.269809, 0.269809, 0.668731, 303.678, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.506Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0.00277255",
+          "text": "",
+          "transform": "matrix(0.668731, -0.269809, 0.269809, 0.668731, 303.678, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.514Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.43109e-05",
+          "text": "",
+          "transform": "matrix(0.667603, -0.269719, 0.269719, 0.667603, 304.047, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.520Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.43109e-05",
+          "text": "",
+          "transform": "matrix(0.667603, -0.269719, 0.269719, 0.667603, 304.047, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.526Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "7.43109e-05",
+          "text": "",
+          "transform": "matrix(0.667603, -0.269719, 0.269719, 0.667603, 304.047, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.533Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.539Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.545Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.552Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.558Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.569Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.576Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.584Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.590Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.597Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.604Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.610Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.617Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.623Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.630Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.636Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.643Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.651Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.658Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.666Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.672Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.678Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.685Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.691Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.698Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.704Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.710Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.718Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.724Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.732Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.740Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.747Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.753Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.760Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.767Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.773Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.780Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.786Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.794Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.801Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.817Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.826Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.833Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.841Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.847Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.853Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.860Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.867Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.873Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.880Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.887Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.893Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.901Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.907Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.914Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.921Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.927Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.934Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.940Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.946Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.953Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.959Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.967Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.973Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.980Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.988Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:45.995Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.002Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.008Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.015Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.021Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.028Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.034Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.041Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.047Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.054Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.060Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.068Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.075Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.083Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.089Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.095Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.101Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.107Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.114Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.120Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.126Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.133Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.140Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.147Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.154Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.160Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.168Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.174Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.181Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.187Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.193Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.200Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.206Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.213Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.220Z",
+      "animation": "CARD_TRANSFER",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "1",
+      "status": "playing",
+      "to": "2"
+    },
+    {
+      "at": "2026-09-13T07:31:46.236Z",
+      "animation": "idle",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "",
+      "status": "playing",
+      "to": ""
+    },
+    {
+      "at": "2026-09-13T07:31:46.257Z",
+      "animation": "idle",
+      "cards": [
+        {
+          "backgrounds": [],
+          "dx": "304.0572967529297px",
+          "dy": "0px",
+          "opacity": "0",
+          "text": "",
+          "transform": "matrix(0.667572, -0.269717, 0.269717, 0.667572, 304.057, 0)"
+        }
+      ],
+      "from": "",
+      "status": "complete",
+      "to": ""
+    }
+  ],
+  "logs": [
+    {
+      "level": "error",
+      "message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Updating animation animationPlayState",
+      "timestamp": "2026-09-13T07:31:40.461Z",
+      "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=4def78af"
+    },
+    {
+      "level": "error",
+      "message": "%s a style property during rerender (%s) when a conflicting property is set (%s) can lead to styling bugs. To avoid this, don't mix shorthand and non-shorthand properties for the same value; instead, replace the shorthand with separate values. Removing animation animationPlayState",
+      "timestamp": "2026-09-13T07:31:40.742Z",
+      "url": "http://127.0.0.1:5173/node_modules/.vite/deps/react-dom_client.js?v=4def78af"
+    }
+  ]
+}

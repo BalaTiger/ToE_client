@@ -1,10 +1,12 @@
+import { CARD_FLIGHT_POSE } from './cardSizing';
+
 export const GOD_POWER_ANIMATION_STYLES = `
   @keyframes zhuHideCardPath {
-    0% { opacity: 0; transform: translate(0,0) rotate(0deg) scale(0.88); }
-    14% { opacity: 1; transform: translate(var(--pull-x),var(--pull-y)) rotate(-7deg) scale(1); }
-    54% { opacity: 1; transform: translate(calc(var(--pull-x) * 0.72),calc(var(--bottom-y) * 0.55)) rotate(-2deg) scale(1.03); }
-    82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) rotate(5deg) scale(0.92); }
-    100% { opacity: 0; transform: translate(4px,34px) rotate(0deg) scale(0.62); }
+    0% { opacity: 1; transform: translate(0,0) ${CARD_FLIGHT_POSE.from}; }
+    14% { opacity: 1; transform: translate(var(--pull-x),var(--pull-y)) ${CARD_FLIGHT_POSE.mid}; }
+    54% { opacity: 1; transform: translate(calc(var(--pull-x) * 0.72),calc(var(--bottom-y) * 0.55)) ${CARD_FLIGHT_POSE.mid}; }
+    82% { opacity: 1; transform: translate(var(--bottom-x),var(--bottom-y)) ${CARD_FLIGHT_POSE.to}; }
+    100% { opacity: 0; transform: translate(0,0) ${CARD_FLIGHT_POSE.to}; }
   }
   @keyframes zhuHideDepth {
     0%, 14% { z-index: 6; }

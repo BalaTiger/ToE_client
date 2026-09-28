@@ -32,6 +32,7 @@ export function makePlayer(overrides = {}) {
     peekMemories: {},
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     isDead: false,
     roleRevealed: false,
     revealHand: false,
@@ -40,7 +41,6 @@ export function makePlayer(overrides = {}) {
     disableRestNextTurn: false,
     disableSkillNextTurn: false,
     handLimitDecreaseNextTurn: 0,
-    _pendingAnimDeath: false,
     ...overrides,
   };
 }

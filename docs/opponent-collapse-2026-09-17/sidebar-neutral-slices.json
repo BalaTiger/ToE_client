@@ -1,0 +1,25 @@
+{
+  "source": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-a0476158-5165-41dc-8411-7980471ef890.png",
+  "width": 622,
+  "height": 1813,
+  "rects": {
+    "top": {
+      "left": 109,
+      "top": 22,
+      "width": 622,
+      "height": 137
+    },
+    "rail": {
+      "left": 109,
+      "top": 258,
+      "width": 622,
+      "height": 127
+    },
+    "bottom": {
+      "left": 109,
+      "top": 1698,
+      "width": 622,
+      "height": 137
+    }
+  }
+}

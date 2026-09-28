@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { canLocalActOnTargetSelectionPhase, derotateGs, rotateGsForViewer } from '../rotateState';
+import { addDamageLink, getAllDamageLinks } from '../damageLinks';
+import { prepareAnimationQueueSteps } from '../animationStepSchema';
+import { scopeAiActionReplayMetadata } from '../aiTurnPresentation';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand };
@@ -10,6 +13,252 @@ function names(players) {
 }
 
 describe('rotateGsForViewer', () => {
+  it('rotates and restores pending AI discard thorns without changing the source state', () => {
+    const card = { id: 'pending-thorn', roseThornHolderId: 2, roseThornSourceId: 0 };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0, abilityData: {}, _aiFinishingTurn: true,
+      _aiPendingHandLimitThorns: [card],
+    };
+    const rotated = rotateGsForViewer(gs, 1);
+    expect(rotated._aiFinishingTurn).toBe(true);
+    expect(rotated._aiPendingHandLimitThorns).toEqual([
+      { ...card, roseThornHolderId: 1, roseThornSourceId: 2 },
+    ]);
+    expect(derotateGs(rotated, 1)._aiPendingHandLimitThorns).toEqual([card]);
+    expect(gs._aiPendingHandLimitThorns[0]).toEqual(card);
+    expect(card.roseThornHolderId).toBe(2);
+  });
+
+  it('rotates AI hand-limit stat metadata without changing identity or excluding another same-batch loss', () => {
+    const handLimitLoss = {
+      id: 'stat:hand-limit', seq: 4, type: 'HP_LOSS', target: 2,
+      from: { hp: 7, san: 8 }, to: { hp: 6, san: 8 },
+    };
+    const actionLoss = { ...handLimitLoss, id: 'stat:action' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 2,
+      phase: 'AI_TURN',
+      abilityData: {},
+      _statEvents: [actionLoss, handLimitLoss],
+      _aiHandLimitStatEvents: [handLimitLoss],
+      _visualEvents: [],
+    };
+
+    for (const viewer of [0, 1, 2]) {
+      const rotated = rotateGsForViewer(JSON.parse(JSON.stringify(gs)), viewer);
+      const expectedTarget = (2 - viewer + 3) % 3;
+      expect(rotated._aiHandLimitStatEvents).toEqual([{ ...handLimitLoss, target: expectedTarget }]);
+      expect(rotated._statEvents[1]).toEqual(rotated._aiHandLimitStatEvents[0]);
+      const scoped = scopeAiActionReplayMetadata(rotated, { excludedStatEvents: rotated._aiHandLimitStatEvents });
+      expect(scoped.statEvents).toEqual([{ ...actionLoss, target: expectedTarget }]);
+      const restored = derotateGs(rotated, viewer);
+      expect(restored._aiHandLimitStatEvents).toEqual(gs._aiHandLimitStatEvents);
+      expect(restored._statEvents).toEqual(gs._statEvents);
+    }
+    expect(gs._aiHandLimitStatEvents[0].target).toBe(2);
+  });
+
+  it('preserves optional animation fields and stat authority across a wire round trip', () => {
+    const queue = [
+      { type: 'GOD_HIGHLIGHT', targetPid: 0, godKey: 'APO' },
+      {
+        type: 'APOPHIS_ECLIPSE',
+        visualSetupPatch: { hiddenZhuCardId: null },
+        visualTimeline: [{ atMs: 100, patch: { discard: [] } }],
+      },
+      {
+        type: 'SAN_DAMAGE',
+        visualEventId: 'stat:1',
+        hitIndices: [0],
+        statEvents: [{ id: 'san:1', type: 'SAN_LOSS', target: 0, from: { hp: 10, san: 10 }, to: { hp: 10, san: 9 } }],
+      },
+      { type: 'VISUAL_LOCK', hiddenZhuCardId: null },
+      { type: 'STATE_PATCH', discard: [] },
+      { type: 'TSG_SLIME_POP', targetPid: 1, statPresentation: { target: 1, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } } },
+      {
+        type: 'CARD_TRANSFER',
+        transfers: [
+          { fromPid: 1, dest: 'player', toPid: 0, count: 1, cards: [{ id: 'stone-kept' }], effect: 'decipherStone', sourcePoint: { x: 12, y: 34 } },
+          { fromPid: -1, dest: 'deckTop', count: 1, cards: [{ id: 'stone-returned' }], effect: 'decipherStone' },
+        ],
+      },
+    ];
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'ACTION',
+      abilityData: {},
+      _visualEvents: [{ id: 'transaction:1', type: 'animTransaction', queue }],
+    };
+    // A non-host authors in its own seat order, then each receiver rotates
+    // the serialized server order again before validating/replaying the queue.
+    const packet = JSON.parse(JSON.stringify(derotateGs(gs, 1)));
+    for (const viewer of [0, 1, 2]) {
+      const rotated = rotateGsForViewer(packet, viewer)._visualEvents[0].queue;
+      expect(prepareAnimationQueueSteps(rotated).issues).toEqual([]);
+      rotated.forEach((step, index) => {
+        expect(Object.keys(step).sort()).toEqual(Object.keys(queue[index]).sort());
+      });
+      expect(rotated[1].visualSetupPatch).not.toHaveProperty('players');
+      expect(rotated[1].visualTimeline[0].patch).not.toHaveProperty('players');
+      expect(rotated[2].statEvents[0].target).toBe((1 - viewer + 3) % 3);
+      expect(rotated[5].statPresentation.target).toBe((2 - viewer + 3) % 3);
+      const transfers = rotated[6].transfers;
+      expect(transfers[0]).toEqual({
+        ...queue[6].transfers[0],
+        fromPid: (2 - viewer + 3) % 3,
+        toPid: (1 - viewer + 3) % 3,
+      });
+      expect(transfers[1]).toEqual(queue[6].transfers[1]);
+      expect(transfers[1]).not.toHaveProperty('toPid');
+    }
+    expect(queue[6].transfers[0].fromPid).toBe(1);
+    expect(queue[6].transfers[0].toPid).toBe(0);
+  });
+
+  it('rotates god-gift keep owner and landing snapshots together', () => {
+    const godCard = { id: 'god-gift', name: '伏行之混沌' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'AI_TURN',
+      abilityData: {},
+      _visualEvents: [{
+        id: 'god-gift-keep:1',
+        type: 'godGiftKeep',
+        drawerIdx: 0,
+        card: godCard,
+        playersBefore: [player('before0'), player('before1'), player('before2')],
+        playersAfter: [player('after0', [godCard]), player('after1'), player('after2')],
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+    const event = rotated._visualEvents[0];
+
+    expect(event.drawerIdx).toBe(2);
+    expect(names(event.playersBefore)).toEqual(['before1', 'before2', 'before0']);
+    expect(names(event.playersAfter)).toEqual(['after1', 'after2', 'after0']);
+    expect(event.playersAfter[2].hand).toEqual([godCard]);
+  });
+
+  it('rotates seat indices inside root decision continuation frames', () => {
+    const godCard = { id: 'god' };
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      phase: 'ETHEREALIZE_DECISION',
+      abilityData: { targetIdx: 1, _turnOwner: 0 },
+      _decisionContinuations: [{
+        phase: 'GOD_CHOICE',
+        abilityData: { godCard, drawerIdx: 0, playerIndex: 0 },
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.abilityData).toMatchObject({ targetIdx: 0, _turnOwner: 2 });
+    expect(rotated._decisionContinuations).toEqual([{
+      phase: 'GOD_CHOICE',
+      abilityData: { godCard, drawerIdx: 2, playerIndex: 2 },
+    }]);
+  });
+
+  it('多条绳索在视角旋转和还原后都保持独立互指', () => {
+    const players = [player('p0'), player('p1'), player('p2'), player('p3')];
+    addDamageLink(players, 0, 2, { createdSeq: 1 });
+    addDamageLink(players, 1, 2, { createdSeq: 2 });
+    const gs = { players, currentTurn: 0, phase: 'ACTION', abilityData: {} };
+
+    const rotated = rotateGsForViewer(gs, 2);
+    expect(getAllDamageLinks(rotated.players).map(link => [link.a, link.b])).toEqual([[0, 2], [0, 3]]);
+
+    const restored = derotateGs(rotated, 2);
+    expect(getAllDamageLinks(restored.players).map(link => [link.a, link.b])).toEqual([[0, 2], [1, 2]]);
+  });
+  it('rotates god status event owner and snapshots together', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 0,
+      _visualEvents: [{
+        id: 'god:1',
+        type: 'godStatusChanged',
+        playerIdx: 0,
+        godKey: 'TSG',
+        playersBefore: [player('b0'), player('b1'), player('b2')],
+        playersAfter: [player('a0'), player('a1'), player('a2')],
+        faithSettlement: {
+          previousFaithExit: {
+            playerIdx: 0,
+            playersBefore: [player('c0'), player('c1'), player('c2')],
+            playersAfter: [player('d0'), player('d1'), player('d2')],
+            playersAfterResolution: [player('r0'), player('r1'), player('r2')],
+          },
+          abandonedFollowers: [{
+            playerIdx: 2,
+            playersBefore: [player('e0'), player('e1'), player('e2')],
+            playersAfter: [player('f0'), player('f1'), player('f2')],
+            playersAfterResolution: [player('s0'), player('s1'), player('s2')],
+          }],
+        },
+      }],
+    };
+
+    const event = rotateGsForViewer(gs, 2)._visualEvents[0];
+
+    expect(event.playerIdx).toBe(1);
+    expect(names(event.playersBefore)).toEqual(['b2', 'b0', 'b1']);
+    expect(names(event.playersAfter)).toEqual(['a2', 'a0', 'a1']);
+    expect(event.faithSettlement.previousFaithExit.playerIdx).toBe(1);
+    expect(names(event.faithSettlement.previousFaithExit.playersAfter)).toEqual(['d2', 'd0', 'd1']);
+    expect(names(event.faithSettlement.previousFaithExit.playersAfterResolution)).toEqual(['r2', 'r0', 'r1']);
+    expect(event.faithSettlement.abandonedFollowers[0].playerIdx).toBe(0);
+    expect(names(event.faithSettlement.abandonedFollowers[0].playersBefore)).toEqual(['e2', 'e0', 'e1']);
+    expect(names(event.faithSettlement.abandonedFollowers[0].playersAfterResolution)).toEqual(['s2', 's0', 's1']);
+  });
+
+  it('rotates shared bury-alive choices with their player seats', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      abilityData: {
+        source: 0,
+        targets: [0, 2, 1],
+        buryAliveChoices: [{ cardId: 'c0' }, null, { cardId: 'c2' }],
+      },
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.abilityData).toMatchObject({
+      source: 2,
+      targets: [2, 1, 0],
+      buryAliveChoices: [null, { cardId: 'c2' }, { cardId: 'c0' }],
+    });
+  });
+
+  it('rotates swap before/after player snapshots with the viewer seat', () => {
+    const gs = {
+      players: [player('p0'), player('p1'), player('p2')],
+      currentTurn: 1,
+      abilityData: {},
+      _visualEvents: [{
+        type: 'swapCards',
+        sourceIdx: 1,
+        targetIdx: 0,
+        beforePlayers: [player('before0'), player('before1'), player('before2')],
+        afterPlayers: [player('after0'), player('after1'), player('after2')],
+      }],
+    };
+
+    const rotated = rotateGsForViewer(gs, 2);
+
+    expect(rotated._visualEvents[0]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
+    expect(names(rotated._visualEvents[0].beforePlayers)).toEqual(['before2', 'before0', 'before1']);
+    expect(names(rotated._visualEvents[0].afterPlayers)).toEqual(['after2', 'after0', 'after1']);
+  });
+
   it('rotates top-level animation player snapshots for the viewer', () => {
     const gs = {
       players: [player('你'), player('艾伦'), player('贝拉')],
@@ -53,47 +302,46 @@ describe('rotateGsForViewer', () => {
       ],
       _inspectionTarget: 1,
       _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2'), player('ib3')],
-      _inspectionEvents: [
-        {
-          seq: 2,
-          target: 1,
-          beforePlayers: [player('insB0'), player('insB1'), player('insB2'), player('insB3')],
-          afterPlayers: [player('insA0'), player('insA1'), player('insA2'), player('insA3')],
-          statEvents: [
-            { type: 'HP_LOSS', target: 1, from: { hp: 10 }, to: { hp: 9 }, seq: 5 },
-          ],
-        },
-      ],
       _aiHuntEvents: [
         {
           hunterIdx: 3,
           targetIdx: 1,
           sourceCardIndex: 2,
           targetCardIndex: 0,
-          apophisTargetEvent: { seq: 2, actorIdx: 3, selectedIdx: 1, targetIdx: 1 },
+          attemptId: 'hunt-attempt:rotate',
+          phaseGroupId: 'hunt-attempt:rotate',
+          targetResolutionEventId: 'apophisTarget:rotate',
           beforePlayers: [player('b0'), player('b1'), player('b2'), player('b3')],
           afterDiscardPlayers: [player('d0'), player('d1'), player('d2'), player('d3')],
           afterPlayers: [player('a0'), player('a1'), player('a2'), player('a3')],
-        },
-      ],
-      _randomTargetEvents: [
-        { seq: 1, sourceIdx: 3, targetIdx: 1, label: '投掷石块' },
-      ],
-      _tsgSlimeGrantEvents: [
-        {
-          ownerIdx: 0,
-          count: 1,
-          playersBefore: [player('tsgB0'), player('tsgB1'), player('tsgB2'), player('tsgB3')],
-          playersAfter: [player('tsgA0'), player('tsgA1'), player('tsgA2'), player('tsgA3')],
         },
       ],
       _animMultiplyEvent: { fromIdx: 1, toIdx: 3, sourceCardIndex: 4 },
       _animSphinxReveal: { actorIdx: 0, card: { name: '斯芬克斯' } },
       _visualEvents: [
         { type: 'turnStart', playerIdx: 3 },
-        { type: 'drawCard', playerIdx: 1, card: { name: '测试牌' } },
+        {
+          type: 'drawCard',
+          playerIdx: 1,
+          card: { name: '测试牌' },
+          playersBefore: [player('drawB0'), player('drawB1'), player('drawB2'), player('drawB3')],
+          playersAfterKeep: [player('drawK0'), player('drawK1'), player('drawK2'), player('drawK3')],
+          playersAfterResolution: [player('drawR0'), player('drawR1'), player('drawR2'), player('drawR3')],
+        },
         { type: 'timedOutDrawDiscard', drawerIdx: 0, card: { name: '弃牌' } },
-        { type: 'bewitchGift', sourceIdx: 3, targetIdx: 1, card: { name: '蛊惑牌' } },
+        {
+          type: 'bewitchGift',
+          sourceIdx: 3,
+          targetIdx: 1,
+          card: { name: '蛊惑牌' },
+          playersBefore: [player('bw0'), player('bw1'), player('bw2'), player('bw3')],
+          playersAfter: [player('bwa0'), player('bwa1'), player('bwa2'), player('bwa3')],
+          settlementEvents: [{
+            id: 'nested-bewitch-stat',
+            type: 'statEvents',
+            statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 9 }, to: { san: 8 } }],
+          }],
+        },
         { type: 'huntTarget', sourceIdx: 0, targetIdx: 3 },
         { type: 'huntReveal', sourceIdx: 3, targetIdx: 0, card: { name: '亮出牌' } },
         {
@@ -112,6 +360,9 @@ describe('rotateGsForViewer', () => {
           card: { name: '斯芬克斯牌' },
           guessCorrect: true,
           msgs: ['猜测正确'],
+          playersBefore: [player('sphB0'), player('sphB1'), player('sphB2'), player('sphB3')],
+          playersAfter: [player('sphA0'), player('sphA1'), player('sphA2'), player('sphA3')],
+          statEvents: [{ type: 'HP_LOSS', target: 2, from: { hp: 10 }, to: { hp: 7 } }],
         },
         {
           type: 'statEvents',
@@ -166,6 +417,7 @@ describe('rotateGsForViewer', () => {
               statEvents: [{ type: 'SAN_LOSS', target: 1, from: { san: 10 }, to: { san: 8 } }],
             },
             { type: 'STATE_PATCH', players: [player('ec0'), player('ec1'), player('ec2'), player('ec3')] },
+            { type: 'TSG_SLIME_POP', targetPid: 1, statPresentation: { target: 1, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } } },
           ],
         },
       ],
@@ -178,28 +430,31 @@ describe('rotateGsForViewer', () => {
     expect(rotated._statEvents[0].target).toBe(3);
     expect(rotated._inspectionTarget).toBe(3);
     expect(names(rotated._inspectionBeforePlayers)).toEqual(['ib2', 'ib3', 'ib0', 'ib1']);
-    expect(rotated._inspectionEvents[0].target).toBe(3);
-    expect(names(rotated._inspectionEvents[0].beforePlayers)).toEqual(['insB2', 'insB3', 'insB0', 'insB1']);
-    expect(names(rotated._inspectionEvents[0].afterPlayers)).toEqual(['insA2', 'insA3', 'insA0', 'insA1']);
-    expect(rotated._inspectionEvents[0].statEvents[0].target).toBe(3);
     expect(rotated._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(rotated._aiHuntEvents[0].targetIdx).toBe(3);
     expect(rotated._aiHuntEvents[0].sourceCardIndex).toBe(2);
     expect(rotated._aiHuntEvents[0].targetCardIndex).toBe(0);
-    expect(rotated._aiHuntEvents[0].apophisTargetEvent).toMatchObject({ actorIdx: 1, selectedIdx: 3, targetIdx: 3 });
+    expect(rotated._aiHuntEvents[0]).not.toHaveProperty('apophisTargetEvent');
+    expect(rotated._aiHuntEvents[0]).toMatchObject({
+      attemptId: 'hunt-attempt:rotate',
+      phaseGroupId: 'hunt-attempt:rotate',
+      targetResolutionEventId: 'apophisTarget:rotate',
+    });
     expect(names(rotated._aiHuntEvents[0].beforePlayers)).toEqual(['b2', 'b3', 'b0', 'b1']);
     expect(names(rotated._aiHuntEvents[0].afterDiscardPlayers)).toEqual(['d2', 'd3', 'd0', 'd1']);
     expect(names(rotated._aiHuntEvents[0].afterPlayers)).toEqual(['a2', 'a3', 'a0', 'a1']);
-    expect(rotated._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 3, label: '投掷石块' });
-    expect(rotated._tsgSlimeGrantEvents[0].ownerIdx).toBe(2);
-    expect(names(rotated._tsgSlimeGrantEvents[0].playersBefore)).toEqual(['tsgB2', 'tsgB3', 'tsgB0', 'tsgB1']);
-    expect(names(rotated._tsgSlimeGrantEvents[0].playersAfter)).toEqual(['tsgA2', 'tsgA3', 'tsgA0', 'tsgA1']);
     expect(rotated._animMultiplyEvent).toMatchObject({ fromIdx: 3, toIdx: 1, sourceCardIndex: 4 });
     expect(rotated._animSphinxReveal).toMatchObject({ actorIdx: 2 });
     expect(rotated._visualEvents[0].playerIdx).toBe(1);
     expect(rotated._visualEvents[1].playerIdx).toBe(3);
+    expect(names(rotated._visualEvents[1].playersBefore)).toEqual(['drawB2', 'drawB3', 'drawB0', 'drawB1']);
+    expect(names(rotated._visualEvents[1].playersAfterKeep)).toEqual(['drawK2', 'drawK3', 'drawK0', 'drawK1']);
+    expect(names(rotated._visualEvents[1].playersAfterResolution)).toEqual(['drawR2', 'drawR3', 'drawR0', 'drawR1']);
     expect(rotated._visualEvents[2].drawerIdx).toBe(2);
     expect(rotated._visualEvents[3]).toMatchObject({ sourceIdx: 1, targetIdx: 3 });
+    expect(names(rotated._visualEvents[3].playersBefore)).toEqual(['bw2', 'bw3', 'bw0', 'bw1']);
+    expect(names(rotated._visualEvents[3].playersAfter)).toEqual(['bwa2', 'bwa3', 'bwa0', 'bwa1']);
+    expect(rotated._visualEvents[3].settlementEvents[0].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[4]).toMatchObject({ sourceIdx: 2, targetIdx: 1 });
     expect(rotated._visualEvents[5]).toMatchObject({ sourceIdx: 1, targetIdx: 2 });
     expect(rotated._visualEvents[6]).toMatchObject({ sourceIdx: 1, hunterIdx: 1, targetIdx: 3 });
@@ -208,6 +463,9 @@ describe('rotateGsForViewer', () => {
     expect(names(rotated._visualEvents[6].afterDamagePlayers)).toEqual(['hrM2', 'hrM3', 'hrM0', 'hrM1']);
     expect(names(rotated._visualEvents[6].afterPlayers)).toEqual(['hrA2', 'hrA3', 'hrA0', 'hrA1']);
     expect(rotated._visualEvents[7]).toMatchObject({ actorIdx: 0, guessCorrect: true });
+    expect(names(rotated._visualEvents[7].playersBefore)).toEqual(['sphB2', 'sphB3', 'sphB0', 'sphB1']);
+    expect(names(rotated._visualEvents[7].playersAfter)).toEqual(['sphA2', 'sphA3', 'sphA0', 'sphA1']);
+    expect(rotated._visualEvents[7].statEvents[0].target).toBe(0);
     expect(rotated._visualEvents[8].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[8].statEvents[1].pair).toEqual([2, 1]);
     expect(names(rotated._visualEvents[8].statEvents[1].players)).toEqual(['v2', 'v3', 'v0', 'v1']);
@@ -229,6 +487,10 @@ describe('rotateGsForViewer', () => {
     expect(rotated._visualEvents[11].queue[1].statEvents[0].target).toBe(3);
     expect(rotated._visualEvents[11].queue[1].targetStats.map(stat => stat.san)).toEqual([10, 10, 10, 8]);
     expect(names(rotated._visualEvents[11].queue[2].players)).toEqual(['ec2', 'ec3', 'ec0', 'ec1']);
+    expect(rotated._visualEvents[11].queue[3]).toMatchObject({
+      targetPid: 3,
+      statPresentation: { target: 3, from: { hp: 3, san: 9 }, to: { hp: 6, san: 6 } },
+    });
   });
 
   it('derotates rotated animation snapshots back to host order', () => {
@@ -245,19 +507,8 @@ describe('rotateGsForViewer', () => {
       _statEvents: [{ type: 'SAN_LOSS', target: 2, seq: 1 }],
       _inspectionTarget: 2,
       _inspectionBeforePlayers: [player('ib0'), player('ib1'), player('ib2')],
-      _inspectionEvents: [
-        {
-          target: 2,
-          beforePlayers: [player('insB0'), player('insB1'), player('insB2')],
-          afterPlayers: [player('insA0'), player('insA1'), player('insA2')],
-          statEvents: [{ type: 'HP_LOSS', target: 2, seq: 2 }],
-        },
-      ],
       _aiHuntEvents: [
-        { hunterIdx: 1, targetIdx: 0, apophisTargetEvent: { seq: 1, actorIdx: 1, selectedIdx: 0, targetIdx: 0 }, beforePlayers: [player('b0'), player('b1'), player('b2')] },
-      ],
-      _randomTargetEvents: [
-        { seq: 1, sourceIdx: 1, targetIdx: 0, label: '投掷石块' },
+        { hunterIdx: 1, targetIdx: 0, attemptId: 'hunt-attempt:restore', phaseGroupId: 'hunt-attempt:restore', targetResolutionEventId: 'apophisTarget:restore', beforePlayers: [player('b0'), player('b1'), player('b2')] },
       ],
       _animMultiplyEvent: { fromIdx: 0, toIdx: 2 },
       _animSphinxReveal: { actorIdx: 1 },
@@ -285,20 +536,103 @@ describe('rotateGsForViewer', () => {
     expect(restored._statEvents[0].target).toBe(2);
     expect(restored._inspectionTarget).toBe(2);
     expect(names(restored._inspectionBeforePlayers)).toEqual(['ib0', 'ib1', 'ib2']);
-    expect(restored._inspectionEvents[0].target).toBe(2);
-    expect(names(restored._inspectionEvents[0].beforePlayers)).toEqual(['insB0', 'insB1', 'insB2']);
-    expect(names(restored._inspectionEvents[0].afterPlayers)).toEqual(['insA0', 'insA1', 'insA2']);
-    expect(restored._inspectionEvents[0].statEvents[0].target).toBe(2);
     expect(restored._aiHuntEvents[0].hunterIdx).toBe(1);
     expect(restored._aiHuntEvents[0].targetIdx).toBe(0);
-    expect(restored._aiHuntEvents[0].apophisTargetEvent).toMatchObject({ actorIdx: 1, selectedIdx: 0, targetIdx: 0 });
+    expect(restored._aiHuntEvents[0]).not.toHaveProperty('apophisTargetEvent');
+    expect(restored._aiHuntEvents[0]).toMatchObject({
+      attemptId: 'hunt-attempt:restore',
+      phaseGroupId: 'hunt-attempt:restore',
+      targetResolutionEventId: 'apophisTarget:restore',
+    });
     expect(names(restored._aiHuntEvents[0].beforePlayers)).toEqual(['b0', 'b1', 'b2']);
-    expect(restored._randomTargetEvents[0]).toMatchObject({ sourceIdx: 1, targetIdx: 0, label: '投掷石块' });
     expect(restored._animMultiplyEvent).toEqual(gs._animMultiplyEvent);
     expect(restored._animSphinxReveal).toEqual(gs._animSphinxReveal);
     expect(names(restored._visualEvents[0].beforePlayers)).toEqual(['eq0', 'eq1', 'eq2']);
     expect(restored._visualEvents[0].discardEvents[0].playerIndex).toBe(2);
     expect(names(restored._visualEvents[0].discardEvents[0].afterPlayers)).toEqual(['eqA0', 'eqA1', 'eqA2']);
+  });
+
+  it('rotates player damageLink seat indices so the mutual pair check survives', () => {
+    const gs = {
+      players: [
+        { ...player('你'), damageLink: { partner: 2, active: true, expiryOwner: 0 } },
+        player('艾伦'),
+        { ...player('贝拉'), damageLink: { partner: 0, active: true, expiryOwner: 0 } },
+      ],
+      currentTurn: 0,
+      abilityData: {},
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    // 旋转后座位序为 [艾伦, 贝拉, 你]：规范座位 0→2、2→1
+    expect(rotated.players[2].damageLink).toMatchObject({ partner: 1, active: true, expiryOwner: 2 });
+    expect(rotated.players[1].damageLink).toMatchObject({ partner: 2, active: true, expiryOwner: 2 });
+    // 互指校验（DamageLinkOverlay / useDamageLinkGhosts 的配对条件）在旋转视角下仍成立
+    const pair = rotated.players.flatMap((p, i) => {
+      const j = p?.damageLink?.partner;
+      if (!p?.damageLink?.active || j == null || j <= i || rotated.players[j]?.damageLink?.partner !== i) return [];
+      return [{ a: i, b: j }];
+    });
+    expect(pair).toEqual([{ a: 1, b: 2 }]);
+
+    const restored = derotateGs(rotated, 1);
+    expect(restored.players[0].damageLink).toMatchObject({ partner: 2, expiryOwner: 0 });
+    expect(restored.players[2].damageLink).toMatchObject({ partner: 0, expiryOwner: 0 });
+  });
+
+  it('keeps legacy damageLink without expiryOwner intact under rotation', () => {
+    const gs = {
+      players: [
+        { ...player('你'), damageLink: { partner: 1, active: true, expiryTurn: 7 } },
+        { ...player('艾伦'), damageLink: { partner: 0, active: true, expiryTurn: 7 } },
+        player('贝拉'),
+      ],
+      currentTurn: 0,
+      abilityData: {},
+    };
+
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated.players[0].damageLink).toMatchObject({ partner: 2, active: true, expiryTurn: 7 });
+    expect(rotated.players[0].damageLink.expiryOwner).toBeUndefined();
+    expect(rotated.players[2].damageLink).toMatchObject({ partner: 0, active: true, expiryTurn: 7 });
+  });
+
+  it('rotates canonical drawCard seat indices and nested slime snapshots', () => {
+    // 发送端（座位 0 视角）为下家（座位 1）生成的回合开始摸牌事件
+    const gs = {
+      players: [player('你'), player('艾伦')],
+      currentTurn: 1,
+      abilityData: {},
+      _visualEvents: [{
+        id: 'turn-draw-1',
+        type: 'drawCard',
+        card: { id: 'c1', name: '荆棘山路' },
+        playerIdx: 1,
+        playerName: '艾伦',
+        msgs: ['艾伦 摸到 荆棘山路'],
+        slimePop: {
+          type: 'tsgSlimePop',
+          playerIdx: 1,
+          targetPid: 1,
+          playersBefore: [player('你'), player('艾伦')],
+        },
+      }],
+    };
+
+    // 摸牌者（艾伦，myIndex=1）收到并旋转：自己变为 0 号位
+    const rotated = rotateGsForViewer(gs, 1);
+
+    expect(rotated._visualEvents[0].playerIdx).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.playerIdx).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.targetPid).toBe(0);
+    expect(rotated._visualEvents[0].slimePop.playersBefore.map(p => p.name)).toEqual(['艾伦', '你']);
+
+    // 反旋转回规范坐标后索引还原
+    const restored = derotateGs(rotated, 1);
+    expect(restored._visualEvents[0].playerIdx).toBe(1);
+    expect(restored._visualEvents[0].slimePop.playerIdx).toBe(1);
   });
 
   it('SHU_SELECT_TARGET 的行动权跟随黑暗子嗣选择者旋转', () => {

@@ -1,0 +1,150 @@
+{
+  "generator": "scripts/extract-coastal-corner-b-assets.mjs",
+  "generationMode": "Built-in image_gen; original generated masters archived unmodified",
+  "originalSourceDirectory": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0",
+  "processing": {
+    "operation": "Deterministic matte extraction only, preserving the generated painted RGB and native geometry",
+    "basedOn": "scripts/extract-coastal-assets.mjs",
+    "neutralMatte": {
+      "minChannel": 130,
+      "maxChannelSpread": 22
+    },
+    "enclosedCheckerboard": {
+      "minArea": 32,
+      "minLuminanceRange": 38
+    },
+    "alpha": "Exterior matte removal, optional checked-hole removal except journal paper, largest connected subject, one-pixel edge decontamination",
+    "trimPadding": 2,
+    "circularCanvas": "Transparent padding only; no resampling or nonuniform scaling",
+    "webp": {
+      "quality": 94,
+      "alphaQuality": 100,
+      "effort": 6
+    }
+  },
+  "assets": [
+    {
+      "name": "corner-b-header",
+      "path": "public/img/ui/coastal/corner-b-header.webp",
+      "source": "exec-d386509c-0beb-4f3e-a850-988d56d0756f.png",
+      "archivedSource": "docs/coastal-corner-b-2026-09-16/corner-b-header-master.png",
+      "sourceSize": [
+        2172,
+        724
+      ],
+      "sourceHasAlpha": false,
+      "sourceSha256": "11021a270bc565c38791c1e55d35f11b5320f1d884b0cfbd973781e624c69e3c",
+      "alphaBounds": {
+        "left": 21,
+        "top": 73,
+        "width": 2140,
+        "height": 586
+      },
+      "trim": {
+        "left": 19,
+        "top": 71,
+        "width": 2144,
+        "height": 590
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      },
+      "matteMinChannel": 130,
+      "clearEnclosedMatte": true,
+      "size": [
+        2144,
+        590
+      ],
+      "aspectRatio": 3.6338983050847458,
+      "hasAlpha": true,
+      "clearedComponents": 8,
+      "bytes": 348556,
+      "sha256": "397bbc72355b430d38e6d60d5c0b97a6787e9364e2cd6721ace9d5673dd867c8"
+    },
+    {
+      "name": "corner-b-journal",
+      "path": "public/img/ui/coastal/corner-b-journal.webp",
+      "source": "exec-c8849fcf-0d37-4d7c-845a-b2c2eddfc424.png",
+      "archivedSource": "docs/coastal-corner-b-2026-09-16/corner-b-journal-master.png",
+      "sourceSize": [
+        1064,
+        1478
+      ],
+      "sourceHasAlpha": false,
+      "sourceSha256": "75dd8177aa7bb10f36066c7f96079bb07a0f37a4c9db0cbe39aaa3f25e0ea436",
+      "alphaBounds": {
+        "left": 54,
+        "top": 29,
+        "width": 971,
+        "height": 1403
+      },
+      "trim": {
+        "left": 52,
+        "top": 27,
+        "width": 975,
+        "height": 1407
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 0,
+        "bottom": 0
+      },
+      "matteMinChannel": 130,
+      "clearEnclosedMatte": false,
+      "size": [
+        975,
+        1407
+      ],
+      "aspectRatio": 0.6929637526652452,
+      "hasAlpha": true,
+      "clearedComponents": 1,
+      "bytes": 493746,
+      "sha256": "cfac0b24ce379702a8fdb9d6322c8441e338d995f7d98f00b44860e0151184e5"
+    },
+    {
+      "name": "corner-b-control",
+      "path": "public/img/ui/coastal/corner-b-control.webp",
+      "source": "exec-367d2b9a-d69b-453e-9d86-8e8cd6cb863e.png",
+      "archivedSource": "docs/coastal-corner-b-2026-09-16/corner-b-control-master.png",
+      "sourceSize": [
+        1254,
+        1254
+      ],
+      "sourceHasAlpha": false,
+      "sourceSha256": "205d8f7580251a77fbdc580d71d5d844b03c3f3ce2a88c238d82aec22265d54a",
+      "alphaBounds": {
+        "left": 72,
+        "top": 65,
+        "width": 1109,
+        "height": 1101
+      },
+      "trim": {
+        "left": 70,
+        "top": 63,
+        "width": 1113,
+        "height": 1105
+      },
+      "extension": {
+        "left": 0,
+        "right": 0,
+        "top": 4,
+        "bottom": 4
+      },
+      "matteMinChannel": 130,
+      "clearEnclosedMatte": true,
+      "size": [
+        1113,
+        1113
+      ],
+      "aspectRatio": 1,
+      "hasAlpha": true,
+      "clearedComponents": 1,
+      "bytes": 397172,
+      "sha256": "f367965e9967ac89d6bf5f686631ce560f058add10fd4854b99a1f575cd25c63"
+    }
+  ]
+}

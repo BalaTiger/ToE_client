@@ -5,6 +5,9 @@ import {
 } from '../constants/card';
 import { DEFAULT_EXPANSION_KEY, mkDeck } from './setup';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE, copyPlayers, shuffle } from './coreUtils';
+import { isTwoGodEncountersPerSkullEnabled, resolveBalancePatches } from './balancePatches';
+
+const TWO_ENCOUNTER_SKULL_PATCH_ACTIVE = isTwoGodEncountersPerSkullEnabled();
 
 // 引导文本中的术语高亮标记（渲染时由 InGameTutorialOverlay 替换为 React 元素）
 const HP = '[HP]';
@@ -264,10 +267,10 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.TREASURE_DODGE_RESULT,
     title: '求生成功',
 	body: [
-      `看，你的运气很不错，有惊无险。当你掷出4~6点时，你可以收入区域牌而不承担负面效果。`,
+      `刚才掷出了6点，区域牌已经收入手牌。当你掷出4~6点时，可以免于承担该区域牌的负面效果。`,
       `不过这样一来，其他人也都知道你是${TREASURE}了。当你使用某个身份特有的能力时，会自动揭晓身份。`,
     ],
-    highlight: 'noSpotlight',
+    highlight: 'handArea',
     lock: true,
     next: TUTORIAL_FLOW.TREASURE_USE_SKILL,
   },
@@ -488,8 +491,10 @@ const SKILL_STEPS = [
     id: TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS,
     title: '骷髅与邪神之力',
 	body: [
-      `注意${GOLD('骷髅标记')}的数量，它代表了对手在这次探险中${GOD('信仰')}邪神的次数。`,
-	  `而旁边的标签，则表示对手此刻正在${GOD('信仰')}一位邪神，并接受祂的赐福。`,
+      TWO_ENCOUNTER_SKULL_PATCH_ACTIVE
+        ? `注意${GOLD('骷髅标记')}的数量：每遭遇两次邪神才会产生1个骷髅头。`
+        : `注意${GOLD('骷髅标记')}的数量，它代表了对手在这次探险中${GOD('信仰')}邪神的次数。`,
+	  `骷髅压在角色面板边框上；框下的标签，则表示对手此刻正在${GOD('信仰')}一位邪神，并接受祂的赐福。`,
 	  `这两个信息的用处，你待会自会明白。`,
     ],
     highlight: 'opponentGodStatus',
@@ -509,7 +514,9 @@ const SKILL_STEPS = [
     title: '遭遇邪神',
 	body: [
       `刚才你看到的是，对手在自己回合摸到了${GOLD('邪神牌')}。`,
-	  `还记得刚才对手有7点${SAN}吗？因为再次遭遇邪神，对手的骷髅数增长至2，并且失去了等同于骷髅数的${SAN}。`,
+	  TWO_ENCOUNTER_SKULL_PATCH_ACTIVE
+	    ? `这是对手第3次遭遇邪神，因此没有产生新骷髅头，也不会因本次遭遇失去${SAN}。只有产生骷髅头时，才会失去等同于骷髅数的${SAN}。`
+	    : `还记得刚才对手有7点${SAN}吗？因为再次遭遇邪神，对手的骷髅数增长至2，并且失去了等同于骷髅数的${SAN}。`,
 	  `不仅如此，注意到${SAN}条上的刻度线了吗？这次结算后对手${SAN}低于刻度线，会发生什么呢？`,
     ],
     highlight: 'opponentSanBar',
@@ -519,21 +526,21 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CHECK_INTRO,
     title: '检定牌',
-    body: `就是这样！每次${SAN}降至6或以下时，都需要进行检定，触发随机效果。`,
-    highlight: 'inspectionFlipCard',
+    body: `${SAN}受到损失后降至6或以下时，需要翻开检定牌，触发随机效果。接下来观察遭遇邪神、改信与检定的完整结算。`,
+    highlight: 'deckArea',
     lock: true,
-    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
+    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_CHECK,
     title: '改信代价',
 	body: [
       `注意到邪神之力标签的变化了吗？对手放弃了原有的信仰，${GOLD('改信')}刚刚遭遇的“弗栗多”。`,
-	  `${GOLD('改信')}者需要额外失去1${SAN}。让我们看看这次${SAN}检定的结果……`,
+	  `${GOLD('改信')}者额外失去1${SAN}，相应的检定也已结算完成。可以在${SAN}条和冒险日志中查看结果。`,
     ],
     highlight: 'opponentSanAndGodStatus',
     lock: true,
-    next: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
+    next: TUTORIAL_FLOW.CULTIST_GOD_PLAYER_DRAW,
   },
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_CONVERT_RESOLVE,
@@ -566,7 +573,7 @@ const SKILL_STEPS = [
   {
     id: TUTORIAL_FLOW.CULTIST_GOD_SELECT_CARD,
     title: '蛊惑邪神牌',
-    body: `对手还有高达4点${SAN}，而${CULTIST}并不能在一回合内多次${BEWITCH}。有办法通过一次${BEWITCH}直接获胜吗？`,
+    body: `对手还有高达${TWO_ENCOUNTER_SKULL_PATCH_ACTIVE ? 3 : 4}点${SAN}，而${CULTIST}并不能在一回合内多次${BEWITCH}。有办法通过一次${BEWITCH}直接获胜吗？`,
     highlight: 'skillButton',
     lock: false,
     allowedAction: { type: 'useSkill' },
@@ -595,7 +602,9 @@ const SKILL_STEPS = [
 	body: [
       `你胜利了！让我来告诉你发生了什么……`,
 	  `通过${BEWITCH}送出一张${GOLD('邪神牌')}时，其效果不是强制收入手牌，而是强制${GOD('信仰')}！`,
-	  `对手再次遭遇邪神后，骷髅数增长到3，加上改信惩罚，${SAN}正好归零。`,
+	  TWO_ENCOUNTER_SKULL_PATCH_ACTIVE
+	    ? `这是对手第4次遭遇邪神，因此产生第2个骷髅头并失去2${SAN}；再加上1点改信惩罚，${SAN}正好归零。`
+	    : `对手再次遭遇邪神后，骷髅数增长到3，加上改信惩罚，${SAN}正好归零。`,
     ],
     highlight: 'opponentSanBar',
     lock: true,
@@ -670,9 +679,11 @@ function playerBase(id, name, role) {
     isDead: false,
     isResting: false,
     godEncounters: 0,
+    godEncounterCount: 0,
     godZone: [],
     godName: null,
     godLevel: 0,
+    hasBelievedGod: false,
     peekMemories: {},
     disableRest: false,
     disableSkill: false,
@@ -721,6 +732,7 @@ function baseTutorialState(players, log) {
     expansionKey: DEFAULT_EXPANSION_KEY,
     deckExpansionKey: DEFAULT_EXPANSION_KEY,
     temporaryStarsCallReplacement: null,
+    balancePatches: resolveBalancePatches(),
     _turnKey: 1,
     _isMP: false,
     _isTutorial: true,
@@ -773,13 +785,16 @@ export function createTutorialScenario(kind = 'treasure') {
     player.hand = [
       zoneCard('B2', '新鲜空气', 'tut-cult-god-extra'),
     ];
-    opponent.san = 7;
+    opponent.san = TWO_ENCOUNTER_SKULL_PATCH_ACTIVE ? 4 : 7;
     opponent.godEncounters = 1;
+    opponent.godEncounterCount = TWO_ENCOUNTER_SKULL_PATCH_ACTIVE ? 2 : 1;
     opponent.godName = 'NYA';
     opponent.godLevel = 1;
     opponent.godZone = [nya];
     opponent.hand = [zoneCard('C4', '夜风呼啸', 'tut-cult-god-target')];
-    const state = baseTutorialState([player, opponent], ['教学局：对手已有 1 个骷髅头、7 SAN，并正在信仰伏行之混沌。']);
+    const state = baseTutorialState([player, opponent], [
+      `教学局：对手已有 1 个骷髅头、${opponent.san} SAN，并正在信仰伏行之混沌。`,
+    ]);
     state.deck = [
       opponentDrawGod,
       playerDrawGod,
@@ -867,7 +882,7 @@ export function clearTutorialWinState(gs, stepId) {
     TUTORIAL_FLOW.CULTIST_GOD_RESULT,
   ]);
   if (!resultSteps.has(stepId)) return gs;
-  const players = copyPlayers(gs.players || []).map(player => ({ ...player, _pendingAnimDeath: false }));
+  const players = copyPlayers(gs.players || []);
   return {
     ...gs,
     players,

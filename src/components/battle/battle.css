@@ -1,0 +1,175 @@
+.toe-hand-controls { display: contents; }
+.toe-log-frame-shell { display: contents; }
+.toe-hand-area button { text-shadow: 0 1px 2px #000; }
+.toe-battle-panel {
+  position: relative;
+  background-image: linear-gradient(145deg, rgba(7, 13, 13, .88), rgba(7, 9, 9, .95)), var(--toe-ui-surface-image, none);
+  background-size: auto, 520px auto;
+  box-shadow: inset 0 0 0 1px rgba(192, 166, 115, .07), 0 5px 16px rgba(0, 0, 0, .22);
+}
+
+.toe-battle-panel::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border: 1px solid transparent;
+  border-image: var(--toe-ui-frame-image, none) 48 / 10px stretch;
+  opacity: .48;
+  pointer-events: none;
+}
+
+.toe-player-panel {
+  background-color: var(--toe-panel, #0b100f) !important;
+  border-radius: 2px !important;
+}
+
+.toe-player-panel[data-current-turn="true"] {
+  background-image: linear-gradient(145deg, rgba(20, 27, 24, .88), rgba(7, 12, 12, .94)), var(--toe-ui-surface-image, none);
+}
+
+.toe-hand-area { isolation: isolate; }
+.toe-hand-heading { position: relative; z-index: 100; padding-inline: 155px 130px; }
+.toe-hand-area > [data-self-hand-strip] { position: relative; padding: 56px 24px 8px; }
+[data-self-hand-card] { translate: 0 var(--toe-hand-rest-y, 0px); transition: translate .18s ease; }
+[data-hand-fan-card]:not([data-tsg-slime-popping]) { transform-origin: center top; }
+[data-hand-fan-card]:hover, [data-hand-fan-card]:focus-within { z-index: 40 !important; }
+[data-hand-fan-card]:focus-within { translate: 0 calc(var(--toe-hand-rest-y) - 22px); }
+@media (hover: hover) {
+  [data-hand-fan-card]:hover { translate: 0 calc(var(--toe-hand-rest-y) - 22px); }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-self-hand-card] { transition: none; }
+}
+[data-hand-fan-card] [data-hand-card-hint] { rotate: calc(-1 * var(--toe-hand-angle)); transform-origin: center top; }
+.toe-turn-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-left: auto; position: relative; z-index: 200; }
+.toe-hand-area:has(.toe-turn-plaque) { padding-block: calc(6px * var(--toe-action-scale)) !important; }
+.toe-hand-area:has(.toe-turn-plaque) .toe-hand-heading { flex-wrap: wrap; gap: calc(12px * var(--toe-action-scale)) !important; margin-bottom: calc(3px * var(--toe-action-scale)) !important; }
+.toe-hand-area:has(.toe-turn-plaque) .toe-turn-actions { margin-left: 0; flex: 0 0 auto; max-width: 100%; }
+.toe-main-actions { display: flex; align-items: center; justify-content: flex-start; gap: calc(8px * var(--toe-action-scale)); }
+/* Actual hit sizes are independent of board zoom. The bitmap carries only the frame and material. */
+.toe-button.toe-turn-plaque {
+  position: relative; display: flex; flex: 0 0 auto; align-items: center; justify-content: center;
+  width: calc(132px * var(--toe-action-scale)); height: calc(44px * var(--toe-action-scale));
+  padding: calc(7px * var(--toe-action-scale)) calc(10px * var(--toe-action-scale)); gap: calc(8px * var(--toe-action-scale));
+  font-size: calc(15px * var(--toe-action-scale)); font-weight: 700; letter-spacing: .03em; line-height: 1.1;
+  color: #e6ddc6; background: transparent; border: 0; border-radius: calc(5px * var(--toe-action-scale)); box-shadow: none;
+}
+.toe-turn-plaque::before { content: ''; position: absolute; inset: 0; background: var(--toe-action-image) center / 100% 100% no-repeat; pointer-events: none; }
+.toe-turn-skill { --toe-action-image: var(--toe-action-skill-image); --toe-action-accent: #9ed3cf; }
+.toe-turn-rest { --toe-action-image: var(--toe-action-rest-image); --toe-action-accent: #e3c49b; }
+.toe-turn-multiply { --toe-action-image: var(--toe-action-multiply-image); --toe-action-accent: #cfb2db; }
+.toe-turn-end { --toe-action-image: var(--toe-action-end-image); --toe-action-accent: #e7aca3; }
+.toe-turn-icon { position: relative; font-family: 'Segoe UI Symbol', serif; font-size: calc(21px * var(--toe-action-scale)); line-height: 1; color: var(--toe-action-accent); }
+.toe-turn-label { position: relative; display: flex; flex-direction: column; gap: 1px; line-height: 1.15; white-space: nowrap; }
+.toe-turn-label small { font-size: calc(9px * var(--toe-action-scale)); font-weight: 400; letter-spacing: 0; }
+.toe-turn-end .toe-turn-label { font-size: calc(13px * var(--toe-action-scale)); }
+.toe-button.toe-turn-plaque:hover:not(:disabled) { color: #fff4dc; border: 0; box-shadow: none; }
+.toe-turn-plaque:hover:not(:disabled)::before { filter: brightness(1.2); }
+.toe-turn-plaque:active:not(:disabled)::before { filter: brightness(.85); }
+.toe-button.toe-turn-plaque:disabled { opacity: 1; color: #aaa89d; text-shadow: 0 1px 2px #000; }
+.toe-turn-plaque:disabled::before { filter: grayscale(.85) brightness(.6); }
+.toe-turn-plaque:disabled .toe-turn-icon { color: #92968d; }
+.toe-button.toe-turn-plaque:focus-visible { outline: calc(2px * var(--toe-action-scale)) solid var(--toe-action-accent); outline-offset: calc(2px * var(--toe-action-scale)); }
+@media (min-width: 580px) and (max-height: 579px) {
+  .toe-hand-heading { padding-inline: 0; }
+  .toe-hand-area:has(.toe-turn-plaque) { display: flex; align-items: center; gap: calc(10px * var(--toe-action-scale)); padding-block: calc(3px * var(--toe-action-scale)) !important; }
+  .toe-hand-area:has(.toe-turn-plaque) .toe-hand-heading { display: contents !important; }
+  .toe-hand-area:has(.toe-turn-plaque) .toe-hand-heading > span { flex: 0 0 calc(46px * var(--toe-action-scale)); font-size: calc(11px * var(--toe-action-scale)) !important; }
+  .toe-hand-area:has(.toe-turn-plaque) .toe-turn-actions { order: 1; }
+  .toe-hand-area:has(.toe-turn-plaque) [data-self-hand-strip] { order: 2; flex: 1; min-width: 0; justify-content: flex-start !important; flex-wrap: nowrap !important; overflow-x: auto; overflow-y: hidden; padding: 10px 0 0; }
+  .toe-hand-area:has(.toe-turn-plaque) [data-self-hand-card] { flex-shrink: 0; }
+  .toe-main-actions { gap: calc(6px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) { display: grid; grid-template-columns: repeat(2, auto); gap: calc(4px * var(--toe-action-scale)); }
+  .toe-button.toe-turn-plaque { width: calc(104px * var(--toe-action-scale)); gap: calc(5px * var(--toe-action-scale)); font-size: calc(13px * var(--toe-action-scale)); }
+  .toe-turn-end .toe-turn-label { font-size: calc(11px * var(--toe-action-scale)); }
+}
+@media (max-width: 579px) {
+  .toe-hand-heading { padding-inline: 0; }
+  .toe-hand-area:has(.toe-turn-plaque) { --toe-table-inset: calc(44px * var(--toe-action-scale)); }
+  .toe-hand-area:has(.toe-turn-plaque):has(.toe-turn-multiply) { --toe-table-inset: calc(90px * var(--toe-action-scale)); }
+  .toe-hand-area > [data-self-hand-strip] { flex-wrap: nowrap !important; justify-content: safe center !important; overflow-x: auto; overflow-y: hidden; padding: 10px 8px 8px !important; }
+  .toe-hand-area:has(.toe-turn-plaque) .toe-hand-heading { flex-direction: column; align-items: flex-start !important; gap: calc(8px * var(--toe-action-scale)) !important; }
+  .toe-main-actions { display: grid; grid-template-columns: repeat(3, auto); gap: calc(6px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) { grid-template-columns: repeat(2, auto); }
+  .toe-button.toe-turn-plaque { width: calc(100px * var(--toe-action-scale)); gap: calc(5px * var(--toe-action-scale)); font-size: calc(13px * var(--toe-action-scale)); }
+  .toe-main-actions:has(.toe-turn-multiply) .toe-turn-plaque { width: calc(132px * var(--toe-action-scale)); }
+  .toe-turn-end .toe-turn-label { font-size: calc(11px * var(--toe-action-scale)); }
+}
+.toe-phase-bar { box-shadow: inset 3px 0 0 var(--toe-line, #796749), inset 0 1px 0 rgba(192, 166, 115, .08); }
+.toe-phase-timer { border: 1px solid currentColor; padding: 3px 8px; font-variant-numeric: tabular-nums; }
+.toe-log-heading { border-bottom: 1px solid var(--toe-line-dim, #3a3527); padding-bottom: 6px; }
+.toe-log-line { text-shadow: 0 1px 2px #000; overflow-wrap: anywhere; }
+.toe-log-line[data-turn-heading="true"] { margin-top: 7px; padding-top: 5px; border-top: 1px solid rgba(173, 152, 109, .16); }
+.toe-stat-track {
+  position: relative;
+  box-sizing: border-box;
+  overflow: visible;
+  border: 1px solid;
+  border-color: #8d7e5e #665b43 #554d3a #a08e67;
+  border-radius: 0;
+  background: linear-gradient(180deg, #0008, #0003), var(--toe-stat-track-color, #100e0a);
+  box-shadow: 0 0 0 1px var(--toe-stat-line-color, #262319), inset 0 1px 2px #0009, 0 1px 2px #0008;
+}
+/* A single metal end cap, with no repeated dividers over the fill. */
+.toe-stat-track::before {
+  content: '';
+  position: absolute;
+  left: -3px;
+  top: -2px;
+  bottom: -2px;
+  width: 3px;
+  background: linear-gradient(180deg, #b4a27a, #85734f 45%, #51452f);
+  clip-path: polygon(100% 0, 100% 100%, 0 70%, 0 30%);
+  pointer-events: none;
+}
+.toe-stat-fill {
+  background-image: linear-gradient(180deg, #f0dec324, transparent 30%, #0001 65%, #0005);
+  box-shadow: inset 0 1px 0 #f3ddba18;
+}
+.toe-san-threshold {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  z-index: 2;
+  background: #c5b88e;
+  box-shadow: 1px 0 0 #15130d88;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.toe-stat-value { font-variant-numeric: tabular-nums; text-shadow: 0 1px 3px #000; }
+.toe-role-selection { width: min(540px,92vw); max-height: calc(100dvh - 48px); overflow-y: auto; overscroll-behavior: contain; padding: 28px 26px; }
+.toe-role-options { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
+.toe-battle-role-choice { --toe-option-accent: var(--toe-role-accent); }
+.toe-battle-role-choice:hover, .toe-battle-role-choice:focus-visible { border-color: var(--toe-role-accent) !important; }
+.toe-battle-role-choice:focus-visible { outline: 2px solid var(--toe-role-accent); outline-offset: 3px; }
+.toe-battle-role-choice small { color: #c2b494; }
+.toe-discard-gallery { border: 1px solid var(--toe-line, #796749); padding: 22px; box-sizing: border-box; }
+.toe-emoji-picker { background-image: linear-gradient(rgba(8, 14, 13, .88), rgba(8, 14, 13, .94)), var(--toe-ui-surface-image, none); }
+.toe-blind-draw { background-image: radial-gradient(ellipse at center, rgba(8, 22, 21, .45), rgba(2, 6, 6, .6)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-blind-draw-title { border-top: 1px solid #6d614a; border-bottom: 1px solid #6d614a; padding: 14px 24px; }
+.toe-dice-scene { background-image: radial-gradient(ellipse at center, rgba(31, 35, 27, .36), rgba(2, 6, 6, .84)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-dice-label { color: #d3c39f !important; font-size: 14px !important; border-bottom: 1px solid #62573f; padding: 0 20px 14px; text-align: center; }
+.toe-dice-tray { padding: 24px 36px; border: 1px solid #655c45; background: radial-gradient(ellipse at center, rgba(39, 46, 39, .5), rgba(3, 10, 10, .8)); box-shadow: inset 0 0 0 5px #090e0d, inset 0 0 0 6px #403e2f, 0 12px 40px #0009; }
+.toe-dice-result { min-width: min(380px, 84vw); padding: 14px 18px; border-top: 1px solid #655c45; }
+.toe-turn-title { border-top: 1px solid currentColor; border-bottom: 1px solid currentColor; padding: .24em 1.2em .3em; }
+.toe-win-scene { background-image: radial-gradient(ellipse at center, transparent 10%, rgba(2, 6, 6, .6)), var(--toe-ui-surface-image, none); background-size: cover; }
+.toe-treasure-map { background-image: linear-gradient(145deg, rgba(83, 75, 47, .8), rgba(25, 28, 21, .9)), var(--toe-ui-surface-image, none) !important; }
+.toe-role-reveal { padding: 32px 44px; border-top: 1px solid #75674c; border-bottom: 1px solid #75674c; background: rgba(6, 12, 11, .82); }
+
+@media (min-width: 580px) and (max-height: 580px) {
+  .toe-role-selection { width: min(840px,92vw); padding: 20px; }
+  .toe-role-options { grid-template-columns: repeat(4,minmax(0,1fr)); gap: 10px; }
+}
+
+@media (max-width: 580px) {
+  .toe-dice-tray { padding: 18px 28px; }
+  .toe-discard-gallery { padding: 16px 10px; }
+  .toe-role-reveal { padding: 24px 18px; }
+}
+
+.toe-turn-actions:empty { display: none; }
+.toe-button.toe-phase-plaque { width: calc(148px * var(--toe-action-scale)); }
+.toe-phase-plaque .toe-turn-label { font-size: calc(13px * var(--toe-action-scale)); }
+.toe-battle-debug-toggle { opacity: .18; transition: opacity .15s ease; }
+.toe-battle-debug-toggle:is(:hover, :focus-visible) { opacity: .9; }

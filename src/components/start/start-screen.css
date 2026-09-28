@@ -1,0 +1,67 @@
+/* Main content shares one 1490x1056 stage. Viewport controls scale separately. */
+.toe-start-screen { position: relative; width: 100%; height: 100dvh; min-height: 0; overflow: hidden; background: #060707; color: #d4bd93; font-family: 'Noto Serif SC','SimSun',serif; text-align: center; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
+.toe-start-background, .toe-start-shade { position: absolute; inset: 0; pointer-events: none; }
+.toe-start-background { background-size: cover; background-position: center top; filter: brightness(.94) saturate(.94); }
+.toe-start-shade { background: radial-gradient(ellipse at center, transparent 28%, #0008 100%), linear-gradient(180deg, #0006, #0001 25%, #0005); }
+.toe-start-stage { position: absolute; top: 50%; left: 50%; transform-origin: center; }
+.toe-start-stage * { box-sizing: border-box; }
+.toe-start-hero { position: absolute; inset: 0; pointer-events: none; }
+.toe-start-title { position: absolute; top: 105px; left: 465px; width: 560px; height: auto; filter: brightness(1.12) drop-shadow(0 2px 0 #140e0ac0) drop-shadow(0 0 24px #e4d6bf2e); }
+.toe-start-subtitle { position: absolute; top: 232px; left: 345px; width: 800px; height: 50px; display: flex; align-items: center; justify-content: center; gap: 22px; font-size: 36px; letter-spacing: 9px; color: #d8c099; white-space: nowrap; }
+.toe-start-subtitle img { width: 135px; height: auto; opacity: .85; }
+.toe-start-subtitle img:last-child { transform: scaleX(-1); }
+.toe-start-english { position: absolute; top: 287px; left: 345px; width: 800px; font-family: 'Cinzel',serif; font-size: 25px; line-height: 32px; letter-spacing: 10px; color: #d3bd96; text-transform: uppercase; }
+.toe-start-divider { position: absolute; top: 327px; left: 495px; width: 500px; height: auto; filter: brightness(1.8); }
+.toe-start-intro { position: absolute; top: 370px; left: 265px; width: 960px; margin: 0; font-size: 20px; line-height: 34px; letter-spacing: 1px; color: #d5bd94; text-shadow: 0 1px 8px #000; }
+.toe-start-intro span { display: block; white-space: nowrap; }
+.toe-start-overview { position: absolute; top: 460px; left: 265px; width: 960px; height: 312px; display: grid; grid-template-columns: 415px 510px; gap: 35px; }
+.toe-start-roles { display: grid; grid-template-rows: repeat(3, 98px); gap: 9px; }
+.toe-start-art-panel { position: relative; isolation: isolate; background-color: #09100f; background-image: linear-gradient(90deg, #0001, #0000), var(--toe-start-scene); background-size: cover; background-position: center; }
+.toe-start-art-panel::after {
+  content: ''; position: absolute; inset: 0; --corner: 15px; --rail: 5.25px;
+  /* Narrow rails exclude the source frame's dark inner padding; corners stay intact. */
+  background-image: var(--toe-start-frame-tl), var(--toe-start-frame-tr), var(--toe-start-frame-bl), var(--toe-start-frame-br), var(--toe-start-frame-top), var(--toe-start-frame-bottom), var(--toe-start-frame-left), var(--toe-start-frame-right);
+  background-position: left top, right top, left bottom, right bottom, center top, center bottom, left center, right center;
+  background-size: var(--corner) var(--corner), var(--corner) var(--corner), var(--corner) var(--corner), var(--corner) var(--corner), calc(100% - 2 * var(--corner)) var(--rail), calc(100% - 2 * var(--corner)) var(--rail), var(--rail) calc(100% - 2 * var(--corner)), var(--rail) calc(100% - 2 * var(--corner));
+  background-repeat: no-repeat; mix-blend-mode: screen; filter: brightness(1.15) sepia(.25); pointer-events: none;
+}
+.toe-start-role { display: flex; align-items: center; padding: 14px 40px; gap: 25px; text-align: left; }
+.toe-start-role-icon { width: 62px; height: 62px; object-fit: contain; flex-shrink: 0; filter: drop-shadow(0 0 8px #0008); }
+.toe-start-role-copy { min-width: 0; white-space: nowrap; text-shadow: 0 2px 5px #000; }
+.toe-start-role-name { color: var(--toe-role-accent); font-size: 29px; line-height: 38px; font-weight: 600; letter-spacing: 4px; }
+.toe-start-role-goal { font-size: 20px; line-height: 28px; letter-spacing: 1px; color: #d6bd91; }
+.toe-start-rules { padding: 27px 30px; text-align: left; }
+.toe-start-rules-heading { display: flex; align-items: center; justify-content: center; gap: 22px; margin-bottom: 25px; }
+.toe-start-rules-heading h2 { margin: 0; font-size: 28px; line-height: 40px; font-weight: 600; letter-spacing: 7px; white-space: nowrap; }
+.toe-start-rules-heading i { width: 108px; height: 1px; background: linear-gradient(90deg, transparent, #b59865); position: relative; }
+.toe-start-rules-heading i::after { content: ''; position: absolute; right: 0; top: -2px; width: 5px; height: 5px; border: 1px solid #b59865; transform: rotate(45deg); }
+.toe-start-rules-heading i:last-child { transform: scaleX(-1); }
+.toe-start-rules ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 17px; }
+.toe-start-rules li { display: flex; align-items: center; gap: 12px; font-size: 17px; line-height: 25px; white-space: nowrap; text-shadow: 0 2px 4px #000; }
+.toe-start-rules li > span:first-child { font-size: 26px; line-height: 25px; color: #d4bd91; }
+.toe-start-actions { position: absolute; left: 295px; top: 804px; width: 900px; height: 130px; display: grid; grid-template-columns: 385px 96px 385px; gap: 17px; align-items: center; }
+.toe-start-primary {
+  --toe-start-button-edge: #493c2b;
+  width: 385px; height: 112px; padding: 0; border: 0; border-radius: 0; color: #e0c79d; font: 600 36px/1.3 'Noto Serif SC','SimSun',serif; letter-spacing: 5px; text-shadow: 0 2px 5px #000; cursor: pointer;
+  box-shadow: inset 0 2px 0 #ead5a340, inset 0 -8px 14px #0008, 0 5px 0 var(--toe-start-button-edge), 0 7px 0 #080707, 0 12px 18px #000b;
+  transition: transform 150ms ease-out, filter 150ms ease-out, box-shadow 150ms ease-out;
+}
+.toe-start-primary::after { --corner: 18px; --rail: 6.3px; filter: brightness(1.75) sepia(.25); }
+.toe-start-primary:enabled:is(:hover, :focus-visible) { filter: brightness(1.17); transform: translateY(-2px); box-shadow: inset 0 2px 0 #ead5a366, inset 0 -8px 14px #0007, 0 7px 0 var(--toe-start-button-edge), 0 9px 0 #080707, 0 15px 20px #000b; }
+.toe-start-primary:enabled:active { filter: brightness(1.06); transform: translateY(3px); box-shadow: inset 0 2px 6px #0008, inset 0 -2px 0 #ead5a32b, 0 2px 0 var(--toe-start-button-edge), 0 4px 8px #000b; }
+.toe-start-primary:disabled { opacity: .6; filter: saturate(.55); cursor: wait; }
+.toe-start-online { --toe-start-button-edge: #3d3245; color: #d5c5da; }
+@media (prefers-reduced-motion: reduce) {
+  .toe-start-primary { transition: none; }
+  .toe-start-primary:enabled:is(:hover, :focus-visible, :active) { transform: none; }
+}
+.toe-start-action-seal { width: 77px; height: 132px; object-fit: contain; justify-self: center; filter: brightness(1.45) sepia(.25) drop-shadow(0 2px 10px #0006); }
+.toe-start-footer { position: fixed; left: 14px; right: 14px; bottom: 14px; z-index: 120; height: calc(57.37px * var(--toe-start-control-scale)); pointer-events: none; }
+.toe-start-footer .toe-start-secondary { box-sizing: border-box; position: absolute; left: 0; bottom: 0; transform: scale(var(--toe-start-control-scale)); transform-origin: left bottom; pointer-events: auto; }
+.toe-start-footer .toe-start-secondary:last-child { left: auto; right: 0; transform-origin: right bottom; }
+.toe-start-secondary { width: 260px; height: 57.37px; padding: 0 10px 0 64px; border: 0; border-radius: 0; background-color: transparent; background-size: contain; background-position: center; background-repeat: no-repeat; font: 400 15px/1.4 'Noto Serif SC','SimSun',serif; color: #c6ac80; letter-spacing: .5px; text-align: left; white-space: nowrap; cursor: pointer; }
+.toe-start-secondary:hover { filter: brightness(1.16); }
+.toe-start-screen button:focus-visible { outline: 2px solid #dac59e; outline-offset: 4px; }
+.toe-settings-start .toe-settings-triggers { zoom: var(--toe-start-control-scale); }
+.toe-settings-start .toe-settings-toggle { width: 110px; height: 40px; min-height: 40px; padding: 0; font-size: 20px; line-height: 1; }
+.toe-settings-start .toe-settings-panel { max-height: max(0px, calc(100dvh - 40px * var(--toe-start-control-scale) - 20px)); }

@@ -1,10 +1,10 @@
 import {
   copyPlayers,
-  clamp,
   isZoneCard,
   isBlankZoneCard,
   isBlackGoatYoung,
   isTsathogguaSlime,
+  isVanishingDerivedCard,
   canRevealForHunt,
   hasHuntRevealableCard,
   separateBlackGoatYoung,
@@ -13,26 +13,27 @@ import {
   buildWorshipFromHandLog,
   removeCardsFromDiscard,
   makeInspectionMeta,
-  buildEtherealizeLoss,
-  buildEtherealizeRedirectDecision,
-  compareCaveDuelCards,
   formatSanLoss,
 } from './coreUtils';
 import {
   aiChooseRevealCard,
   aiChooseHunterLootCards,
   chooseAiRoseThornTarget,
+  chooseAiDamageLinkTarget,
   chooseAiCultistBewitchPlan,
   decideAiSkillUsage,
   shouldAiRest,
   getHunterChaseTargets,
+  getHunterLowQualityConfidence,
+  orderHunterChaseTargets,
   canCultistWinByBewitch,
   canCultistEmptyHandByBewitch,
   aiShouldKeepZoneCard,
   aiShouldNotRest,
   isCultistEndingTurnUnreasonable,
 } from './ai';
-import { applyFx, applyHpDamageWithLink } from './effectEngine';
+import { applyFx, applyHpDamageWithLink, submitLossEvents } from './effectEngine';
+import { advanceGodEncounter, formatGodEncounterProgress } from './balancePatches';
 import {
   checkWin,
   aiHandleGodCard,
@@ -41,20 +42,59 @@ import {
   abandonGodFollower,
   convertGodFollower,
   startNextTurn,
+  aiDrawAndApply,
+  grantTsathogguaSlimeAtEndTurn,
 } from './turnEngine';
 import { withClearedTurnAnimFields } from './turnAnimState';
-import { buildAnimQueue } from './animQueueCore';
-import { statePatchStep } from './animQueueHelpers';
+import { buildFullHandSwapTransferQueueFromLogs } from './animQueueCore';
+import { cardTransferStep, discardStep, statePatchStep } from './animQueueHelpers';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
 import { createBlackGoatYoungCard } from '../constants/card';
-import { buildStatEvents } from './statEvents';
-import { END_TURN_EVENT, getEndTurnReplayHandCards } from './endTurnEvents';
+import { statEventsToAnimQueue } from './statEvents';
+import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
+import { END_TURN_EVENT, getEndTurnEvents, getEndTurnReplayHandCards, resolveReverseTurnOrderAtEnd } from './endTurnEvents';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { getCthRestDrawRemaining } from './cthRestDrawFlow';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  requestZhuReveal,
+} from './zhuPower';
 import { buildApophisNightLog, getApophisNightForLevel, resolveApophisTarget } from './apophisNight';
-import { applyBalanceDiscardSideEffects } from './balanceCards';
+import { applyBalanceDiscardSideEffects, buildBalanceDiscardLogLines, buildBalanceDiscardLossEvents } from './balanceCards';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
+import { enterTurnFlowStage } from './turnFlowManager';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
-import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents';
+import {
+  buildGodPowerBlockedStepsFromVisualEvents,
+  buildTsathogguaSlimeGrantSteps,
+  createBewitchGiftEvent,
+  createCardMoveVisualEvent,
+  createLogOnlyVisualEvent,
+  createOrderedSettlementEvents,
+  createApophisEclipseEvent,
+  createGodPowerBlockedEvent,
+  createGodStatusChangedEvent,
+  createDiceResultVisualEvent,
+  createHuntTargetEvent,
+  createHuntResultEvent,
+  createMultiplyVisualEvent,
+  createSwapCardsEvent,
+  createStatEventsEvent,
+  createTsathogguaSlimeGrantEvent,
+} from './visualEvents';
+import { createRuleResolutionTransaction, orderRuleResolutionEvents, statEventIdentity } from './ruleResolutionTransaction';
+import { compileRuleVisualEventsToAnimTransaction } from './visualEventTransactionCompiler';
+import {
+  getBestCaveDuelCardIndex,
+  resolveCaveDuelOutcome,
+} from './caveDuel';
+import { addDamageLink } from './damageLinks';
+import { chooseAiHuntDiscardIndex } from './aiDiscardChoices';
+import { resolveAiHandLimitDiscards } from './aiHandLimitDiscard';
+import { applyZoneCardIncome, settlePendingZoneIncome } from './zoneCardIncome';
+import { buildTargetContinuationAbilityData } from './targetContinuation';
 
 /**
  * 检查两张卡是否满足追捕匹配规则。
@@ -63,6 +103,8 @@ import { createGodPowerBlockedEvent, createSwapCardsEvent } from './visualEvents
  * - 空白区域牌默认匹配
  * - 否则字母或数字相同即匹配
  */
+let aiActionSequence = 0;
+
 export function cardsHuntMatch(a, b) {
   if (!a || !b) return false;
   if (isBlackGoatYoung(a) || isBlackGoatYoung(b) || isTsathogguaSlime(a) || isTsathogguaSlime(b)) return false; // 衍生牌不可被任何卡牌匹配
@@ -70,18 +112,6 @@ export function cardsHuntMatch(a, b) {
   if (!isZoneCard(a)) return false;     // 追捕者弃非区域牌去匹配区域牌 → 失败
   if (isBlankZoneCard(a) || isBlankZoneCard(b)) return true;
   return a.letter === b.letter || a.number === b.number;
-}
-
-function caveDuelBlindChoiceScore(card) {
-  return Number.isFinite(card?.number) ? card.number : 3.5;
-}
-
-function getBestCaveDuelCardIndex(hand = []) {
-  if (!hand.length) return -1;
-  // 盲选：只看自己手牌编号高低，绝不参考对手亮牌（穴居人战争是同时亮牌）
-  return hand.reduce((bestIdx, card, idx) => (
-    caveDuelBlindChoiceScore(card) > caveDuelBlindChoiceScore(hand[bestIdx]) ? idx : bestIdx
-  ), 0);
 }
 
 function countTreasureAxes(hand = []) {
@@ -117,11 +147,6 @@ function treasureCardRetentionValue(card, hand = [], index = -1) {
   return axisContribution * 8 + 1;
 }
 
-function treasureHandValue(hand = []) {
-  return countTreasureAxes(hand) * 10
-    + hand.reduce((sum, card, index) => sum + treasureCardRetentionValue(card, hand, index) * 0.2, 0);
-}
-
 function chooseTreasureSwapGiveIndex(hand = []) {
   if (!hand.length) return -1;
   return hand.reduce((bestIdx, card, index) => {
@@ -131,34 +156,131 @@ function chooseTreasureSwapGiveIndex(hand = []) {
   }, 0);
 }
 
-function evaluateTreasureSwapSteal(selfHand = [], takenCard) {
-  const beforeScore = treasureHandValue(selfHand);
-  const handAfterSteal = [...selfHand, takenCard];
-  const giveIdx = chooseTreasureSwapGiveIndex(handAfterSteal);
-  if (giveIdx < 0) return { score: -Infinity, giveIdx: -1 };
-  const handAfterSwap = handAfterSteal.filter((_, index) => index !== giveIdx);
-  return {
-    score: treasureHandValue(handAfterSwap) - beforeScore,
-    giveIdx,
-  };
+function escapeRegExp(value = '') {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
-function chooseAiTreasureSwapPlan(players = [], sourceIdx, targetIndices = [], overrideTargetIdx = null) {
+function getPublicTreasureGainKeys(log = [], playerName = '') {
+  if (!playerName) return [];
+  const escapedName = escapeRegExp(playerName);
+  const explicitGain = new RegExp(
+    `(?:^|】|！|\\s)${escapedName}(?:（[^）]+）)?\\s*(?:收入了|收入|获得)`,
+  );
+  const qualifiedDraw = new RegExp(
+    `(?:^|】|！|\\s)${escapedName}(?:（[^）]+）)?\\s*摸到`,
+  );
+  const firstComeGain = new RegExp(`【先到先得】${escapedName}\\s*选择了`);
+  const bewitchGain = new RegExp(`对\\s+${escapedName}\\s+【蛊惑】，赠予`);
+  const keys = [];
+
+  for (const line of log || []) {
+    if (typeof line !== 'string' || /选择弃置|评估后选择弃置/.test(line)) continue;
+    const keptDraw = qualifiedDraw.test(line) && /选择收入|规避|强制触发|强制展示/.test(line);
+    if (!explicitGain.test(line) && !keptDraw && !firstComeGain.test(line) && !bewitchGain.test(line)) continue;
+    for (const match of line.matchAll(/\[([A-D])([1-4])\]/g)) {
+      keys.push({ letter: match[1], number: Number(match[2]), key: `${match[1]}${match[2]}` });
+    }
+  }
+  return keys;
+}
+
+function pickRandomItem(items = []) {
+  if (!items.length) return null;
+  return items[Math.min(items.length - 1, Math.floor(Math.random() * items.length))];
+}
+
+function getTreasureProgressPriority(selfHand = [], card) {
+  if (!isZoneCard(card) || card.isGod) return 0;
+  const myZoneCards = selfHand.filter(handCard => isZoneCard(handCard) && !handCard.isGod);
+  const myLetters = new Set(myZoneCards.map(handCard => handCard.letter).filter(Boolean));
+  const myNumbers = new Set(myZoneCards.map(handCard => handCard.number).filter(number => number != null));
+  return Number(!!card.letter && !myLetters.has(card.letter))
+    + Number(card.number != null && !myNumbers.has(card.number));
+}
+
+function chooseTreasurePublicTakeIndex(selfHand = [], target) {
+  if (!target?.revealHand || !target?.pickInsteadOfRandom || !target.hand?.length) return -1;
+  const scored = target.hand.map((card, index) => ({
+    index,
+    progressPriority: getTreasureProgressPriority(selfHand, card),
+  }));
+  const bestProgressPriority = Math.max(...scored.map(candidate => candidate.progressPriority));
+  if (bestProgressPriority <= 0) return -1;
+  return pickRandomItem(scored.filter(candidate => candidate.progressPriority === bestProgressPriority))?.index ?? -1;
+}
+
+export function chooseAiTreasureSwapPlan(players = [], sourceIdx, targetIndices = [], log = [], options = {}) {
   const self = players[sourceIdx];
   if (!self?.hand?.length) return null;
-  const candidates = overrideTargetIdx != null ? [overrideTargetIdx] : targetIndices;
-  const scoredTargets = candidates
+
+  const canGiveNonZone = self.hand.some(card => !isZoneCard(card));
+  let candidates = targetIndices
     .filter(idx => idx != null && idx !== sourceIdx && players[idx] && !players[idx].isDead && players[idx].hand?.length)
     .map(idx => {
-      const targetHand = players[idx].hand || [];
-      const outcomes = targetHand.map(card => evaluateTreasureSwapSteal(self.hand, card));
-      const expectedScore = outcomes.reduce((sum, outcome) => sum + outcome.score, 0) / Math.max(1, outcomes.length);
-      return { idx, expectedScore };
-    })
-    .sort((a, b) => b.expectedScore - a.expectedScore || a.idx - b.idx);
-  if (!scoredTargets.length) return null;
-  if (overrideTargetIdx == null && scoredTargets[0].expectedScore <= 0.05) return null;
-  return { targetIdx: scoredTargets[0].idx, expectedScore: scoredTargets[0].expectedScore };
+      const target = players[idx];
+      const canPickPublicHand = !!target.revealHand && !!target.pickInsteadOfRandom;
+      const publicGainKeys = canPickPublicHand
+        ? target.hand.filter(card => isZoneCard(card) && !card.isGod).map(card => ({
+          letter: card.letter,
+          number: card.number,
+          key: card.key,
+        }))
+        : getPublicTreasureGainKeys(log, target.name);
+      const progressPriority = publicGainKeys.reduce((best, card) => (
+        Math.max(best, getTreasureProgressPriority(self.hand, { ...card, isZone: true }))
+      ), 0);
+      const informationPriority = progressPriority > 0 ? (canPickPublicHand ? 2 : 1) : 0;
+      return { idx, informationPriority, progressPriority, publicGainKeys, canPickPublicHand };
+    });
+  if (!candidates.length) return null;
+
+  const bestInformationPriority = Math.max(...candidates.map(candidate => candidate.informationPriority));
+  if (bestInformationPriority > 0) {
+    candidates = candidates.filter(candidate => candidate.informationPriority === bestInformationPriority);
+  }
+  const bestProgressPriority = Math.max(...candidates.map(candidate => candidate.progressPriority));
+  if (options.requireProgress && bestProgressPriority <= 0) return null;
+  if (bestProgressPriority > 0) {
+    candidates = candidates.filter(candidate => candidate.progressPriority === bestProgressPriority);
+  }
+
+  if (bestProgressPriority > 0 && canGiveNonZone && candidates.length > 1) {
+    const confirmedNonCultists = candidates.filter(({ idx }) => (
+      players[idx].roleRevealed && players[idx].role !== ROLE_CULTIST
+    ));
+    const confirmedCultists = candidates.filter(({ idx }) => (
+      players[idx].roleRevealed && players[idx].role === ROLE_CULTIST
+    ));
+    if (confirmedNonCultists.length) candidates = confirmedNonCultists;
+    else if (confirmedCultists.length) candidates = confirmedCultists;
+  }
+
+  const selected = pickRandomItem(candidates);
+  return selected ? {
+    targetIdx: selected.idx,
+    progressPriority: selected.progressPriority,
+    publicGainKeys: selected.publicGainKeys,
+    canPickPublicHand: selected.canPickPublicHand,
+    canGiveNonZone,
+  } : null;
+}
+
+function shouldTreasureSwapInsteadOfRest(self, plan) {
+  if (!self || !plan?.progressPriority) return false;
+  const zoneCards = (self.hand || []).filter(card => isZoneCard(card) && !card.isGod);
+  const letters = new Set(zoneCards.map(card => card.letter).filter(Boolean));
+  const numbers = new Set(zoneCards.map(card => card.number).filter(number => number != null));
+  const missingLetters = ['A', 'B', 'C', 'D'].filter(letter => !letters.has(letter));
+  const missingNumbers = [1, 2, 3, 4].filter(number => !numbers.has(number));
+  const knownGainCouldComplete = plan.publicGainKeys.some(card => (
+    (missingLetters.length > 0 || missingNumbers.length > 0)
+    && missingLetters.every(letter => card.letter === letter)
+    && missingNumbers.every(number => card.number === number)
+  ));
+  const overHandLimitNearCompletion = zoneCards.length > (self._nyaHandLimit ?? 4)
+    && missingLetters.length <= 1
+    && missingNumbers.length <= 1;
+  return knownGainCouldComplete || overHandLimitNearCompletion;
 }
 
 /**
@@ -169,6 +291,7 @@ export function moveEligibleBlankZones(players, log = []) {
   let changed = false;
   const P = copyPlayers(players);
   const L = [...log];
+  const visualEvents = [];
   P.forEach(player => {
     if (!player || player.isDead) return;
     const blankZones = (player.zoneCards || []).filter(isBlankZoneCard);
@@ -176,13 +299,15 @@ export function moveEligibleBlankZones(players, log = []) {
     if (player.hand.length <= 3) {
       blankZones.forEach(blank => {
         player.hand.push(blank);
-        L.push(`${player.name} 手牌不大于3张，将空白区域牌收入手牌`);
+        const msg = `${player.name} 手牌不大于3张，将空白区域牌收入手牌`;
+        L.push(msg);
+        visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg] }));
       });
       player.zoneCards = (player.zoneCards || []).filter(c => !isBlankZoneCard(c));
       changed = true;
     }
   });
-  return changed ? { players: P, log: L } : null;
+  return changed ? { players: P, log: L, visualEvents } : null;
 }
 
 function getBlackGoatMultiplyEvent(players, sourceIdx) {
@@ -195,7 +320,7 @@ function getBlackGoatMultiplyEvent(players, sourceIdx) {
       const aBgy = a.p.hand.filter(isBlackGoatYoung).length;
       const bBgy = b.p.hand.filter(isBlackGoatYoung).length;
       if (aBgy !== bBgy) return aBgy - bBgy;
-      return a.p.hp - b.p.hp;
+      return a.p.hp - b.p.hp || b.p.san - a.p.san;
     });
   if (!targetCandidates.length) return null;
   return { fromIdx: sourceIdx, toIdx: targetCandidates[0].i };
@@ -238,26 +363,6 @@ function bestCultistBewitchSanLoss(hand = []) {
   }, 0);
 }
 
-function getHunterLowQualityConfidence(gs, players, hunterIdx) {
-  const hunter = players?.[hunterIdx];
-  const memory = hunter?.huntQualityMemory;
-  if (!memory || !Array.isArray(memory.handIds) || memory.handIds.length === 0) return 0;
-  const currentIds = new Set((hunter.hand || []).map(card => card?.id).filter(id => id != null));
-  const retained = memory.handIds.filter(id => currentIds.has(id)).length;
-  const retention = retained / memory.handIds.length;
-  if (retention < 0.5) return 0;
-
-  const livingCount = Math.max(1, players.filter(p => p && !p.isDead).length);
-  const turnGap = Math.max(0, (gs?.turn || 0) - (memory.turn || 0));
-  const elapsedRounds = Math.floor(turnGap / livingCount);
-  if (elapsedRounds >= 3) return 0;
-
-  const timeFactor = elapsedRounds <= 0 ? 1 : elapsedRounds === 1 ? 0.75 : 0.45;
-  const handSizeDrift = Math.max(0, (hunter.hand || []).length - (memory.handSize || memory.handIds.length));
-  const driftPenalty = handSizeDrift <= 1 ? 1 : handSizeDrift === 2 ? 0.75 : 0.45;
-  return retention * timeFactor * driftPenalty;
-}
-
 function hasImmediateHunterKill(players, hunterIdx, huntAbandoned = []) {
   const hunter = players?.[hunterIdx];
   if (!hunter || hunter.isDead || !(hunter.hand || []).some(isZoneCard)) return false;
@@ -277,38 +382,24 @@ function markHunterLowQualityHand(players, hunterIdx, gs, attemptedTargets) {
     hunter.huntQualityMemory = null;
     return;
   }
+  const previousMemory = hunter.huntQualityMemory;
+  const previousIds = new Set(previousMemory?.handIds || []);
+  const retainedFromPrevious = handIds.filter(id => previousIds.has(id)).length;
+  const sameStructure = previousIds.size > 0 && retainedFromPrevious / previousIds.size >= 0.5;
   hunter.huntQualityMemory = {
     turn: gs?.turn || 0,
     handIds,
     handSize: hunter.hand.length,
     failedTargetCount: attemptedTargets,
+    failedChainCount: sameStructure
+      ? (previousMemory.failedChainCount ?? previousMemory.failedTargetCount ?? 1) + 1
+      : 1,
   };
 }
 
 function clearHunterLowQualityHand(players, hunterIdx) {
   const hunter = players?.[hunterIdx];
   if (hunter) hunter.huntQualityMemory = null;
-}
-
-function getHunterTargetWeight({ player }) {
-  const missingHp = clamp(10 - (player?.hp ?? 10), 0, 10);
-  return 1 + missingHp * 0.15 + (player?.roleRevealed ? 0.35 : 0);
-}
-
-function weightedHunterTargetOrder(targets) {
-  const pool = targets.map(target => ({ target, weight: getHunterTargetWeight(target) }));
-  const order = [];
-  while (pool.length) {
-    const total = pool.reduce((sum, item) => sum + item.weight, 0);
-    let roll = Math.random() * total;
-    let pick = pool.length - 1;
-    for (let i = 0; i < pool.length; i++) {
-      roll -= pool[i].weight;
-      if (roll < 0) { pick = i; break; }
-    }
-    order.push(pool.splice(pick, 1)[0].target);
-  }
-  return order;
 }
 
 function shouldAiMultiply({ gs, players, sourceIdx, aiEffRole, ai, aiSkillDecision, cultistBewitchPlan, huntAbandoned }) {
@@ -343,27 +434,80 @@ export function clearPlayerGodZone(targetPlayer, discard) {
 /**
  * AI 弃牌至手牌上限。
  */
-export function discardAiHandToLimit(P, ct, Disc, L) {
-  const aiHandLimit = P[ct]._nyaHandLimit ?? 4;
-  while (P[ct].hand.length > aiHandLimit) {
-    const c = P[ct].hand.shift();
-    if (isBlackGoatYoung(c) || isTsathogguaSlime(c)) {
-      L.push(`${P[ct].name} 的衍生牌被销毁`);
-    } else {
-      Disc.push(c);
-      L.push(`${P[ct].name} 弃 ${cardLogText(c, { alwaysShowName: true })}（上限）`);
-      const balance = applyBalanceDiscardSideEffects({ players: P, deck: [], discard: Disc, log: L, ownerIdx: ct, cards: [c], reason: '手牌上限弃牌' });
-      L.splice(0, L.length, ...balance.log);
-    }
-  }
+export function discardAiHandToLimit(P, ct, Disc, L, D = [], discardedCards = [], statEventSeq = 0, context = {}) {
+  const result = resolveAiHandLimitDiscards({
+    ...context, players:P, deck:D, discard:Disc, log:L, _statEventSeq:statEventSeq,
+  },ct);
+  P.splice(0,P.length,...result.state.players);
+  D.splice(0,D.length,...result.state.deck);
+  Disc.splice(0,Disc.length,...result.state.discard);
+  L.splice(0,L.length,...result.state.log);
+  discardedCards.push(...result.discardedCards);
+  return {
+    damageDecision:result.damageDecision,
+    statEvents:(result.state._statEvents||[]).slice(context._statEvents?.length||0),
+    statEventSeq:result.state._statEventSeq??statEventSeq,
+    visualEvents:result.visualEvents,
+    handledRoseThorns:true,
+    statePatch:{
+      _aiFinishingTurn:result.state._aiFinishingTurn,
+      _aiPendingHandLimitThorns:result.state._aiPendingHandLimitThorns,
+    },
+  };
 }
 
+// Compile this card's complete event transaction so explicit result owners
+// suppress their generic stat wrappers (for example Sphinx's HP loss).
+// Unclaimed raw stat events are compiled separately using the rule sequence.
 function buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }) {
-  return buildAnimQueue(beforeGs, afterGs).filter(step => step?.type !== 'DRAW_CARD');
+  const previousVisualEventIds = new Set(
+    (Array.isArray(beforeGs?._visualEvents) ? beforeGs._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
+  const freshEvents = (Array.isArray(afterGs?._visualEvents) ? afterGs._visualEvents : [])
+    .filter(event => event?.id && !previousVisualEventIds.has(event.id));
+  const transaction = compileRuleVisualEventsToAnimTransaction(afterGs, beforeGs);
+  const queue = [...(transaction?.queue || [])];
+  const ownedStatKeys = new Set();
+  const claimStatEvent = statEvent => {
+    if (statEvent) ownedStatKeys.add(statEventIdentity(statEvent));
+  };
+  const claimStepStatEvents = (steps = []) => {
+    steps.forEach(step => {
+      (Array.isArray(step?.statEvents) ? step.statEvents : []).forEach(claimStatEvent);
+      if (Array.isArray(step?.steps)) claimStepStatEvents(step.steps);
+    });
+  };
+  freshEvents.forEach(event => {
+    (Array.isArray(event?.statEvents) ? event.statEvents : []).forEach(claimStatEvent);
+  });
+  claimStepStatEvents(queue);
+  const beforeStatSeq = Math.max(
+    beforeGs?._statEventSeq || 0,
+    ...(Array.isArray(beforeGs?._statEvents) ? beforeGs._statEvents : []).map(event => event?.seq || 0),
+  );
+  const unownedStatEvents = (Array.isArray(afterGs?._statEvents) ? afterGs._statEvents : [])
+    .filter(event => event && (event.seq == null || event.seq > beforeStatSeq) && !ownedStatKeys.has(statEventIdentity(event)));
+  if (unownedStatEvents.length) {
+    const beforeLogLength = Array.isArray(beforeGs?.log) ? beforeGs.log.length : 0;
+    const newMsgs = (Array.isArray(afterGs?.log) ? afterGs.log : []).slice(beforeLogLength);
+    queue.push(...statEventsToAnimQueue(unownedStatEvents, beforeGs?.players || afterGs?.players || [], newMsgs));
+  }
+  return queue;
 }
 
 function replayStatePatch(P, D, Disc, L) {
-  return statePatchStep({ players: P, deck: D, discard: Disc, log: L });
+  // Each replay step must own an immutable snapshot. The corridor resolver
+  // keeps mutating these collections while it processes the remaining hand;
+  // retaining their references makes every earlier STATE_PATCH jump to the
+  // final hand/discard state and visually collapses consecutive discards.
+  return statePatchStep({
+    players: copyPlayers(P),
+    deck: [...D],
+    discard: [...Disc],
+    log: [...L],
+  });
 }
 
 export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
@@ -398,15 +542,15 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
       const beforeLog = [...L];
       const beforePatch = statePatch;
       P[ct].hand.splice(handIdx, 1);
-      P[ct].godEncounters = (P[ct].godEncounters || 0) + 1;
-      const godCost = P[ct].godEncounters;
+      const encounterProgress = advanceGodEncounter(P[ct], gs);
+      const godCost = encounterProgress.sanLoss;
       const revealedCultist = isRevealedCultist(P[ct]);
       const effectMsg = revealedCultist
-        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）免疫SAN损耗`
-        : `${P[ct].name} 遭遇邪神 ${card.name}！（第${P[ct].godEncounters}次）${formatSanLoss(godCost)}`;
+        ? `${P[ct].name}（邪祀者）遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${P[ct].name} 遭遇邪神 ${card.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(godCost)}`;
       L.push(effectMsg);
       let inspectionMeta = makeInspectionMeta({ ...gs, ...statePatch });
-      if (!revealedCultist) {
+      if (!revealedCultist && godCost > 0) {
         const processed = applySanLossToPlayerWithInspection(ct, godCost, gs.currentTurn ?? ct, P, D, Disc, L, inspectionMeta, '邪神遭遇');
         P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
       }
@@ -422,32 +566,57 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     }
     const keep = card?.type === END_TURN_EVENT.END_TURN_REPLAY_HAND || !isZoneCard(card) || aiShouldKeepZoneCard(card, ct, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
+      const beforeDiscardPlayers = copyPlayers(P);
+      const beforeDiscardPile = [...Disc];
       const [discarded] = P[ct].hand.splice(handIdx, 1);
-      if (isBlackGoatYoung(discarded) || isTsathogguaSlime(discarded)) L.push(`${P[ct].name} 的衍生牌被销毁`);
-      else {
+      const derivedDiscard = isVanishingDerivedCard(discarded);
+      const discardMsg = derivedDiscard
+        ? `${P[ct].name} 的衍生牌被销毁`
+        : `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
+      L.push(discardMsg);
+      replayMsgs.push(discardMsg);
+      replayQueue.push(discardStep({
+        card: discarded,
+        sourceAnchor: 'playerArea',
+        triggerName: P[ct].name,
+        targetPid: ct,
+        msgs: [discardMsg],
+        playersBefore: beforeDiscardPlayers,
+        discardBefore: beforeDiscardPile,
+      }));
+      if (!derivedDiscard) {
         Disc.push(discarded);
-        const discardMsg = `${P[ct].name} 弃置了 ${cardLogText(discarded, { alwaysShowName: true })}`;
-        L.push(discardMsg);
-        replayMsgs.push(discardMsg);
-        replayQueue.push({
-          type: 'DISCARD',
-          card: discarded,
-          triggerName: P[ct].name,
-          targetPid: ct,
-          msgs: [discardMsg],
-        });
         const beforeBalancePlayers = copyPlayers(P);
         const beforeBalanceDeck = [...D];
         const beforeBalanceDiscard = [...Disc];
         const beforeBalanceLog = [...L];
         const beforeBalancePatch = statePatch;
-        const balance = applyBalanceDiscardSideEffects({ players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded], reason: '无尽通道弃牌' });
+        const statMetaBase={
+          _statEvents:statePatch._statEvents||gs._statEvents||[],
+          _statEventSeq:Math.max(statePatch._statEventSeq||0,gs._statEventSeq||0),
+        };
+        const balanceSeq=statMetaBase._statEventSeq+1;
+        const balance = applyBalanceDiscardSideEffects({
+          players: P, deck: D, discard: Disc, log: L, ownerIdx: ct, cards: [discarded],
+          reason: '无尽通道弃牌', applyHpDamage: applyHpDamageWithLink,
+          submitDamage: submitLossEvents, currentTurn: gs.currentTurn,
+          statEventSeq:balanceSeq,statEventReason:'无尽通道弃牌',
+        });
         P = balance.players; D = balance.deck; Disc = balance.discard; L = balance.log;
+        const balanceMeta=appendStatChangeResult(statMetaBase,balance.damageDecision);
+        statePatch={...statePatch,...balanceMeta};
         const balanceQueue = buildAiEndTurnReplayResolutionQueue({
           beforeGs: { ...gs, ...beforeBalancePatch, players: beforeBalancePlayers, deck: beforeBalanceDeck, discard: beforeBalanceDiscard, log: beforeBalanceLog },
           afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
         });
         replayQueue.push(...balanceQueue);
+        if(balance.damageDecision?.phase){
+          replayQueue.push(replayStatePatch(P,D,Disc,L));
+          return {
+            P,D,Disc,L,statePatch,replayQueue,replayMsgs,
+            decision:{phase:balance.damageDecision.phase,abilityData:balance.damageDecision.abilityData},
+          };
+        }
       }
       replayQueue.push(replayStatePatch(P, D, Disc, L));
       continue;
@@ -459,8 +628,45 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
     const beforePatch = statePatch;
     const res = applyFx(card, ct, null, P, D, Disc, { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L }, false, [], true);
     P = res.P; D = res.D; Disc = res.Disc;
-    if (res.msgs?.length) L.push(...res.msgs);
+    if (res.msgs?.length) {
+      L.push(...res.msgs);
+      // Keep the synchronous full-hand swap log attached to the corridor
+      // replay. The outer AI action compiler uses this list to keep the
+      // legacy log-based diff out of the action segment; without it a
+      // swapAllHands message is inferred before ENDLESS_CORRIDOR_TUNNEL.
+      if (
+        card?.type === 'swapAllHands' &&
+        res.msgs.some(msg => typeof msg === 'string' && msg.includes('交换了全部手牌'))
+      ) {
+        replayMsgs.push(...res.msgs);
+      }
+    }
     statePatch = { ...statePatch, ...(res.statePatch || {}) };
+    // The replayed card already exists in the logical hand, but it is visually
+    // treated as a fresh draw.  Commit that visible "gain" before resolving its
+    // stats so a prior action heal (notably Rest) cannot run straight into a
+    // Dragon Heart heal with no corridor/card boundary between them.
+    // DRAW_CARD already owns this occurrence's replay announcement.
+    replayQueue.push(cardTransferStep({
+      fromPid: ct,
+      dest: 'player',
+      toPid: ct,
+      count: 1,
+      sourceAnchor: 'playerArea',
+      effect: 'draw',
+      cards: [card],
+    }));
+    // A corridor-triggered 触底反弹 resolves its hand swap synchronously in
+    // applyFx. Keep the swap flight beside this card's replay (after the
+    // corridor tunnel and reveal), instead of letting the outer legacy state
+    // diff prepend it to the action queue.
+    if (card?.type === 'swapAllHands' && res.msgs?.length) {
+      replayQueue.push(...buildFullHandSwapTransferQueueFromLogs(
+        res.msgs,
+        beforePlayers,
+        { playersBefore: beforePlayers },
+      ));
+    }
     const resolutionQueue = buildAiEndTurnReplayResolutionQueue({
       beforeGs: { ...gs, ...beforePatch, players: beforePlayers, deck: beforeDeck, discard: beforeDiscard, log: beforeLog },
       afterGs: { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
@@ -473,23 +679,396 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
 }
 
+function processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, drawCount, { intro = true } = {}) {
+  if (!drawCount) return { P, D, Disc, L, statePatch: {}, replayQueue: [], replayMsgs: [] };
+  const replayQueue = [];
+  const replayMsgs = [];
+  let statePatch = {};
+  if (intro) {
+    const introMsg = `${P[ct].name}（克苏鲁信徒Lv.${P[ct].godLevel || drawCount}）梦访拉莱耶，翻面结束回合时额外摸${drawCount}张牌`;
+    L.push(introMsg);
+    replayMsgs.push(introMsg);
+    replayQueue.push({ type: 'CTH_RLYEH_DREAM', targetPid: ct, msgs: [introMsg] });
+  }
+
+  for (let index = 0; index < drawCount; index++) {
+    if (!P[ct] || P[ct].isDead) break;
+    const beforeGs = {
+      ...gs,
+      ...statePatch,
+      players: copyPlayers(P),
+      deck: [...D],
+      discard: [...Disc],
+      log: [...L],
+    };
+    const zhuRequest = requestZhuReveal({ ...beforeGs, players: P, deck: D, currentTurn: ct }, {
+      deck: D,
+      drawerIdx: ct,
+      source: ZHU_REVEAL_SOURCE.CTH_REST,
+      continuation: { remaining: drawCount - index },
+    });
+    if (zhuRequest) {
+      return {
+        P,
+        D,
+        Disc,
+        L,
+        statePatch: { ...statePatch, zhuLight: zhuRequest.zhuLight },
+        replayQueue,
+        replayMsgs,
+        decision: {
+          phase: 'ZHU_HIDE_AI_DRAW',
+          abilityData: buildZhuRevealAbilityData(zhuRequest, {
+            fromRest: true,
+            // This count still includes the guarded reveal. The ZHU decision
+            // handler consumes it after drawing the chosen replacement card.
+            cthDrawsRemaining: drawCount - index,
+          }),
+          remaining: drawCount - index,
+        },
+      };
+    }
+    const result = aiDrawAndApply(ct, P, D, Disc, { ...beforeGs, deferAiGodChoice: false });
+    P = result.P;
+    D = result.D;
+    Disc = result.Disc;
+    statePatch = { ...statePatch, ...(result.statePatch || {}) };
+    const drawMsgs = [result.reshuffleLog, ...(result.effectMsgs || [])].filter(Boolean);
+    L.push(...drawMsgs);
+    replayMsgs.push(...drawMsgs);
+    if (result.drawnCard) {
+      replayQueue.push({
+        type: 'DRAW_CARD',
+        card: result.drawnCard,
+        triggerName: P[ct]?.name || '该AI',
+        targetPid: ct,
+        msgs: drawMsgs,
+      });
+    }
+    const afterGs = {
+      ...gs,
+      ...statePatch,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+    };
+    replayQueue.push(
+      ...buildAiEndTurnReplayResolutionQueue({ beforeGs, afterGs }),
+      replayStatePatch(P, D, Disc, L),
+    );
+    if (checkWin(P, gs?._isMP)) break;
+    if (hasEffectDecisionState(result.statePatch)) {
+      const remaining = drawCount - index - 1;
+      const decisionState = deriveEffectDecisionState(result.statePatch, {
+        baseAbilityData: {
+          fromRest: true,
+          cthDrawsRemaining: remaining,
+        },
+        fallbackPhase: 'AI_TURN',
+      });
+      return {
+        P, D, Disc, L, statePatch, replayQueue, replayMsgs,
+        decision: { phase: decisionState.phase, abilityData: decisionState.abilityData, remaining },
+      };
+    }
+  }
+  return { P, D, Disc, L, statePatch, replayQueue, replayMsgs };
+}
+
+// AI and player turns share the same end-turn registry and priority order.
+// Handlers remain AI-specific because decisions are automatic, but no AI path
+// may reorder or bypass registered events before entering the next turn.
+export function processAiEndTurnEvents(P, D, Disc, L, ct, gs, { cursor = 0 } = {}) {
+  const events = getEndTurnEvents(P, ct);
+  const replayQueue = [];
+  const replayMsgs = [];
+  let statePatch = {};
+
+  for (let eventIndex = cursor; eventIndex < events.length; eventIndex++) {
+    const event = events[eventIndex];
+    const eventGs = enterTurnFlowStage(
+      { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
+      TURN_FLOW_STAGE.END_TURN,
+    );
+    if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
+      const resolved = processAiCthEndTurnDraws(P, D, Disc, L, ct, eventGs, event.drawCount);
+      P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;
+      statePatch = { ...statePatch, ...resolved.statePatch };
+      replayQueue.push(...resolved.replayQueue);
+      replayMsgs.push(...resolved.replayMsgs);
+      if (resolved.decision) {
+        return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events, decision: resolved.decision };
+      }
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.REVERSE_TURN_ORDER) {
+      const resolved = resolveReverseTurnOrderAtEnd(P, ct, eventGs.turnDirection, L, event.reverseCount);
+      P = resolved.players; L = resolved.log;
+      statePatch = { ...statePatch, turnDirection: resolved.turnDirection };
+      replayQueue.push(statePatchStep({
+        players: copyPlayers(P),
+        log: [...L],
+        turnDirection: resolved.turnDirection,
+        msgs: resolved.msgs,
+      }));
+      replayMsgs.push(...resolved.msgs);
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.TSG_SLIME_GRANT) {
+      const visualEvents = [];
+      const grant = grantTsathogguaSlimeAtEndTurn(P, ct, L, visualEvents);
+      if (grant) {
+        const grantEvent = createTsathogguaSlimeGrantEvent(grant);
+        replayQueue.push(...buildTsathogguaSlimeGrantSteps(grantEvent, eventGs));
+        replayMsgs.push(...(grant.msgs || []));
+        const gainPatch = appendPublicCardGainTriggers(eventGs, P, grant.ownerIdx, grant.cards);
+        statePatch = { ...statePatch, ...gainPatch };
+      } else if (visualEvents.length) {
+        replayQueue.push(...buildGodPowerBlockedStepsFromVisualEvents({ ...eventGs, players: P, _visualEvents: visualEvents }));
+        replayMsgs.push(...visualEvents.flatMap(item => item?.msgs || []));
+      }
+      statePatch = { ...statePatch, _tsgSlimeGrantedAtTurnEnd: true };
+      continue;
+    }
+    if (event.id === END_TURN_EVENT.END_TURN_REPLAY_HAND) {
+      const resolved = processAiEndTurnReplayHand(P, D, Disc, L, ct, eventGs);
+      P = resolved.P; D = resolved.D; Disc = resolved.Disc; L = resolved.L;
+      statePatch = { ...statePatch, ...resolved.statePatch };
+      replayQueue.push(...resolved.replayQueue);
+      replayMsgs.push(...resolved.replayMsgs);
+    }
+  }
+
+  return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events };
+}
+
+// Resume the remaining CTH 「梦访拉莱耶」 rest draws after a mid-draw decision
+// (e.g. 穴居人战争) has been resolved. This mirrors the local-player
+// _cthContinueRestDraws continuation but stays inside the AI turn flow.
+export function continueAiCthRestDraws(gs, opts = {}) {
+  const ct = gs.currentTurn;
+  let P = copyPlayers(gs.players);
+  let D = [...gs.deck];
+  let Disc = [...gs.discard];
+  let L = [...gs.log];
+  const remaining = getCthRestDrawRemaining(gs);
+  const drawRes = processAiCthEndTurnDraws(P, D, Disc, L, ct, gs, remaining, { intro: false });
+  P = drawRes.P; D = drawRes.D; Disc = drawRes.Disc; L = drawRes.L;
+  // 决策前的那段回合结束回放（梦访拉莱耶引导 + 首张牌）已在第一次 executeAiTurn 播放，
+  // 续跑只携带决策之后的回放，避免 executeAiTurn 读取 _aiEndTurnReplayQueue 时重复播放。
+  const replayQueue = [...drawRes.replayQueue];
+  const replayMsgs = [...drawRes.replayMsgs];
+  if (drawRes.decision) {
+    return withClearedTurnAnimFields({
+      ...gs,
+      ...drawRes.statePatch,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      currentTurn: ct,
+      phase: drawRes.decision.phase,
+      abilityData: drawRes.decision.abilityData,
+      restUsed: true,
+      skillUsed: false,
+      _aiEndTurnReplayQueue: replayQueue,
+      _aiEndTurnReplayMsgs: replayMsgs,
+    });
+  }
+  const evRes = processAiEndTurnEvents(P, D, Disc, L, ct, { ...gs, ...drawRes.statePatch }, { cursor: 1 });
+  P = evRes.P; D = evRes.D; Disc = evRes.Disc; L = evRes.L;
+  const playersBeforeNextDraw = copyPlayers(P);
+  const discardBeforeNextDraw = [...Disc];
+  const nextGs = startNextTurn({
+    ...gs,
+    ...drawRes.statePatch,
+    ...evRes.statePatch,
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    currentTurn: ct,
+    restUsed: true,
+    skillUsed: false,
+    _aiEndTurnReplayQueue: [...replayQueue, ...evRes.replayQueue],
+    _aiEndTurnReplayMsgs: [...replayMsgs, ...evRes.replayMsgs],
+  }, opts);
+  return {
+    ...nextGs,
+    _aiName: gs._aiName ?? P[ct]?.name ?? null,
+    // 行动动画的“结束快照”应落在续跑摸牌之后、下一回合起手摸牌之前，
+    // 否则 executeAiTurn 会拿 nextGs.players（已含下一回合抽牌）当基线。
+    _playersBeforeNextDraw: playersBeforeNextDraw,
+    _discardBeforeNextDraw: discardBeforeNextDraw,
+    ...(gs._playersBeforeEndTurnReplay ? { _playersBeforeEndTurnReplay: gs._playersBeforeEndTurnReplay } : {}),
+  };
+}
+
+// Preserve the outer resolution, including income waiting for this decision.
+function cthRestContinuationAbilityData(abilityData = {}) {
+  return buildTargetContinuationAbilityData(abilityData);
+}
+
+function settleAiZoneIncome(state) {
+  const pending = state?.abilityData?.pendingZoneIncome;
+  if (!pending || (!state.gameOver && (!['ACTION', 'AI_TURN'].includes(state.phase)
+    || hasEffectDecisionState({ abilityData: state.abilityData }) || state._sameAbyssContinuation
+    || state._decisionContinuations?.length || state.abilityData?.pendingSanInspection))) return state;
+  const playersBefore = copyPlayers(state.players);
+  const discardBefore = [...state.discard];
+  const players = copyPlayers(state.players);
+  const discard = [...state.discard];
+  const income = settlePendingZoneIncome(players, discard, pending);
+  const { pendingZoneIncome: _settled, ...abilityData } = state.abilityData;
+  const event = income && createCardMoveVisualEvent({
+    from: { zone: 'drawReveal' },
+    to: { zone: income.dest === 'player' ? 'hand' : 'discard', playerIdx: income.drawerIdx },
+    cards: [income.card], effect: 'zoneIncome',
+    playersBefore, playersAfter: copyPlayers(players),
+    discardBefore, discardAfter: [...discard],
+  });
+  return { ...state, players, discard, abilityData,
+    _visualEvents: [...(state._visualEvents || []), ...(event ? [event] : [])],
+    gameOver: state.gameOver || checkWin(players, state._isMP),
+  };
+}
+
 export function aiStep(gs, opts = {}) {
+  const ready = settleAiZoneIncome(gs);
+  let result = settleAiZoneIncome(ready.gameOver ? ready : resolveAiStep(ready,opts));
+  if (result?.currentTurn === ready.currentTurn && result?.abilityData?._turnOwner != null && ['ACTION', 'AI_TURN'].includes(result.phase)
+    && !hasEffectDecisionState({ abilityData: result.abilityData })) {
+    result = { ...result, currentTurn: result.abilityData._turnOwner };
+  }
+  if(result&&(result.currentTurn!==gs.currentTurn||result.gameOver)){
+    const {_aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...next}=result;
+    return next;
+  }
+  return result;
+}
+
+function resolveAiStep(gs, opts = {}) {
   const{players:ps,currentTurn:ct,abilityData}=gs;
+  const incomingVisualEventIds = new Set(
+    (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
+      .map(event => event?.id)
+      .filter(Boolean),
+  );
+  const incomingVisualEventRefs = new Set(Array.isArray(gs?._visualEvents) ? gs._visualEvents : []);
+  // Presentation is compiled after rule resolution and may already be across a
+  // turn boundary. Keep an append-only journal of action-owned events so an
+  // intermediate state replacement cannot erase a one-shot visual payload.
+  const ownedActionVisualEvents = [];
+  const ownedActionVisualEventIds = new Set();
+  const aiActionTransactionId = `ai-action:${gs._turnKey || gs.turn || 0}:${ct}:${++aiActionSequence}`;
+  let aiActionOrder = 0;
+  const recordActionVisualEvents = events => {
+    (Array.isArray(events) ? events : []).forEach(event => {
+      if (!event || event?.turnStartStage) return;
+      if (event.id && incomingVisualEventIds.has(event.id)) return;
+      if (!event.id && incomingVisualEventRefs.has(event)) return;
+      if (event.id && ownedActionVisualEventIds.has(event.id)) return;
+      if (event.id) ownedActionVisualEventIds.add(event.id);
+      ownedActionVisualEvents.push({ ...event, transactionId: aiActionTransactionId, order: aiActionOrder++ });
+    });
+  };
   let P=copyPlayers(ps),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
-  const ai=P[ct];let alive=P.filter((p,i)=>!p.isDead&&i!==ct);
+  const getAi=()=>P[ct];
+  const getAlive=()=>P.filter((p,i)=>!p.isDead&&i!==ct);
+  let ai=getAi();let alive=getAlive();
   const aiHuntEvents=[];
+  let aiHuntAttemptSeq=0;
   let animMultiplyEvent = null;
   let playersBeforeSkillAction=null;
   let preSkillLogs=[];
   let preSkillDiscard=null;
-  const getReplayVisualEvents = (nextGs) => (
-    Array.isArray(nextGs?._visualEvents) && nextGs._visualEvents.length
-      ? nextGs._visualEvents
-      : Array.isArray(gs?._visualEvents) && gs._visualEvents.length
-        ? gs._visualEvents
-        : null
-  );
+  const getReplayVisualEvents = (nextGs) => {
+    const freshCurrentTurnEvents = (Array.isArray(gs?._visualEvents) ? gs._visualEvents : [])
+      .filter(event => event?.id
+        ? !incomingVisualEventIds.has(event.id)
+        : !incomingVisualEventRefs.has(event));
+    // startNextTurn now produces the next turn's own visual events in the rule
+    // layer. Preserve action events first, then append that next-turn
+    // transaction; never let incoming events from an older replay leak in.
+    if (Object.prototype.hasOwnProperty.call(nextGs || {}, '_visualEvents')) {
+      // A paused decision state normally spreads the input gs.  Do not let
+      // those retained journal entries become owned by the new AI action just
+      // because they are present on nextGs.  Actual action events are carried
+      // by freshCurrentTurnEvents/ownedActionVisualEvents; startNextTurn emits
+      // new ids, so its staged events still pass this filter.
+      const nextTurnEvents = (Array.isArray(nextGs._visualEvents) ? nextGs._visualEvents : [])
+        .filter(event => event?.id
+          ? !incomingVisualEventIds.has(event.id)
+          : !incomingVisualEventRefs.has(event));
+      const combined = [...freshCurrentTurnEvents, ...nextTurnEvents, ...ownedActionVisualEvents]
+        .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
+      return combined.length ? combined : null;
+    }
+    const combined = [...freshCurrentTurnEvents, ...ownedActionVisualEvents]
+      .filter((event, index, events) => !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index);
+    return combined.length ? combined : null;
+  };
+  let unifiedReplayCacheState = null;
+  let unifiedReplayCache = null;
+  const getUnifiedReplayVisualEvents = nextGs => {
+    if (unifiedReplayCacheState === nextGs && unifiedReplayCache) return unifiedReplayCache;
+    const baseEvents = getReplayVisualEvents(nextGs) || [];
+    const huntEvents = aiHuntEvents.filter(event => !event?.targetOnly).map(event => {
+      if (event?.pendingPrompt) {
+        return createHuntTargetEvent({
+          sourceIdx: event.hunterIdx,
+          targetIdx: event.targetIdx,
+          msgs: event.msgs,
+          attemptId: event.attemptId,
+          targetResolutionEventId: event.targetResolutionEventId,
+          phaseGroupId: event.phaseGroupId,
+          phaseOrder: event.phaseOrder ?? 30,
+          transactionId: event.transactionId,
+          order: event.order,
+          beforePlayers: event.beforePlayers,
+          afterPlayers: event.afterPlayers,
+        });
+      }
+      return createHuntResultEvent({
+        ...event,
+        // AI actions are resolved as one rule transaction, so their hunt event
+        // owns the reticle/reveal as well as settlement. Interactive hunt flows
+        // keep createHuntResultEvent's settlement-only defaults.
+        skipIntro: false,
+        skipReveal: !!event.skipReveal,
+        phaseOrder: event.phaseOrder ?? 30,
+      });
+    }).filter(Boolean);
+    unifiedReplayCacheState = nextGs;
+    const ownedOrderById = new Map(
+      ownedActionVisualEvents
+        .map(event => [event?.id, event.order])
+        .filter(([id]) => !!id),
+    );
+    let fallbackActionOrder = aiActionOrder;
+    unifiedReplayCache = [...baseEvents, ...huntEvents]
+      .map(event => event?.turnStartStage
+        ? event
+        : {
+            ...event,
+            // AI 的一次完整行动只有一个规则结算游标。子结算（如信仰
+            // 高亮+日食）保留语义阶段，但必须重新挂到行动事务，避免
+            // 嵌套事务各自从 order=0 开始而抢到技能动画之前。
+            turnKey: event.turnKey ?? gs._turnKey ?? gs.turn ?? 0,
+            turnOwner: event.turnOwner ?? ct,
+            ruleStage: event.ruleStage ?? 'action',
+            transactionId: aiActionTransactionId,
+            order: ownedOrderById.get(event.id) ?? (
+              event.transactionId === aiActionTransactionId && event.order != null
+                ? event.order
+                : fallbackActionOrder++
+            ),
+          });
+    return unifiedReplayCache;
+  };
 
+  let aiHandLimitPresentation=null;
   const buildReturnPack = (nextGs, P_afterAction, P_beforeEndTurnReplay = null) => ({
     ...nextGs,
     _animAiDrawnCard: gs._aiDrawnCard ?? gs._drawnCard ?? null,
@@ -499,11 +1078,77 @@ export function aiStep(gs, opts = {}) {
     _playersBeforeSkillAction: playersBeforeSkillAction,
     _preSkillLogs: preSkillLogs,
     _preSkillDiscard: preSkillDiscard,
+    _aiActionTransactionId: aiActionTransactionId,
     ...(P_beforeEndTurnReplay ? { _playersBeforeEndTurnReplay: P_beforeEndTurnReplay } : {}),
     ...(aiHuntEvents.length ? { _aiHuntEvents: aiHuntEvents } : {}),
     ...(animMultiplyEvent ? { _animMultiplyEvent: animMultiplyEvent } : {}),
-    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {})
+    ...(aiHandLimitPresentation||{}),
+    ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {})
   });
+
+  const settleAiHandLimit=()=>{
+    const beforePlayers=copyPlayers(P);
+    const beforeDiscard=[...Disc];
+    const beforeLog=[...L];
+    const discardedCards=[];
+    const discardResult=discardAiHandToLimit(P,ct,Disc,L,D,discardedCards,gs._statEventSeq||0,gs);
+    gs={...gs,...discardResult.statePatch};
+    let damageDecision=discardResult.damageDecision||null;
+    let thornDamage=null;
+    if(!discardResult.handledRoseThorns&&!damageDecision?.phase&&discardedCards.length){
+      const thornLosses={};
+      discardedCards.forEach(card=>{
+        if(card?.roseThornHolderId!=null&&P[card.roseThornHolderId]&&!P[card.roseThornHolderId].isDead){
+          thornLosses[card.roseThornHolderId]=(thornLosses[card.roseThornHolderId]||0)+1;
+        }
+      });
+      const thornEvents=Object.entries(thornLosses).map(([holderIdxText,count],order)=>{
+        const holderIdx=Number(holderIdxText);
+        const logHint=`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`;
+        L.push(logHint);
+        return {targetIdx:holderIdx,lostHp:2*count,source:'玫瑰倒刺',order,logHint};
+      });
+      if(thornEvents.length){
+        thornDamage=submitLossEvents({
+          players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+          events:thornEvents,continuation:{_turnOwner:ct},
+        });
+        damageDecision=thornDamage;
+      }
+    }
+    const discardStatEventSeq=discardResult.statEventSeq;
+    const discardStatEvents=discardResult.statEvents;
+    if(discardStatEvents.length){
+      gs={...gs,_statEvents:[...(gs._statEvents||[]),...discardStatEvents],_statEventSeq:discardStatEventSeq};
+    }
+    const thornStatEventSeq=(gs._statEventSeq||0)+1;
+    const thornStatEvents=(thornDamage?.statEvents||[]).map(event=>({...event,seq:thornStatEventSeq}));
+    if(thornStatEvents.length){
+      gs={...gs,_statEvents:[...(gs._statEvents||[]),...thornStatEvents],_statEventSeq:thornStatEventSeq};
+    }
+    const handLimitStatEvent=createStatEventsEvent({
+      statEvents:thornStatEvents,
+      msgs:thornDamage?.logs||[],
+      transactionId:aiActionTransactionId,
+      order:aiActionOrder+discardResult.visualEvents.length,
+    });
+    recordActionVisualEvents([
+      ...discardResult.visualEvents.map((event,index)=>({
+        ...event,
+        transactionId:aiActionTransactionId,
+        order:aiActionOrder+index,
+      })),
+      handLimitStatEvent,
+    ]);
+    aiHandLimitPresentation=discardedCards.length?{
+      _aiHandLimitDiscards:discardedCards,
+      _aiHandLimitBeforePlayers:beforePlayers,
+      _aiHandLimitBeforeDiscard:beforeDiscard,
+      _aiHandLimitBeforeLog:beforeLog,
+      ...((discardStatEvents.length||thornStatEvents.length)?{_aiHandLimitStatEvents:[...discardStatEvents,...thornStatEvents]}:{}),
+    }:null;
+    return {damageDecision,discardedCards,beforePlayers,beforeDiscard,beforeLog};
+  };
 
   const buildPendingSlimeBalanceState = (state, nextPlayers, nextDeck, nextDiscard, nextLog, extra = {}) => {
     if (state?.abilityData?.type !== 'tsgSlimeBalance') return null;
@@ -521,13 +1166,13 @@ export function aiStep(gs, opts = {}) {
     };
   };
 
-  let lastApophisTargetEvent = null;
-  const consumeLastApophisTargetEvent = () => {
-    const event = lastApophisTargetEvent;
-    lastApophisTargetEvent = null;
-    return event;
+  let lastTargetResolutionEventId = null;
+  const consumeLastTargetResolutionEventId = () => {
+    const eventId = lastTargetResolutionEventId;
+    lastTargetResolutionEventId = null;
+    return eventId;
   };
-  const applyNightTarget = (selectedIdx, legalTargets, label) => {
+  const applyNightTarget = (selectedIdx, legalTargets, label, { phaseGroupId = null } = {}) => {
     const night = resolveApophisTarget({
       gs,
       players: P,
@@ -538,38 +1183,67 @@ export function aiStep(gs, opts = {}) {
       selectedIdx,
       legalTargets,
       label,
+      visualMeta: {
+        transactionId: aiActionTransactionId,
+        ...(phaseGroupId ? { phaseGroupId } : {}),
+        // Deferred hunt attempts and immediate events share this rule cursor.
+        order: aiActionOrder,
+        phaseOrder: 0,
+      },
     });
     P = night.players;
+    ai=getAi();alive=getAlive();
     D = night.deck;
     Disc = night.discard;
     L = night.log;
     gs = { ...gs, ...(night.statePatch || {}) };
-    lastApophisTargetEvent = night.apophisTargetEvent || null;
+    recordActionVisualEvents(night.statePatch?._visualEvents);
+    lastTargetResolutionEventId = night.targetResolutionEventId || null;
     return night.targetIdx;
   };
 
   // 提取蛊惑赠予的核心逻辑（主行动路径与强制路径共用）
   const applyBewitchGift = (_gs, _P, _D, _Disc, _L, _ct, _ti, _sc) => {
+    const playersBeforeGift = copyPlayers(_P);
+    const discardBeforeGift = [..._Disc];
+    const zhuLightBeforeGift = _gs?.zhuLight || null;
+    const statEventKeysBeforeGift = new Set((_gs?._statEvents || []).map(statEventIdentity));
+    const visualEventIdsBeforeGift = new Set(
+      (_gs?._visualEvents || []).map(event => event?.id).filter(Boolean),
+    );
     let inspectionMeta = makeInspectionMeta(_gs);
+    let encounterEvents = [];
+    let encounterMsgs = [];
     _P[_ct].hand = _P[_ct].hand.filter(c => c.id !== _sc.id);
-    _L.push(`${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`);
+    const bewitchMsg = `${_P[_ct].name}（邪祀者）对 ${_P[_ti].name} 【蛊惑】，赠予 ${cardLogText(_sc, { alwaysShowName: true })}`;
+    _L.push(bewitchMsg);
     let fxResult = null;
     if (_sc.isGod) {
-      _P[_ti].godEncounters = (_P[_ti].godEncounters || 0) + 1;
-      const godCost = _P[_ti].godEncounters;
+      const encounterProgress = advanceGodEncounter(_P[_ti], _gs);
+      const godCost = encounterProgress.sanLoss;
       const revealedCultist = isRevealedCultist(_P[_ti]);
       const effectMsg = revealedCultist
-        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）免疫SAN损耗`
-        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（第${_P[_ti].godEncounters}次）${formatSanLoss(godCost)}`;
+        ? `${_P[_ti].name}（邪祀者）遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${_P[_ti].name} 遭遇邪神 ${_sc.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(godCost)}`;
       _L.push(effectMsg);
-      if (!revealedCultist) {
+      encounterMsgs = [effectMsg];
+      if (!revealedCultist && godCost > 0) {
         const processed = applySanLossToPlayerWithInspection(_ti, godCost, _gs.currentTurn, _P, _D, _Disc, _L, inspectionMeta, '邪神遭遇');
         _P = processed.P; _D = processed.D; _Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
         _L.splice(0, _L.length, ...processed.L);
       }
+      const encounterVisualEvents = (inspectionMeta?._visualEvents || []).filter(event => (
+        event && (!event?.id || !visualEventIdsBeforeGift.has(event.id))
+      ));
+      const encounterStatEvents = (inspectionMeta?._statEvents || [])
+        .filter(event => !statEventKeysBeforeGift.has(statEventIdentity(event)));
+      encounterEvents = createOrderedSettlementEvents({
+        events: encounterVisualEvents,
+        statEvents: encounterStatEvents,
+      });
       const godResolveGs = { ..._gs, ...inspectionMeta };
-      const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0;
+      const shouldDeferShuTarget = _sc.godKey === 'SHU' && _ti === 0 && !opts.allAi;
       const gr = aiHandleGodCard(_ti, _sc, _P, _D, _Disc, _L, godResolveGs, true, true, { deferShuTarget: shouldDeferShuTarget });
       _P = gr.P; _D = gr.D; _Disc = gr.Disc;
       const mergedInspectionMeta = {
@@ -578,13 +1252,73 @@ export function aiStep(gs, opts = {}) {
         ...((gr.inspectionMeta?.abilityData || inspectionMeta?.abilityData) ? { abilityData: gr.inspectionMeta?.abilityData || inspectionMeta.abilityData } : {}),
       };
       _gs = { ..._gs, ...mergedInspectionMeta, ...(gr.statePatch || {}) };
+    } else if (_sc.type === 'swapAllHands' && !opts.allAi) {
+      fxResult = { P: _P, D: _D, Disc: _Disc, msgs: [], statePatch: { abilityData: {
+        zoneSwapCard: _sc, zoneSwapSource: _ti, _turnOwner: _ct,
+        pendingZoneIncome: { card: _sc, ownerId: _P[_ti].id },
+      } } };
+      _gs = { ..._gs, ...fxResult.statePatch };
     } else {
-      _P[_ti].hand.push(_sc);
-      fxResult = applyFx(_sc, _ti, _sc.type === 'swapAllHands' ? null : _ti, _P, _D, _Disc, _gs);
+      fxResult = applyFx(
+        _sc,
+        _ti,
+        _sc.type === 'swapAllHands' ? null : _ti,
+        _P,
+        _D,
+        _Disc,
+        _gs,
+        false,
+        [],
+        !!opts.allAi,
+      );
       _P = fxResult.P; _D = fxResult.D; _Disc = fxResult.Disc;
+      fxResult.statePatch = applyZoneCardIncome({
+        players: _P, discard: _Disc, card: _sc, drawerIdx: _ti,
+        statePatch: fxResult.statePatch || {},
+      });
       _L.push(...fxResult.msgs);
       _gs = { ..._gs, ...fxResult.statePatch };
     }
+    const encounterEventIds = new Set(encounterEvents.map(event => event?.id).filter(Boolean));
+    const settlementVisualEvents = (_gs?._visualEvents || []).filter(event => (
+      event && (!event?.id || (!visualEventIdsBeforeGift.has(event.id) && !encounterEventIds.has(event.id)))
+    ));
+    const encounterStatKeys = new Set(encounterEvents.flatMap(event => event?.statEvents || []).map(statEventIdentity));
+    const settlementStatEvents = (_gs?._statEvents || [])
+      .filter(event => !statEventKeysBeforeGift.has(statEventIdentity(event)) && !encounterStatKeys.has(statEventIdentity(event)));
+    const bewitchEvent = createBewitchGiftEvent({
+      sourceIdx: _ct,
+      targetIdx: _ti,
+      targetName: _P[_ti].name,
+      card: _sc,
+      msgs: [bewitchMsg],
+      encounterMsgs,
+      playersBefore: playersBeforeGift,
+      playersAfter: copyPlayers(_P),
+      discardBefore: discardBeforeGift,
+      discardAfter: [..._Disc],
+      encounterEvents,
+      acceptanceEvents: createOrderedSettlementEvents({
+        events: settlementVisualEvents,
+        statEvents: settlementStatEvents,
+      }),
+      zhuLightBefore: zhuLightBeforeGift,
+      zhuLightAfter: _gs?.zhuLight || null,
+    });
+    if (bewitchEvent) {
+      _gs = { ..._gs, _visualEvents: [bewitchEvent, ...(_gs._visualEvents || [])] };
+    }
+    // The target-selection transaction was recorded before entering this
+    // resolver. The gift itself precedes encounter/acceptance events even
+    // though those events are produced synchronously before the gift wrapper
+    // can be constructed.
+    recordActionVisualEvents([
+      ...(bewitchEvent ? [bewitchEvent] : []),
+      ...(_gs?._visualEvents || []).filter(event => (
+        event !== bewitchEvent
+        && (!event?.id || !visualEventIdsBeforeGift.has(event.id))
+      )),
+    ]);
     return { gs: _gs, P: _P, D: _D, Disc: _Disc, L: _L, fxResult };
   };
 
@@ -613,6 +1347,7 @@ export function aiStep(gs, opts = {}) {
   };
 
   const buildBewitchTreasureWinState = (_gs, _P, _D, _Disc, _L, targetIdx) => {
+    if (hasEffectDecisionState(_gs) || _gs.abilityData?.pendingZoneIncome) return null;
     const target = _P[targetIdx];
     const effectiveRole = target?._nyaBorrow || target?.role;
     if (!target || target.isDead || effectiveRole !== ROLE_TREASURE || !isWinHand(target.hand)) return null;
@@ -636,11 +1371,32 @@ export function aiStep(gs, opts = {}) {
     });
   };
 
+  // A defeated turn owner has exactly one legal transition: leave the turn.
+  // Put this before every pending-decision/action branch so stale abilityData
+  // cannot make a dead AI choose targets, resolve skills, or touch its hand.
+  if (P[ct]?.isDead) {
+    const win = checkWin(P, gs._isMP);
+    if (win) return { ...gs, players: P, deck: D, discard: Disc, log: L, gameOver: win };
+    const playersAfterDeath = copyPlayers(P);
+    const nextGs = startNextTurn({
+      ...gs,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: L,
+      currentTurn: ct,
+      abilityData: {},
+      huntAbandoned: [],
+      skillUsed: true,
+    }, opts);
+    return buildReturnPack(nextGs, playersAfterDeath);
+  }
+
   if(abilityData?.type==='firstComePick'&&Array.isArray(abilityData.revealedCards)){
     const pickOrder=abilityData.pickOrder||[];
     const pickIndex=abilityData.pickIndex||0;
     const pickerIdx=pickOrder[pickIndex];
-    if(pickerIdx==null)return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+    if(pickerIdx==null)return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
     return {...gs,players:P,deck:D,discard:Disc,log:L,phase:'FIRST_COME_PICK_SELECT',abilityData};
   }
 
@@ -659,24 +1415,49 @@ export function aiStep(gs, opts = {}) {
   if(Array.isArray(abilityData?.damageLinkTargets)&&abilityData.damageLinkSource===ct){
     const validTargets=abilityData.damageLinkTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length>0){
-      const targetIdx=applyNightTarget(validTargets[0],validTargets,'选择【两人一绳】目标');
-      P[ct].damageLink={partner:targetIdx,active:true,expiryOwner:ct};
-      P[targetIdx].damageLink={partner:ct,active:true,expiryOwner:ct};
+      const selectedTarget=chooseAiDamageLinkTarget(P,ct,validTargets)??validTargets[0];
+      const playersBeforeDamageLink=copyPlayers(P);
+      const targetIdx=applyNightTarget(selectedTarget,validTargets,'选择【两人一绳】目标');
+      addDamageLink(P,ct,targetIdx,{expiryOwner:ct});
       L.push(`【两人一绳】${P[ct].name} 与 ${P[targetIdx].name} 间架起链条，一方受到HP伤害时另一方受等量伤害`);
+      const damageLinkEvent=createCardMoveVisualEvent({
+        from:{zone:'playerArea',playerIdx:ct},
+        to:{zone:'hand',playerIdx:targetIdx},
+        count:1,
+        effect:'damageLink',
+        durationMs:1900,
+        playersBefore:playersBeforeDamageLink,
+        playersAfter:P,
+        msgs:[L.at(-1)],
+      });
+      recordActionVisualEvents([damageLinkEvent]);
       const win=checkWin(P,gs._isMP);
-      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:{},phase:'AI_TURN'};
-      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+      const visualPatch=getUnifiedReplayVisualEvents(gs);
+      if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN',_visualEvents:visualPatch};
+      return{...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN',_visualEvents:visualPatch};
     }
-    return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:{},phase:'AI_TURN'};
+    return {...gs,players:P,deck:D,discard:Disc,log:L,abilityData:cthRestContinuationAbilityData(abilityData),phase:'AI_TURN'};
   }
 
   if(abilityData.roseThornTargets&&abilityData.roseThornSource===ct){
     const validTargets=abilityData.roseThornTargets.filter(i=>P[i]&&!P[i].isDead&&i!==ct);
     if(validTargets.length){
       const targetIdx=applyNightTarget(chooseAiRoseThornTarget(P, ct, validTargets),validTargets,'选择【玫瑰倒刺】目标');
+      const playersBeforeRoseThorn=copyPlayers(P);
       const gifted=P[ct].hand.splice(0).map(card=>({...card,roseThornHolderId:targetIdx,roseThornSourceId:ct,roseThornSourceName:P[ct].name}));
       P[targetIdx].hand.push(...gifted);
       L.push(`【玫瑰倒刺】${P[ct].name} 将全部手牌交给了 ${P[targetIdx].name}`);
+      const roseThornEvent=createCardMoveVisualEvent({
+        from:{zone:'hand',playerIdx:ct},
+        to:{zone:'hand',playerIdx:targetIdx},
+        cards:gifted,
+        count:gifted.length,
+        effect:'roseThornGiftAllHand',
+        playersBefore:playersBeforeRoseThorn,
+        playersAfter:P,
+        msgs:[L.at(-1)],
+      });
+      recordActionVisualEvents([roseThornEvent]);
       if(!P[targetIdx].isDead&&P[targetIdx].role===ROLE_TREASURE&&isWinHand(P[targetIdx].hand)){
         P[targetIdx].roleRevealed=true;
         return withClearedTurnAnimFields({
@@ -686,8 +1467,9 @@ export function aiStep(gs, opts = {}) {
           discard:Disc,
           log:[...L,`${P[targetIdx].name} 集齐全部编号并获胜！`],
           gameOver:{winner:ROLE_TREASURE,reason:`${P[targetIdx].name} 集齐了全部编号并获胜！`,winnerIdx:targetIdx},
-          abilityData:{},
+          abilityData:cthRestContinuationAbilityData(abilityData),
           phase:'AI_TURN',
+          _visualEvents:getUnifiedReplayVisualEvents(gs),
         });
       }
     }
@@ -697,8 +1479,9 @@ export function aiStep(gs, opts = {}) {
       deck:D,
       discard:Disc,
       log:L,
-      abilityData:{},
+      abilityData:cthRestContinuationAbilityData(abilityData),
       phase:'AI_TURN',
+      _visualEvents:getUnifiedReplayVisualEvents(gs),
     });
   }
   if(P[ct].isDead){
@@ -721,12 +1504,12 @@ export function aiStep(gs, opts = {}) {
       const targetPlayer=P[targetIdx];
 
       // 源角色（AI）按穴居人战争规则选择牌
-      let sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand), sourceCard;
+      let sourceCardIndex=getBestCaveDuelCardIndex(sourcePlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:ct,opponentIdx:targetIdx}), sourceCard;
       sourceCard=sourcePlayer.hand[sourceCardIndex];
 
       // 目标角色选择牌
       let targetCardIndex, targetCard;
-      if(targetIdx===0){
+      if(targetIdx===0&&!opts.allAi){
         // 玩家作为目标角色，需要选择牌
         return withClearedTurnAnimFields({
           ...gs,
@@ -739,57 +1522,67 @@ export function aiStep(gs, opts = {}) {
           phase:'CAVE_DUEL_SELECT_CARD',
         });
       }else{
-        // AI作为目标角色，按盲选启发式选择，不查看源角色亮牌
-        targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand);
+        // 双方只使用各自可见的手牌信息，不读取对方封存的选择。
+        targetCardIndex=getBestCaveDuelCardIndex(targetPlayer.hand,{state:{...gs,players:P,deck:D,discard:Disc},actorIdx:targetIdx,opponentIdx:ct});
         targetCard=targetPlayer.hand[targetCardIndex];
 
-        const duelCompare=compareCaveDuelCards(sourceCard,targetCard);
-        if(duelCompare>0){
-          // 源角色获胜，收下两张牌
-          sourcePlayer.hand.splice(sourceCardIndex,1);
-          targetPlayer.hand.splice(targetCardIndex,1);
-          sourcePlayer.hand.push(sourceCard,targetCard);
-          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,ct,targetCard);
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${sourcePlayer.name} 胜出，收下两张牌`);
-        }else if(duelCompare<0){
-          // 目标角色获胜，收下两张牌
-          sourcePlayer.hand.splice(sourceCardIndex,1);
-          targetPlayer.hand.splice(targetCardIndex,1);
-          targetPlayer.hand.push(sourceCard,targetCard);
-          proliferatingZPatch=appendPublicCardGainTriggers(gs,P,targetIdx,sourceCard);
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，${targetPlayer.name} 胜出，收下两张牌`);
-        }else{
-          // 平局，各自收回自己的牌
-          L.push(`【穴居人战争】${sourcePlayer.name} 亮出 ${cardLogText(sourceCard,{alwaysShowName:true})}，${targetPlayer.name} 亮出 ${cardLogText(targetCard,{alwaysShowName:true})}，平局，各自收回自己的牌`);
+        const outcome=resolveCaveDuelOutcome({
+          players:P,
+          sourceIdx:ct,
+          targetIdx,
+          sourceCardIndex,
+          targetCardIndex,
+          sourceCard,
+          targetCard,
+        });
+        P=outcome.players;ai=getAi();alive=getAlive();
+        L.push(outcome.logLine);
+        if(outcome.winnerIdx!=null&&outcome.gainedCard){
+          proliferatingZPatch=appendPublicCardGainTriggers(
+            gs,
+            P,
+            outcome.winnerIdx,
+            outcome.gainedCard
+          );
         }
       }
     }
-    // 清除能力数据
+    // 清除能力数据（保留 CTH 休息摸牌续跑字段）
     return withClearedTurnAnimFields({
       ...gs,
       players:P,
       deck:D,
       discard:Disc,
       log:L,
-      abilityData:{},
+      abilityData:cthRestContinuationAbilityData(abilityData),
       currentTurn:ct,
       phase:'AI_TURN',
       ...proliferatingZPatch,
     });
   }
+  // 决策（如穴居人战争）在梦访拉莱耶摸牌途中结算后，续跑剩余摸牌（即使已无剩余张数，
+  // 也要补跑 TSG/无尽通道等后续回合结束事件并推进回合）。
+  if(abilityData?.fromRest){
+    return continueAiCthRestDraws(gs, opts);
+  }
   if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(ai.hand)){P[ct].roleRevealed=true;return{...gs,players:P,log:[...L,`${ai.name} 宣告获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 集齐了全部编号并获胜！`,winnerIdx:ct}};}
   // AI worship-from-hand: face-down god cards in hand can be worshipped (no skull counter, once per turn)
-  if(!gs.skillUsed&&!gs.restUsed){
+  if(!gs._aiFinishingTurn&&!gs.skillUsed&&!gs.restUsed){
     const handGodIdx=P[ct].hand.findIndex(c=>c.isGod);
     if(handGodIdx>=0){
       const hgc=P[ct].hand[handGodIdx];
       let inspectionMeta=makeInspectionMeta(gs);
       const alreadyHasGod=P[ct].godName&&P[ct].godName!==hgc.godKey;
       const handAiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
-      const reserveForCultistBewitch=handAiEffRole===ROLE_CULTIST&&!gs.multiplyUsed&&!!chooseAiCultistBewitchPlan(P,ct);
+      const reserveForCultistBewitch=handAiEffRole===ROLE_CULTIST&&!gs.multiplyUsed&&!!chooseAiCultistBewitchPlan(P,ct,{state:{...gs,deck:D,discard:Disc}});
       const handGodAction=reserveForCultistBewitch?'discard':chooseAiGodEncounterAction(ct,hgc,P,false);
       const willWorship=handGodAction==='worship'||handGodAction==='convert'||handGodAction==='upgrade';
       if(willWorship){
+        const handWorshipPlayersBefore=copyPlayers(P);
+        let previousFaithExit=null;
+        let faithEstablished=null;
+        const abandonedFaithExits=[];
+        let presentAfterInspectionSeq=null;
         const worshipLogStart=L.length;
         P[ct].hand.splice(handGodIdx,1);
         if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
@@ -798,29 +1591,96 @@ export function aiStep(gs, opts = {}) {
           L.push(buildWorshipFromHandLog(P[ct].name,hgc));
         }
         // Forced convert if worshipping different god
-        if(alreadyHasGod){const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;}
-        if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
+        if(alreadyHasGod){
+          const inspectionSeqBefore=inspectionMeta?._inspectionSeq||0;
+          const converted=convertGodFollower(ct,gs.currentTurn,P,D,Disc,L,inspectionMeta,`${P[ct].name} 改信新神，${formatSanLoss(1)}`,hgc);
+          P=converted.P;D=converted.D;Disc=converted.Disc;L=converted.L;inspectionMeta=converted.inspectionMeta;
+          previousFaithExit=converted.faithExit||null;
+          faithEstablished=converted.faithEstablished||null;
+          if((inspectionMeta?._inspectionSeq||0)>inspectionSeqBefore)presentAfterInspectionSeq=inspectionMeta._inspectionSeq;
+          ai=getAi();alive=getAlive();
+        } else if(P[ct].godName===hgc.godKey&&P[ct].godLevel<3){
+          const playersBeforeFaithEstablished=copyPlayers(P);
           P[ct].godLevel++;P[ct].godZone.push({...hgc});
-        } else if(!P[ct].godName||alreadyHasGod){
+          faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
+        } else if(!P[ct].godName){
+          const playersBeforeFaithEstablished=copyPlayers(P);
           P[ct].godName=hgc.godKey;P[ct].godLevel=1;P[ct].godZone=[{...hgc}];
+          faithEstablished={playersBefore:playersBeforeFaithEstablished,playersAfter:copyPlayers(P)};
         }
+        P[ct].hasBelievedGod=true;
+        if(faithEstablished)faithEstablished.playersAfter=copyPlayers(P);
+        P.forEach((p,i)=>{
+          if(i===ct||p.godName!==hgc.godKey)return;
+          const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);
+          P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;
+          if(abandoned.faithExit)abandonedFaithExits.push(abandoned.faithExit);
+          ai=getAi();alive=getAlive();
+        });
         let handWorshipBlockedEvent = null;
         if(['APO','ZHU','SHU'].includes(hgc.godKey)&&hasGodPowerImmunity(P[ct])){
           const blockedLog=buildGodPowerBlockedLog(P[ct]);
           L.push(blockedLog);
           handWorshipBlockedEvent=createGodPowerBlockedEvent({playerIdx:ct,playerName:P[ct].name,msgs:[blockedLog]});
         }
+        let handWorshipEclipseEvent=null;
         if(hgc.godKey==='APO'&&canGodPowerAffect(P[ct])){
-          gs={...gs,apophisNight:getApophisNightForLevel(P[ct].godLevel)};
-          L.push(buildApophisNightLog());
+          const apophisNight=getApophisNightForLevel(P[ct].godLevel);
+          const nightMsg=buildApophisNightLog();
+          gs={...gs,apophisNight};
+          L.push(nightMsg);
+          handWorshipEclipseEvent=createApophisEclipseEvent({
+            playerIdx:ct,
+            playerName:P[ct].name,
+            apophisNight,
+            msgs:[nightMsg],
+            presentAfterInspectionSeq,
+          });
         }
 
-        P.forEach((p,i)=>{if(i!==ct&&p.godName===hgc.godKey){const abandoned=abandonGodFollower(i,gs.currentTurn,P,D,Disc,L,inspectionMeta);P=abandoned.P;D=abandoned.D;Disc=abandoned.Disc;L=abandoned.L;inspectionMeta=abandoned.inspectionMeta;}});
+        const handWorshipEvent=createGodStatusChangedEvent({
+          playerIdx:ct,
+          playerName:P[ct].name,
+          godKey:P[ct].godName,
+          godLevel:P[ct].godLevel,
+          msgs:L.slice(worshipLogStart,worshipLogStart+1),
+          playersBefore:faithEstablished?.playersBefore||handWorshipPlayersBefore,
+          playersAfter:faithEstablished?.playersAfter||copyPlayers(P),
+          faithSettlement:{previousFaithExit,abandonedFollowers:abandonedFaithExits},
+          presentAfterInspectionSeq,
+        });
+        const handFaithEvents=[handWorshipEvent,handWorshipEclipseEvent].filter(Boolean);
+        const orderedHandFaithEvents=handFaithEvents.length>1
+          ?createRuleResolutionTransaction({id:`faith:${handWorshipEvent.id}`,phase:'faithSettlement',events:handFaithEvents}).events
+          :handFaithEvents;
         playersBeforeSkillAction=copyPlayers(P);
         preSkillLogs=L.slice(worshipLogStart);
         preSkillDiscard=[...Disc];
-        gs={...gs,...inspectionMeta,...(handWorshipBlockedEvent?{_visualEvents:[handWorshipBlockedEvent,...(gs._visualEvents||[])]}:{})};
+        gs={...gs,...inspectionMeta,_visualEvents:[
+          ...(gs._visualEvents||[]),
+          ...orderedHandFaithEvents,
+          ...(handWorshipBlockedEvent?[handWorshipBlockedEvent]:[]),
+        ]};
+        recordActionVisualEvents([
+          ...orderedHandFaithEvents,
+          ...(handWorshipBlockedEvent ? [handWorshipBlockedEvent] : []),
+        ]);
         const ww=checkWin(P,gs._isMP);if(ww)return{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMeta,gameOver:ww};
+        if(hasEffectDecisionState(inspectionMeta)){
+          const decisionState=deriveEffectDecisionState(inspectionMeta,{
+            fallbackPhase:'AI_TURN',
+            turnOwner:ct,
+          });
+          return buildReturnPack({
+            ...gs,
+            players:P,
+            deck:D,
+            discard:Disc,
+            log:L,
+            phase:decisionState.phase,
+            abilityData:decisionState.abilityData,
+          },copyPlayers(P));
+        }
       }
     }
   }
@@ -831,67 +1691,109 @@ export function aiStep(gs, opts = {}) {
   // 邪祀者HP≤2：除非蛊惑可获胜，否则必须休息（已进入AOE斩杀线）
   // 追猎者HP≤5：积极休息
   const aiEffRole=gs.globalOnlySwapOwner!=null?ROLE_TREASURE:(P[ct]._nyaBorrow||P[ct].role);
-  const noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
-  let swapTargetOverride=null;
-  let treasureSwapPlan=null;
-  if(noRestReason?.shouldNotRest){
-    if(noRestReason.reason==='swapWin'){
-      swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'win'};
-    }else if(noRestReason.reason==='swapAvoidRegression'){
-      swapTargetOverride={targetIdx:noRestReason.targetIdx,reason:'avoidRegression'};
-    }
+  const treasureSwapTargets=aiEffRole===ROLE_TREASURE
+    ?alive.filter(p=>p.hand.length>0).map(p=>P.indexOf(p)).filter(i=>i>=0)
+    :[];
+  let treasureSwapPlan=aiEffRole===ROLE_TREASURE&&P[ct].hp<=4
+    ?chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,L,{requireProgress:true})
+    :null;
+  let noRestReason=aiShouldNotRest(gs,P[ct],aiEffRole,P,ct);
+  if(aiEffRole===ROLE_TREASURE&&P[ct].hp<=4&&shouldTreasureSwapInsteadOfRest(P[ct],treasureSwapPlan)){
+    noRestReason={shouldNotRest:true,reason:'publicTreasureProgressSwap',targetIdx:treasureSwapPlan.targetIdx};
   }
-  if(aiEffRole===ROLE_TREASURE&&swapTargetOverride?.targetIdx!=null){
-    const treasureSwapTargets=alive.filter(p=>p.hand.length>0).map(p=>P.indexOf(p)).filter(i=>i>=0);
-    treasureSwapPlan=chooseAiTreasureSwapPlan(P,ct,treasureSwapTargets,swapTargetOverride.targetIdx);
-    if(!treasureSwapPlan)swapTargetOverride=null;
-  }
+  let newAbandoned = gs.huntAbandoned || [];
+  const getHunterTargets = () => getHunterChaseTargets(P,ct,newAbandoned);
+  const preRestHunterDecision = aiEffRole === ROLE_HUNTER
+    ? decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets())
+    : null;
+  const hunterHasImmediateKill = aiEffRole === ROLE_HUNTER
+    && hasImmediateHunterKill(P,ct,newAbandoned);
+  const hunterMustChase = !!preRestHunterDecision?.forceHunterChase || hunterHasImmediateKill;
   const shouldRest=(()=>{
-    if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!swapTargetOverride))return false;
+    if(gs._aiFinishingTurn)return false;
+    if(noRestReason?.shouldNotRest&&(aiEffRole!==ROLE_TREASURE||!!treasureSwapPlan))return false;
+    if(aiEffRole===ROLE_HUNTER&&hunterMustChase)return false;
     return shouldAiRest(gs, P[ct], aiEffRole);
   })();
   if(shouldRest){
     const d1=(1+Math.random()*6|0),d2=(1+Math.random()*6|0),heal=Math.max(d1,d2);
-    const beforeRestPlayers=copyPlayers(P);
-    P[ct].hp=clamp(P[ct].hp+heal);P[ct].isResting=true;
-    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
+    const restPlayersBefore=copyPlayers(P);
     const restStatEventSeq=(gs._statEventSeq||0)+1;
-    const restStatEvents=buildStatEvents(beforeRestPlayers,P,L.slice(-1),{reason:'休息',seq:restStatEventSeq});
-    const restStatPatch=restStatEvents.length?{_statEvents:[...(gs._statEvents||[]),...restStatEvents],_statEventSeq:restStatEventSeq}:{};
+    const recovery=submitRecoveryEvents({players:P,events:[{targetIdx:ct,gainHp:heal,source:'休息'}],statEventSeq:restStatEventSeq});
+    P[ct].isResting=true;
+    L.push(`${ai.name} 选择【休息】，掷骰 ${d1}、${d2}，取高值回复 ${heal}HP，翻面休息中`);
+    const restMsg=L.at(-1);
+    recordActionVisualEvents([
+      createDiceResultVisualEvent({
+        mode:'rest',actorIdx:ct,actorName:ai.name,d1,d2,heal,msgs:[restMsg],
+        playersBefore:restPlayersBefore,
+      }),
+      createStatEventsEvent({
+        statEvents:recovery.statEvents,
+        msgs:[restMsg],
+        transactionId:aiActionTransactionId,
+        order:aiActionOrder+1,
+      }),
+    ]);
+    const restMeta=appendStatChangeResult(gs,recovery);
+    const restStatPatch=recovery.statEvents.length?{_statEvents:restMeta._statEvents,_statEventSeq:restMeta._statEventSeq}:{};
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win,...restStatPatch};
-    discardAiHandToLimit(P, ct, Disc, L);
+    gs={...gs,...restStatPatch};
+    const handLimit=settleAiHandLimit();
+    if(handLimit.damageDecision?.phase){
+      return buildReturnPack({
+        ...gs,...restStatPatch,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+        phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+        restUsed:true,skillUsed:false,
+      },copyPlayers(P));
+    }
     const _P_beforeEndTurnReplay = copyPlayers(P);
-    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,{...gs,...restStatPatch});
-    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;
+    const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,{...gs,...restStatPatch});
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;ai=getAi();alive=getAlive();
     const _P_afterRest=copyPlayers(P);
+    if(replayed.decision){
+      return buildReturnPack(
+        withClearedTurnAnimFields({
+          ...gs,...restStatPatch,...replayed.statePatch,
+          players:P,deck:D,discard:Disc,log:L,
+          currentTurn:ct,
+          phase:replayed.decision.phase,
+          abilityData:replayed.decision.abilityData,
+          restUsed:true,skillUsed:false,
+          _aiEndTurnReplayQueue:replayed.replayQueue,
+          _aiEndTurnReplayMsgs:replayed.replayMsgs,
+        }),
+        _P_afterRest,
+        _P_beforeEndTurnReplay,
+      );
+    }
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
   }
-// 追猎者/邪祀者积极发动技能(65%); 寻宝者随进度提升(35%→55%)
+  // 追猎者按手牌结构与近期追捕失败记录评估；邪祀者积极蛊惑，寻宝者随进度提高掉包意愿。
   let huntContinue = true;
-  let newAbandoned = gs.huntAbandoned || [];
-  const getHunterTargets = () => getHunterChaseTargets(P,ct,newAbandoned);
-  const aiSkillDecision=decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
+  const aiSkillDecision=preRestHunterDecision||decideAiSkillUsage(gs,P,ct,aiEffRole,getHunterTargets());
   let useSkill=aiSkillDecision.useSkill;
+  if(hunterHasImmediateKill)useSkill=true;
   if(gs.multiplyUsed) useSkill=false;
   let cultistBewitchPlan = null;
   if (aiEffRole === ROLE_CULTIST && useSkill) {
-    cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+    cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
     if (!cultistBewitchPlan && !P[ct].roleRevealed) {
       useSkill = false;
     }
   }
   if (aiEffRole === ROLE_CULTIST && !useSkill && !gs.skillUsed && !gs.multiplyUsed && !gs.restUsed) {
-    const canWin = canCultistWinByBewitch(P, ct);
+    const canWin = canCultistWinByBewitch(P, ct, { state: { ...gs, deck: D, discard: Disc } });
     const canEmpty = canCultistEmptyHandByBewitch(P, ct);
     if ((ai.hp <= 4 && (canWin || canEmpty)) || (ai.hp <= 2 && canWin)) {
-      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if (cultistBewitchPlan) {
         useSkill = true;
       }
     }
     if (!useSkill && (P[ct].hand || []).some(card => card?.isGod)) {
-      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct);
+      cultistBewitchPlan = chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if (cultistBewitchPlan?.card?.isGod) {
         useSkill = true;
       }
@@ -900,7 +1802,7 @@ export function aiStep(gs, opts = {}) {
   if (aiEffRole === ROLE_TREASURE && aiSkillDecision.canSwapHands && hasTreasureSwapBuffer(P[ct].hand)) {
     useSkill = true;
   }
-  if (aiEffRole === ROLE_TREASURE && treasureSwapPlan) {
+  if (aiEffRole === ROLE_TREASURE && treasureSwapPlan && noRestReason?.shouldNotRest) {
     useSkill = true;
   }
   if (aiEffRole === ROLE_CULTIST && cultistBewitchPlan && bestCultistBewitchSanLoss(P[ct].hand) > 1) {
@@ -909,35 +1811,78 @@ export function aiStep(gs, opts = {}) {
   if (aiEffRole === ROLE_TREASURE && useSkill) {
     if (!treasureSwapPlan) {
       const treasureSwapTargets = alive.filter(p => p.hand.length > 0).map(p => P.indexOf(p)).filter(i => i >= 0);
-      treasureSwapPlan = chooseAiTreasureSwapPlan(P, ct, treasureSwapTargets, swapTargetOverride?.targetIdx);
+      treasureSwapPlan = chooseAiTreasureSwapPlan(P, ct, treasureSwapTargets, L);
     }
     if (!treasureSwapPlan) useSkill = false;
   }
 
-  const multiplyEvent = (!gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
+  if(gs._aiFinishingTurn)useSkill=false;
+  const multiplyEvent = (!gs._aiFinishingTurn && !gs.multiplyUsed && !gs.skillUsed && !gs.restUsed)
     ? getBlackGoatMultiplyEvent(P, ct)
     : null;
   if (multiplyEvent && shouldAiMultiply({ gs, players: P, sourceIdx: ct, aiEffRole, ai: P[ct], aiSkillDecision, cultistBewitchPlan, huntAbandoned: newAbandoned })) {
+    const multiplyPlayersBefore = copyPlayers(P);
     const goatCard = createBlackGoatYoungCard();
     P[multiplyEvent.toIdx].hand.push(goatCard);
     L.push(`【繁衍】${P[ct].name} 将黑山羊幼仔传播给了 ${P[multiplyEvent.toIdx].name}`);
-    animMultiplyEvent = multiplyEvent;
+    animMultiplyEvent = {
+      ...multiplyEvent,
+      count: 1,
+      cards: [goatCard],
+      msgs: [L[L.length - 1]],
+      playersBefore: multiplyPlayersBefore,
+      playersAfter: copyPlayers(P),
+      discardAfter: [...Disc],
+    };
+    recordActionVisualEvents([createMultiplyVisualEvent(animMultiplyEvent)]);
     gs = { ...gs, multiplyUsed: true, skillUsed: true, ...appendPublicCardGainTriggers(gs, P, multiplyEvent.toIdx, goatCard) };
     useSkill = false;
   }
+  const appendActionNotice = msg => {
+    L.push(msg);
+    recordActionVisualEvents([createLogOnlyVisualEvent({ msgs: [msg] })]);
+  };
   const appendAiEndTurnLog = () => {
-    const usedSkillThisTurn = !!(useSkill || gs.skillUsed || gs.multiplyUsed);
-    L.push(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
+    const usedSkillThisTurn = !!(
+      useSkill
+      || gs.skillUsed
+      || gs.multiplyUsed
+      || gs.skillActivatedTurn === gs.turn
+    );
+    appendActionNotice(usedSkillThisTurn ? `${ai.name} 结束回合` : `${ai.name} 未使用技能，结束回合`);
   };
 
   if(aiEffRole!==ROLE_HUNTER && alive.length===0){
     const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-    discardAiHandToLimit(P, ct, Disc, L);
+    const handLimit=settleAiHandLimit();
+    if(handLimit.damageDecision?.phase){
+      return buildReturnPack({
+        ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+        phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+        skillUsed:gs.skillUsed,
+      },copyPlayers(P));
+    }
     appendAiEndTurnLog();
     const _P_beforeEndTurnReplay = copyPlayers(P);
-    const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
-    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
+    const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
+    P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
     const _P_afterAction=copyPlayers(P);
+    if(replayed.decision){
+      return buildReturnPack(
+        withClearedTurnAnimFields({
+          ...gs,
+          players:P,deck:D,discard:Disc,log:L,
+          currentTurn:ct,
+          phase:replayed.decision.phase,
+          abilityData:replayed.decision.abilityData,
+          skillUsed:gs.skillUsed,
+          _aiEndTurnReplayQueue:replayed.replayQueue,
+          _aiEndTurnReplayMsgs:replayed.replayMsgs,
+        }),
+        _P_afterAction,
+        _P_beforeEndTurnReplay,
+      );
+    }
     const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterAction, _P_beforeEndTurnReplay);
   }
@@ -958,24 +1903,57 @@ export function aiStep(gs, opts = {}) {
         while (huntContinue && hasHuntRevealableCard(P[ct])) {
         const validTargets = getHunterTargets();
         if (validTargets.length > 0) {
-          const sortedTargets = weightedHunterTargetOrder(validTargets);
+          const sortedTargets = orderHunterChaseTargets(P,ct,validTargets);
 
           // 遍历所有目标，直到找到可以追捕的目标或用完所有目标
           let foundTarget = false;
+          let abandonedAfterReveal = false;
           for (const targetEntry of sortedTargets) {
-            let ti = applyNightTarget(targetEntry.idx, validTargets.map(t => t.idx), '选择【追捕】目标');
-            const apophisTargetEvent = consumeLastApophisTargetEvent();
+            const attemptId = `${aiActionTransactionId}:hunt-attempt:${++aiHuntAttemptSeq}`;
+            const targetAttemptBeforePlayers = copyPlayers(P);
+            const targetAttemptLogStart = L.length;
+            let ti = applyNightTarget(
+              targetEntry.idx,
+              validTargets.map(t => t.idx),
+              '选择【追捕】目标',
+              { phaseGroupId: attemptId },
+            );
+            const targetResolutionEventId = consumeLastTargetResolutionEventId();
+            const targetAttemptOwnership = {
+              transactionId: aiActionTransactionId,
+              order: aiActionOrder++,
+              attemptId,
+              phaseGroupId: attemptId,
+              phaseOrder: 30,
+              ...(targetResolutionEventId ? { targetResolutionEventId } : {}),
+            };
+            const recordTargetOnlyAttempt = () => {
+              if (!targetResolutionEventId) return;
+              aiHuntEvents.push({
+                ...targetAttemptOwnership,
+                targetOnly: true,
+                targetIdx: ti,
+                hunterIdx: ct,
+                beforePlayers: targetAttemptBeforePlayers,
+                afterPlayers: copyPlayers(P),
+                afterResultDiscard: [...Disc],
+                beforeLog: L.slice(0, targetAttemptLogStart),
+                afterLog: [...L],
+                msgs: [],
+              });
+            };
             const tgt = P[ti];
             const targetHand = P[ti].hand;
             if (!hasHuntRevealableCard(targetHand)) {
+              recordTargetOnlyAttempt();
               newAbandoned = [...new Set([...newAbandoned, ti])];
               continue;
             }
-            if (ti === 0) {
+            if (ti === 0 && !opts.allAi) {
               const huntPromptLogStart = L.length;
               L.push(`${ai.name}（追猎者）向你发动【追捕】！请选择亮出一张手牌`);
               aiHuntEvents.push({
-                apophisTargetEvent,
+                ...targetAttemptOwnership,
                 targetIdx:ti,
                 hunterIdx:ct,
                 beforePlayers:copyPlayers(P),
@@ -985,39 +1963,75 @@ export function aiStep(gs, opts = {}) {
                 afterLog:[...L],
                 msgs:L.slice(huntPromptLogStart),
                 skipReveal:true,
+                pendingPrompt:true,
               });
               const updatedAbandoned = [...newAbandoned, ti];
-              return {...gs, players:P, deck:D, discard:Disc, log:L,
+              const pendingHuntState={...gs, players:P, deck:D, discard:Disc, log:L,
                 phase:'PLAYER_REVEAL_FOR_HUNT',
-                abilityData:{huntingAI:ct, aiHunterName:ai.name},
-                skillUsed:true, huntAbandoned: updatedAbandoned, _aiName:ai.name, _drawnCard:gs._drawnCard, _aiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null, _discardedDrawnCard:gs._discardedDrawnCard??false, _playersBeforeSkillAction:playersBeforeSkillAction, _preSkillLogs:preSkillLogs, _preSkillDiscard:preSkillDiscard, _aiHuntEvents:aiHuntEvents};
+                abilityData:{huntingAI:ct, aiHunterName:ai.name, huntPromptId:attemptId},
+                skillUsed:true, skillActivatedTurn:gs.turn, huntAbandoned: updatedAbandoned};
+              return buildReturnPack(pendingHuntState,copyPlayers(P));
             } else {
               const beforeHuntPlayers=copyPlayers(P);
               const huntLogStart=L.length;
               const targetHandBefore=[...(P[ti]?.hand||[])];
+              const targetGodZoneBefore=[...(P[ti]?.godZone||[])];
               const targetRevealBefore=!!P[ti]?.revealHand;
               const knownHunterCards=P[ti]?.peekMemories?.[ct]||[];
               const rc = aiChooseRevealCard(targetHand, ai.name, L, knownHunterCards);
               if (!rc) {
+                recordTargetOnlyAttempt();
                 newAbandoned = [...new Set([...newAbandoned, ti])];
                 continue;
               }
               L.push(`${ai.name}（追猎者）对 ${tgt.name} 【追捕】，亮出 ${cardLogText(rc)}`);
-              const mi = P[ct].hand.findIndex(c => cardsHuntMatch(c,rc));
+              const mi = chooseAiHuntDiscardIndex({...gs,players:P,deck:D,discard:Disc,log:L},ct,rc,ti);
               if (mi >= 0) {
                 const dc = P[ct].hand.splice(mi, 1)[0]; Disc.push(dc);
                 clearHunterLowQualityHand(P, ct);
                 const blankZoneUpdate=moveEligibleBlankZones(P,L);
                 if(blankZoneUpdate){
-                  P=blankZoneUpdate.players;
+                  P=blankZoneUpdate.players;ai=getAi();alive=getAlive();
                   L=blankZoneUpdate.log;
+                  recordActionVisualEvents(blankZoneUpdate.visualEvents);
                 }
                 const afterDiscardPlayers=copyPlayers(P);
                 const afterDiscardDiscard=[...Disc];
                 const huntDamage=3+(P[ct].damageBonus||0);
+                const balanceEvents=buildBalanceDiscardLossEvents([dc],ct,{reason:'追捕弃牌'});
+                L.push(...buildBalanceDiscardLogLines([dc],P[ct].name,'追捕弃牌'));
                 L.push(`弃 ${cardLogText(dc,{alwaysShowName:true})} → ${tgt.name} 受 ${huntDamage}HP 伤害！`);
-                const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:ti,currentTurn:gs.currentTurn,lostHp:huntDamage,source:'追捕'});
-                if(etherealizeLoss){
+                const huntDamageResult=submitLossEvents({
+                  players:P,deck:D,discard:Disc,log:L,currentTurn:gs.currentTurn,
+                  events:[...balanceEvents,{targetIdx:ti,lostHp:huntDamage,source:'追捕',order:balanceEvents.length}],
+                  statEventLogs:L.slice(huntLogStart),
+                  statEventSeq:(gs._statEventSeq||0)+1,
+                  statEventIdPrefix:`hunt:${gs._turnKey||gs.turn||0}:${ct}:${ti}:${aiHuntEvents.length}`,
+                  defeatSettlementOwner:'huntResult',
+                });
+                // Hunt results own these events, but all later losses share
+                // the state cursor, including night rolls and resumed input.
+                // Advance it without adding a second generic replay owner.
+                if(huntDamageResult.statEventSeq!=null){
+                  gs={...gs,_statEventSeq:huntDamageResult.statEventSeq};
+                }
+                if(huntDamageResult.phase==='ETHEREALIZE_DECISION'){
+                  aiHuntEvents.push({
+                    ...targetAttemptOwnership,
+                    targetIdx:ti,
+                    hunterIdx:ct,
+                    revealedCard:rc,
+                    discardedCard:dc,
+                    afterDiscardPlayers,
+                    afterDiscardDiscard,
+                    beforePlayers:beforeHuntPlayers,
+                    afterPlayers:copyPlayers(P),
+                    afterResultDiscard:[...Disc],
+                    beforeLog:L.slice(0,huntLogStart),
+                    afterLog:[...L],
+                    msgs:L.slice(huntLogStart),
+                    pendingEtherealize:true,
+                  });
                   return buildReturnPack({
                     ...gs,
                     players:P,
@@ -1025,23 +2039,26 @@ export function aiStep(gs, opts = {}) {
                     discard:Disc,
                     log:L,
                     currentTurn:ct,
-                    phase:'ETHEREALIZE_DECISION',
-                    abilityData:buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct}),
+                    phase:huntDamageResult.phase,
+                    abilityData:huntDamageResult.abilityData,
                     skillUsed:true,
                     huntAbandoned:newAbandoned,
                   },copyPlayers(P));
                 }
-                applyHpDamageWithLink(P,ti,huntDamage,Disc,L,gs.currentTurn,D);
-                if (P[ti].hp <= 0) {
+                const huntStatEvents=huntDamageResult.statEvents;
+                if (P[ti].hp <= 0 && !(P[ti].hand || []).some(isTsathogguaSlime)) {
                   let afterDamagePlayers=null;
                   let afterDamageDiscard=null;
                   let afterDamageLog=null;
                   let lootTransferCount=0;
                   let lootDiscardCards=[];
+                  const defeatedGodCards=[...targetGodZoneBefore];
                   if (targetHandBefore.length) {
                     Disc=removeCardsFromDiscard(Disc,targetHandBefore);
                     P[ti].hand=[...targetHandBefore];
-                    afterDamagePlayers=copyPlayers(P);
+                    afterDamagePlayers=copyPlayers(
+                      huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===ti)?.committedPlayers||P,
+                    );
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                     const maxToTake=3;
@@ -1056,10 +2073,10 @@ export function aiStep(gs, opts = {}) {
                           L.push(`${ai.name} 从 ${tgt.name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
                         }
                       });
-                      const { kept: kept1, destroyed: destroyed1 } = separateBlackGoatYoung(P[ti].hand);
-                      lootDiscardCards=[...kept1];
+                      const { kept: kept1, destroyed: destroyed1, animationCards: discarded1 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...discarded1];
                       if (kept1.length) Disc.push(...kept1);
-                      if (destroyed1.length) L.push(`${P[ti].name} 的 ${destroyed1.length} 张黑山羊幼仔被销毁`);
+                        if (destroyed1.length) L.push(`${P[ti].name} 的 ${destroyed1.length} 张衍生牌被销毁`);
                       P[ti].hand = [];
                     } else {
                       const cardsToTake=Math.min(maxToTake,P[ti].hand.length);
@@ -1070,20 +2087,21 @@ export function aiStep(gs, opts = {}) {
                         lootTransferCount++;
                         L.push(`${ai.name} 从 ${tgt.name} 的手牌中暗抽了一张！`);
                       }
-                      const { kept: kept2, destroyed: destroyed2 } = separateBlackGoatYoung(P[ti].hand);
-                      lootDiscardCards=[...kept2];
+                      const { kept: kept2, destroyed: destroyed2, animationCards: discarded2 } = separateBlackGoatYoung(P[ti].hand);
+                      lootDiscardCards=[...discarded2];
                       if (kept2.length) Disc.push(...kept2);
-                      if (destroyed2.length) L.push(`${P[ti].name} 的 ${destroyed2.length} 张黑山羊幼仔被销毁`);
+                        if (destroyed2.length) L.push(`${P[ti].name} 的 ${destroyed2.length} 张衍生牌被销毁`);
                       P[ti].hand = [];
                     }
                   } else {
-                    afterDamagePlayers=copyPlayers(P);
+                    afterDamagePlayers=copyPlayers(
+                      huntStatEvents.find(event=>event.type==='PLAYER_DEFEATED'&&event.target===ti)?.committedPlayers||P,
+                    );
                     afterDamageDiscard=[...Disc];
                     afterDamageLog=[...L];
                   }
-                  if (P[ti].godZone?.length) { Disc.push(...P[ti].godZone); P[ti].godZone = []; P[ti].godName = null; P[ti].godLevel = 0; }
                   aiHuntEvents.push({
-                    apophisTargetEvent,
+                    ...targetAttemptOwnership,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
@@ -1094,8 +2112,10 @@ export function aiStep(gs, opts = {}) {
                     afterDamagePlayers,
                     afterDamageDiscard,
                     afterDamageLog,
+                    statEvents:huntStatEvents,
                     lootTransferCount,
                     lootDiscardCards,
+                    defeatedGodCards,
                     afterPlayers:copyPlayers(P),
                     afterResultDiscard:[...Disc],
                     beforeLog:L.slice(0,huntLogStart),
@@ -1108,13 +2128,14 @@ export function aiStep(gs, opts = {}) {
                   break;
                 } else {
                   aiHuntEvents.push({
-                    apophisTargetEvent,
+                    ...targetAttemptOwnership,
                     targetIdx:ti,
                     hunterIdx:ct,
                     revealedCard:rc,
                     discardedCard:dc,
                     afterDiscardPlayers,
                     afterDiscardDiscard,
+                    statEvents:huntStatEvents,
                     beforePlayers:beforeHuntPlayers,
                     afterPlayers:copyPlayers(P),
                     afterResultDiscard:[...Disc],
@@ -1127,9 +2148,8 @@ export function aiStep(gs, opts = {}) {
                   break;
                 }
               } else {
-                L.push(`无匹配手牌，放弃追捕 ${tgt.name}`);
                 aiHuntEvents.push({
-                  apophisTargetEvent,
+                  ...targetAttemptOwnership,
                   targetIdx:ti,
                   hunterIdx:ct,
                   revealedCard:rc,
@@ -1140,45 +2160,57 @@ export function aiStep(gs, opts = {}) {
                   afterLog:[...L],
                   msgs:L.slice(huntLogStart),
                 });
+                appendActionNotice(`${ai.name}（追猎者）放弃追捕 ${tgt.name}`);
                 // 将目标添加到已放弃列表，避免同一回合再次选择
                 newAbandoned = [...newAbandoned, ti];
                 // 追猎者放弃追捕后本回合禁用追捕技能
                 P[ct].disableSkill = true;
                 huntContinue = false;
+                abandonedAfterReveal = true;
                 break;
               }
             }
           }
 
           if (!foundTarget) {
-            // 所有目标都尝试过了，仍无法追捕
-            L.push(`${ai.name} 尝试了所有目标，仍无法追捕`);
+            // 亮牌后放弃不公开是主动选择还是没有匹配牌。
+            if (!abandonedAfterReveal) appendActionNotice(`${ai.name} 尝试了所有目标，仍无法追捕`);
             markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
             huntContinue = false;
           }
         } else {
-          L.push(`${ai.name} 环顾四周，没有合适的猎物了`);
+          appendActionNotice(`${ai.name} 环顾四周，没有合适的猎物了`);
           markHunterLowQualityHand(P, ct, gs, newAbandoned.length);
           huntContinue = false;
         }
 
         // 检查胜利条件
-        const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
+        const win=checkWin(P,gs._isMP);
+        if(win){
+          const winningState=buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win},copyPlayers(P));
+          // Preserve every attempt through the winning settlement, including
+          // death/loot. An earlier casualty is not the terminal boundary.
+          const terminalEvent=orderRuleResolutionEvents(winningState._visualEvents)
+            .filter(event=>event.transactionId===aiActionTransactionId).at(-1);
+          if(terminalEvent)terminalEvent.terminalBoundary=true;
+          return winningState;
+        }
       }
     } else if(aiEffRole===ROLE_CULTIST){
       if(!alive.length){
         huntContinue=false;
       }else{
-      const plan = cultistBewitchPlan || chooseAiCultistBewitchPlan(P, ct);
+      const plan = cultistBewitchPlan || chooseAiCultistBewitchPlan(P, ct, { state: { ...gs, deck: D, discard: Disc } });
       if(!plan){
         huntContinue = false;
       }else if(P[ct].hand.length){
+        alive=getAlive();
         const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
         const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         tgt=P[ti];
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
-        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;ai=getAi();alive=getAlive();
         const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
         if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
@@ -1197,17 +2229,19 @@ export function aiStep(gs, opts = {}) {
         if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(sc.type==='swapAllHands'||hasEffectDecisionState(res.statePatch)){
+          const deferredSwap=!!res.statePatch?.abilityData?.zoneSwapCard;
+          if(deferredSwap||hasEffectDecisionState(res.statePatch)){
             const {phase:nextPhase,abilityData:phaseAbilityData}=deriveEffectDecisionState(res.statePatch,{
+              baseAbilityData:{_turnOwner:gs.currentTurn},
               fallbackPhase:'ACTION',
-              leadingPhase:sc.type==='swapAllHands'?'ZONE_SWAP_SELECT_TARGET':null,
-              leadingAbilityData:sc.type==='swapAllHands'?{
+              leadingPhase:deferredSwap?'ZONE_SWAP_SELECT_TARGET':null,
+              leadingAbilityData:deferredSwap?{
                 zoneSwapCard:sc,
                 zoneSwapSource:ti,
               }:{},
               turnOwner:gs.currentTurn,
             });
-            const needsPlayerDecision = sc.type==='swapAllHands' || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
+            const needsPlayerDecision = deferredSwap || !!res.statePatch?.peekHandTargets || !!res.statePatch?.caveDuelTargets || !!res.statePatch?.damageLinkTargets || !!res.statePatch?.roseThornTargets || res.statePatch?.abilityData?.type==='sphinxGuess';
             return {
               ...gs,
               players:P,
@@ -1233,6 +2267,7 @@ export function aiStep(gs, opts = {}) {
       }
       }
     } else {
+      alive=getAlive();
       const withH=alive.filter(p=>p.hand.length>0);
       const pool=withH.length?withH:alive;
       if(pool.length){
@@ -1245,7 +2280,11 @@ export function aiStep(gs, opts = {}) {
         const ti=applyNightTarget(P.indexOf(tgt),legalTargets,'选择【掉包】目标');
         tgt=P[ti];
         if(P[ti]?.hand.length&&P[ct].hand.length){
-          const ri=0|Math.random()*P[ti].hand.length;const taken=P[ti].hand.splice(ri,1)[0];
+          const swapBeforePlayers=copyPlayers(P);
+          const swapBeforeDiscard=[...Disc];
+          const publicTakeIdx=chooseTreasurePublicTakeIndex(P[ct].hand,P[ti]);
+          const targetAllowsPick=!!P[ti].revealHand&&!!P[ti].pickInsteadOfRandom;
+          const ri=publicTakeIdx>=0?publicTakeIdx:(0|Math.random()*P[ti].hand.length);const taken=P[ti].hand.splice(ri,1)[0];
           P[ct].hand.push(taken);
           const gi=chooseTreasureSwapGiveIndex(P[ct].hand);
           const given=P[ct].hand.splice(gi,1)[0];
@@ -1254,8 +2293,12 @@ export function aiStep(gs, opts = {}) {
           const swapActorLabel=`${ai.name}${gs.globalOnlySwapOwner===null?'（寻宝者）':''}`;
           const swapPublicLog=`${swapActorLabel}对 ${tgt.name} 【掉包】`;
           L.push(swapPublicLog);
-          if(ti===0&&!gs._isMP){
+          if(targetAllowsPick){
+            L.push(`${swapActorLabel}从 ${tgt.name} 的公开手牌中选择了 ${cardLogText(taken,{alwaysShowName:true})}`);
+          }else if(ti===0&&!gs._isMP){
             L.push(`你的手牌${cardLogText(taken,{alwaysShowName:true})}被暗抽`);
+          }
+          if(ti===0&&!gs._isMP){
             L.push(`${swapActorLabel}给你一张${cardLogText(given,{alwaysShowName:true})}`);
           }
           const aiSwapEvent=createSwapCardsEvent({
@@ -1267,16 +2310,24 @@ export function aiStep(gs, opts = {}) {
             givenCard:given,
             sourceName:ai.name,
             sourceLabel:swapActorLabel,
+            beforePlayers:swapBeforePlayers,
+            afterPlayers:copyPlayers(P),
+            beforeDiscard:swapBeforeDiscard,
+            afterDiscard:[...Disc],
             msgs:[swapPublicLog],
           });
-          if(aiSwapEvent)gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};
+          if(aiSwapEvent){
+            gs={...gs,_visualEvents:[aiSwapEvent,...(gs._visualEvents||[])]};
+            recordActionVisualEvents([aiSwapEvent]);
+          }
           // 只有真正的寻宝者才能通过集齐全部编号获胜
           if((ai._nyaBorrow||ai.role)===ROLE_TREASURE&&isWinHand(P[ct].hand)){
             if(gs.globalOnlySwapOwner===null)P[ct].roleRevealed=true;
             if(P[ti].role===ROLE_TREASURE&&isWinHand(P[ti].hand)){
               P[ti].roleRevealed=true;
               const reason2=`${ai.name} 与 ${P[ti].name} 互换后双方均集齐编号，两位寻宝者共同获胜！`;
-              return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason2],gameOver:{winner:ROLE_TREASURE,reason:reason2,winnerIdx:ct,winnerIdx2:ti}};
+              const orderedWinnerSeats=[ct,ti].sort((a,b)=>a-b);
+              return{...gs,players:P,deck:D,discard:Disc,log:[...L,reason2],gameOver:{winner:ROLE_TREASURE,reason:reason2,winnerIdx:orderedWinnerSeats[0],winnerIdx2:orderedWinnerSeats[1]}};
             }
             return{...gs,players:P,deck:D,discard:Disc,log:[...L,`${ai.name} 掉包后获胜！`],gameOver:{winner:ROLE_TREASURE,reason:`${ai.name} 通过掉包集齐全部编号并获胜！`,winnerIdx:ct}};
           }
@@ -1289,15 +2340,16 @@ export function aiStep(gs, opts = {}) {
         }
       }
   }else if(!P[ct].isDead){
-    if(aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
-      cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct);
+    if(!gs._aiFinishingTurn&&aiEffRole===ROLE_CULTIST&&!gs.skillUsed&&!gs.multiplyUsed&&!gs.restUsed&&isCultistEndingTurnUnreasonable(P,ct)){
+      cultistBewitchPlan=chooseAiCultistBewitchPlan(P,ct,{state:{...gs,deck:D,discard:Disc}});
       if(cultistBewitchPlan){
         const plan=cultistBewitchPlan;
+        alive=getAlive();
         const legalTargets=alive.map(p=>P.indexOf(p)).filter(i=>i>=0);
         const ti=applyNightTarget(plan.targetIdx,legalTargets,'选择【蛊惑】目标');
         const sc=plan.card;
         const bwRes=applyBewitchGift(gs,P,D,Disc,L,ct,ti,sc);
-        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;
+        gs=bwRes.gs;P=bwRes.P;D=bwRes.D;Disc=bwRes.Disc;L=bwRes.L;ai=getAi();alive=getAlive();
         const treasureWin=buildBewitchTreasureWinState(gs,P,D,Disc,L,ti);
         if(treasureWin)return buildReturnPack(treasureWin,copyPlayers(P));
         const pendingSlime=buildPendingSlimeBalanceState(gs,P,D,Disc,L,{
@@ -1316,10 +2368,10 @@ export function aiStep(gs, opts = {}) {
         if(deferredShu)return deferredShu;
         if(!sc.isGod&&bwRes.fxResult){
           const res=bwRes.fxResult;
-          if(hasEffectDecisionState(res.statePatch)){
-            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{fallbackPhase:'ACTION',turnOwner:gs.currentTurn});
-            const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
+          const deferredSwap=!!res.statePatch?.abilityData?.zoneSwapCard;
+          if(deferredSwap||hasEffectDecisionState(res.statePatch)){
+            const {phase,abilityData}=deriveEffectDecisionState(res.statePatch,{baseAbilityData:{_turnOwner:gs.currentTurn},fallbackPhase:'ACTION',leadingPhase:deferredSwap?'ZONE_SWAP_SELECT_TARGET':null,turnOwner:gs.currentTurn});
+            return {...gs,players:P,deck:D,discard:Disc,log:L,phase,abilityData,currentTurn:deferredSwap||res.statePatch?.abilityData?.type==='sphinxGuess'?ti:gs.currentTurn,skillUsed:true};
           }
         }
         const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
@@ -1337,57 +2389,36 @@ export function aiStep(gs, opts = {}) {
     return{...nextGs,_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:_P_afterAction,_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
   }
   const win=checkWin(P,gs._isMP);if(win)return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:win};
-  const aiHandLimit=P[ct]._nyaHandLimit??4;
-  const discardedCards=[];
-  const handLimitBeforePlayers=copyPlayers(P);
-  const handLimitBeforeDiscard=[...Disc];
-  const handLimitBeforeLog=[...L];
-  while(P[ct].hand.length>aiHandLimit){
-    const c=P[ct].hand.shift();Disc.push(c);discardedCards.push(c);L.push(`${ai.name} 弃 ${cardLogText(c,{alwaysShowName:true})}（上限）`);
-    const balance=applyBalanceDiscardSideEffects({players:P,deck:D,discard:Disc,log:L,ownerIdx:ct,cards:[c],reason:'手牌上限弃牌'});
-    P=balance.players;D=balance.deck;Disc=balance.discard;L=balance.log;
-  }
-  // 结算玫瑰倒刺：弃掉的标记牌立即造成伤害，日志紧跟在弃牌日志之后
-  if(discardedCards.length){
-    const thornLosses={};
-    discardedCards.forEach(c=>{
-      if(c.roseThornHolderId!=null && P[c.roseThornHolderId] && !P[c.roseThornHolderId].isDead){
-        thornLosses[c.roseThornHolderId]=(thornLosses[c.roseThornHolderId]||0)+1;
-      }
-    });
-    Object.entries(thornLosses).forEach(([holderIdxStr,count])=>{
-      const holderIdx=+holderIdxStr;
-      L.push(`【玫瑰倒刺】${P[holderIdx].name} 失去标记手牌，受到 ${2*count} HP 伤害`);
-      const etherealizeLoss=buildEtherealizeLoss({players:P,targetIdx:holderIdx,currentTurn:gs.currentTurn,lostHp:2*count,source:'玫瑰倒刺'});
-      if(etherealizeLoss){
-        const decision=buildEtherealizeRedirectDecision([etherealizeLoss],{_turnOwner:ct});
-        P[holderIdx]._pendingRoseThornEtherealize=true;
-        gs={...gs,phase:'ETHEREALIZE_DECISION',abilityData:decision};
-      }else{
-        applyHpDamageWithLink(P,holderIdx,2*count,Disc,L,gs.currentTurn,D);
-      }
-    });
-    const pendingDecision=gs.phase==='ETHEREALIZE_DECISION'&&gs.abilityData?.type==='etherealizeRedirect';
-    if(pendingDecision){
-      P.forEach(p=>{if(p)delete p._pendingRoseThornEtherealize;});
-      return buildReturnPack({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,skillUsed:(useSkill||gs.skillUsed)},copyPlayers(P));
-    }
+  const handLimit=settleAiHandLimit();
+  if(handLimit.damageDecision?.phase){
+    return buildReturnPack({
+      ...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,
+      phase:handLimit.damageDecision.phase,abilityData:handLimit.damageDecision.abilityData,
+      skillUsed:(useSkill||gs.skillUsed),
+    },copyPlayers(P));
   }
   const winAfterDiscard=checkWin(P,gs._isMP);
   if(winAfterDiscard){
-    return{...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),_animAiDrawnCard:gs._aiDrawnCard??gs._drawnCard??null,_animDiscardedDrawnCard:gs._discardedDrawnCard??false,_aiName:ai.name,_playersBeforeNextDraw:copyPlayers(P),_playersBeforeSkillAction:playersBeforeSkillAction,_preSkillLogs:preSkillLogs,_preSkillDiscard:preSkillDiscard,_aiHuntEvents:aiHuntEvents};
+    return buildReturnPack({
+      ...gs,players:P,deck:D,discard:Disc,log:L,gameOver:winAfterDiscard,
+      currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:(useSkill||gs.skillUsed),
+    },copyPlayers(P));
   }
   const _P_beforeEndTurnReplay = copyPlayers(P);
-  const replayed=processAiEndTurnReplayHand(P,D,Disc,L,ct,gs);
-  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};
+  const _Disc_beforeEndTurnReplay = [...Disc];
+  const replayed=processAiEndTurnEvents(P,D,Disc,L,ct,gs);
+  P=replayed.P;D=replayed.D;Disc=replayed.Disc;L=replayed.L;gs={...gs,...replayed.statePatch};ai=getAi();alive=getAlive();
   const _P_afterAction=copyPlayers(P);
+  const _Disc_afterAction=[...Disc];
   let nextGs;
 
   // AI状态机扭转关键：只有追猎者才能在同一回合内连续追捕并留在 AI_TURN
   const hasValidTargets = getHunterTargets().length > 0;
   const hasZoneCards = P[ct].hand.filter(canRevealForHunt).length > 0;
   try{
-    if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
+    if (replayed.decision) {
+        nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: replayed.decision.phase, currentTurn: ct, abilityData: replayed.decision.abilityData, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs});
+    } else if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
         nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
         nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs}, opts);
@@ -1402,18 +2433,15 @@ export function aiStep(gs, opts = {}) {
     _animDiscardedDrawnCard:(nextGs.currentTurn===ct&&nextGs.phase==='AI_TURN')?false:(gs._discardedDrawnCard??false),
     _aiName:ai.name,
     _playersBeforeNextDraw:_P_afterAction,
+    _discardBeforeNextDraw:_Disc_afterAction,
     _playersBeforeEndTurnReplay:_P_beforeEndTurnReplay,
+    _discardBeforeEndTurnReplay:_Disc_beforeEndTurnReplay,
     _playersBeforeSkillAction:playersBeforeSkillAction,
     _preSkillLogs:preSkillLogs,
     _preSkillDiscard:preSkillDiscard,
     _aiHuntEvents:aiHuntEvents,
-    ...(getReplayVisualEvents(nextGs) ? { _visualEvents: getReplayVisualEvents(nextGs) } : {}),
-    _aiHandLimitDiscards:discardedCards,
-    ...(discardedCards.length?{
-      _aiHandLimitBeforePlayers:handLimitBeforePlayers,
-      _aiHandLimitBeforeDiscard:handLimitBeforeDiscard,
-      _aiHandLimitBeforeLog:handLimitBeforeLog,
-    }:{}),
+    ...(getUnifiedReplayVisualEvents(nextGs).length ? { _visualEvents: getUnifiedReplayVisualEvents(nextGs) } : {}),
+    ...(aiHandLimitPresentation||{}),
     ...(animMultiplyEvent?{_animMultiplyEvent:animMultiplyEvent}:{}),
   };
 }

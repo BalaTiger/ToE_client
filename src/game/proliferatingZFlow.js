@@ -1,3 +1,10 @@
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  requestZhuReveal,
+} from './zhuPower';
+import { compileFreshVisualEventReplay } from './visualEventTransactionCompiler';
+
 export function buildProliferatingZDrawFlow(stateLike, deps) {
   const {
     copyPlayers,
@@ -8,9 +15,6 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     drawCardDecisionText,
     hasEffectDecisionState,
     deriveEffectDecisionState,
-    splitAnimBoundLogs,
-    bindAnimLogChunks,
-    buildAnimQueue,
     statePatchStep,
   } = deps;
 
@@ -40,6 +44,26 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     proliferatingZQueue: queue,
     abilityData: { ...(stateLike.abilityData || {}), fromProliferatingZ: true },
   };
+  const zhuRequest = requestZhuReveal(drawBase, {
+    deck,
+    drawerIdx,
+    source: ZHU_REVEAL_SOURCE.PROLIFERATING_Z,
+    continuation: { remainingQueueLength: queue.length },
+  });
+  if (zhuRequest) {
+    return {
+      handled: true,
+      action: 'setState',
+      state: {
+        ...drawBase,
+        zhuLight: zhuRequest.zhuLight,
+        phase: 'ZHU_HIDE_AI_DRAW',
+        drawReveal: null,
+        selectedCard: null,
+        abilityData: buildZhuRevealAbilityData(zhuRequest, { fromProliferatingZ: true }),
+      },
+    };
+  }
   const drawResult = isAiSeat(drawBase, drawerIdx)
     ? aiDrawAndApply(drawerIdx, players, deck, discard, drawBase)
     : playerDrawCard(players, deck, discard, drawerIdx, drawBase);
@@ -131,11 +155,7 @@ export function buildProliferatingZDrawFlow(stateLike, deps) {
     };
   }
 
-  const split = splitAnimBoundLogs(log.slice((stateLike.log || []).length));
-  const statQueue = bindAnimLogChunks(
-    buildAnimQueue(stateLike, newGs),
-    { preStatLogs: split.preStat, statLogs: split.stat }
-  );
+  const statQueue = compileFreshVisualEventReplay(stateLike, newGs).queue;
   return {
     handled: true,
     action: 'triggerQueueAndContinue',

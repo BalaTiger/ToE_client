@@ -1,0 +1,27 @@
+{
+  "mode": "built-in",
+  "selectedStars": "stars_call.png (second/corrected image)",
+  "jobs": [
+    {
+      "key": "panels",
+      "prompt": "Use case: background-extraction. Production UI asset atlas, extracted/reconstructed from the supplied approved game mockup. Output 1536x1024 RGBA with TRUE TRANSPARENT background. Arrange in EXACT FOUR 768x512 cells (2 columns,2 rows), each asset entirely inside its cell with 24px transparent padding, no overlaps. Top-left: the upper-left wide player information frame from reference, dark oxidised brass frame with organic broken filigree, charcoal cloth interior, left circular portrait SOCKET empty dark interior, no portrait. Overall object approx720x270 centered in cell. Top-right: ONE repeatable upright opponent panel frame, rectangular, width560 height450, almost-black weathered interior. Bottom-left: one tall frayed cloth faith banner with irregular real fabric lower point, dark metal narrow sides, approx280x460, centered. Bottom-right: one tall frayed cloth log banner, slightly wider and shorter lower point, approx330x460. Faith/log must have actual opaque nearly black fabric interiors, no gradient fades. Remove ALL text, bars, numbers, cards, portraits, icons and emblems from all objects; clean blank content interiors. Match original photoreal aged dark copper, subtle highlights, heavy physically textured cloth. No cartoon gold or bright outlines. Outside object boundaries fully alpha-transparent. This is a clean sprite sheet for direct extraction, NOT a game screenshot; do not include scene/background, grid lines, checkerboard print, labels or drop shadow rectangles.",
+      "references": [
+        "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-dlc-proposals-2026-09-14/stars_call.png"
+      ]
+    },
+    {
+      "key": "controls",
+      "prompt": "Use case: background-extraction. Extract/reconstruct the functional control artwork from supplied approved game mockup as a production atlas. Output EXACT1536x1024 RGBA TRUE TRANSPARENT. TWO columns of768px. LEFT column SIX equal rows of height~170: first teal skill button, second ochre-brown rest button, third smoky plum multiply button, fourth rust end-turn button, fifth short dark prompt plaque, sixth dark counter plaque. In each cell center a 700x140 object except fifth height110. The first four have exactly same shape and dimensions, elongated chamfered rectangular old brass frames with slight irregular organic pointed ends, as reference lower-right. Keep original interior colors but subdued border brightness. EMPTY interiors, no icons, no words or numbers. Counter plate is one dark rectangular old brass frame, no separators. RIGHT column top half: upper-right turn plaque joined to circular star instrument from reference, width710 height360, opaque charcoal interior in rectangle and translucent dark teal glass circular dial with faint etched teal geometrical star lines (no numerals); retain organic curving outer contour, plaque extends farther left than banner would. RIGHT column bottom half: separate circular dark bronze hand-count medallion of diameter360 centered in cell, empty opaque almost-black center, muted teal inner ring. All assets cleanly isolated with minimum20px true transparent padding; no grid or labels. Match dark physical aged metal, no cartoon gold, no bright neon. Remove EVERY word, number, action icon, pause/menu icon. No scene, people, cards.",
+      "references": [
+        "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-dlc-proposals-2026-09-14/stars_call.png"
+      ]
+    },
+    {
+      "key": "foreground",
+      "prompt": "Use case: background-extraction. Extract only the foreground sculptural scenery from this approved game screenshot into a TRUE TRANSPARENT RGBA wide image1536x1024. Keep perspective and style, but remove all UI, cards, text, flags, counters, circular instrument, frames and background environment. The isolated asset contains bottom-left carved ancient stone ledge bearing two skulls and three partly burnt wax candles, a few dark chains along bottom-left; bottom-right dark tentacle curl hugging screen edge plus small bronze compass and papers at bottom; bottom edge very shallow dark wrinkled cloth strip with an old incised compass ornament center. Everything in upper45% must fully transparent. Central card space x18%..76%,y50%..88% must also fully transparent; bottommost cloth must stay below90% image height. Left skull/candle group stays x0..16%,y48%..86%. Right tentacle stays x94%..100%,y46%..98%. Leave wide open transparent scene center. Dark weathered photographic game painting materials, low saturation bronze and charcoal, restrained warm candlelight, no glow haze or rectangular shadows. Need clean irregular alpha edges suitable for reusable overlay on all four DLC backgrounds. No new book objects, no decorative words or readable writing.",
+      "references": [
+        "C:/Users/zhuzi/Documents/ToE/ToE_client_main/docs/layout-3-dlc-proposals-2026-09-14/stars_call.png"
+      ]
+    }
+  ]
+}

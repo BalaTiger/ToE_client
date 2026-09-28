@@ -1,8 +1,8 @@
-﻿import {
+import {
   shuffle,
-  clamp,
   copyPlayers,
   isDodgeableZoneCard,
+  shouldTriggerTreasureDodge,
   cardLogText,
   isWinHand,
   makeInspectionMeta,
@@ -12,38 +12,134 @@
   killPlayerState,
   tryVritraImmortal,
   canRevealForHunt,
-  buildEtherealizeLoss,
-  buildEtherealizeRedirectDecision,
-  buildTsathogguaSlimeBalanceDecision,
   formatSanLoss,
 } from './coreUtils';
 import { aiShouldKeepZoneCard, chooseAiCultistBewitchPlan, getHunterChaseTargets } from './ai';
+import { checkWin } from './victory';
+export { checkWin } from './victory';
 import { clearPlayerGodZone } from './aiTurn';
 import { splitAnimBoundLogs } from './animLogs';
-import { localDisplayName } from './rotateState';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils';
-import { applyFx, applyInspectionForSanLoss } from './effectEngine';
-import { buildZhuLight, getZhuTopGuard } from './zhuPower';
-import { buildStatEvents } from './statEvents';
-import { deriveEffectDecisionState } from './effectStatePatch';
+import { applyFx, applyInspectionForSanLoss, submitLossEvents } from './effectEngine';
+import { appendStatChangeResult, submitRecoveryEvents } from './statChangeEngine';
+import {
+  ZHU_REVEAL_SOURCE,
+  buildZhuRevealAbilityData,
+  reconcileZhuLight,
+  requestZhuReveal,
+  refreshZhuLightAtOwnerTurn,
+} from './zhuPower';
+import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
+import { applyZoneCardIncome } from './zoneCardIncome';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { clearExpiredProliferatingZ } from './proliferatingZ';
 import { appendPublicCardGainTriggers } from './cardGainEvents';
 import { drawCardDecisionText, markBlindZoneCard, shouldBlindZoneDecision } from './blindZoneDecision';
 import { clearExpiredTurnScopedEffects } from './turnScopedEffects';
-import { createGodPowerBlockedEvent, createTsathogguaSlimePopEvent } from './visualEvents';
+import {
+  buildFreshStatVisualEvents,
+  buildTurnStartDrawVisualEvents,
+  VISUAL_EVENT,
+  createApophisEclipseEvent,
+  createGodPowerBlockedEvent,
+  createGodStatusChangedEvent,
+  createGodGiftDiscardEvent,
+  createGodGiftKeepEvent,
+  createLogOnlyVisualEvent,
+  createDiceResultVisualEvent,
+  createOrderedSettlementEvents,
+  createStatEventsEvent,
+  createTsathogguaSlimeGrantEvent,
+  createTsathogguaSlimePopEvent,
+  createTurnDrawVisualEvents,
+} from './visualEvents';
+import { createRuleResolutionTransaction, statEventIdentity } from './ruleResolutionTransaction';
+import { advanceGodEncounter, formatGodEncounterProgress, getLatestGodEncounterProgress } from './balancePatches';
+import { TURN_START_EVENT, getTurnStartEvents } from './turnStartEvents';
+import { TURN_FLOW_STAGE } from './turnFlowStages';
+import { bindTurnFlowEvents, enterTurnBoundary, enterTurnFlowStage, normalizeTurnOpeningFlowState } from './turnFlowManager';
+import {
+  appendDecisionContinuation,
+  createDecisionContinuation,
+  DECISION_CONTINUATION_PHASE,
+} from './decisionContinuations';
+import {
+  getActiveDamageLinksForPlayer,
+  getAllDamageLinks,
+  removeDamageLink,
+  removeDamageLinks,
+} from './damageLinks';
 
-function appendStatEventsToInspectionMeta(inspectionMeta, beforePlayers, afterPlayers, logs, reason) {
-  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
-  const statEvents = buildStatEvents(beforePlayers, afterPlayers, logs, { reason, seq: statEventSeq });
-  if (!statEvents.length) return inspectionMeta;
+function mergeVisualEventLists(...lists) {
+  const merged = lists.flatMap(list => (Array.isArray(list) ? list : [])).filter(Boolean);
+  const seenIds = new Set();
+  return merged.filter(event => {
+    if (!event?.id) return true;
+    if (seenIds.has(event.id)) return false;
+    seenIds.add(event.id);
+    return true;
+  });
+}
+
+function appendGodChoiceContinuation(statePatch, baseState, abilityData) {
+  const frame = createDecisionContinuation(DECISION_CONTINUATION_PHASE.GOD_CHOICE, abilityData);
   return {
-    ...inspectionMeta,
-    _statEvents: [...(inspectionMeta?._statEvents || []), ...statEvents],
-    _statEventSeq: statEventSeq,
+    ...(statePatch || {}),
+    _decisionContinuations: appendDecisionContinuation(
+      statePatch?._decisionContinuations || baseState,
+      frame,
+    ),
   };
+}
+
+function appendTurnDrawVisualEvents(events, draw) {
+  const drawOrder = events.filter(event => event?.type === VISUAL_EVENT.DRAW_CARD).length;
+  const effectMsgs = new Set((draw.effectVisualEvents || [])
+    .filter(event => !draw.card?.isGod || event.type !== VISUAL_EVENT.STAT_EVENTS)
+    .flatMap(event => event.msgs || []));
+  const earlierEffects = new Set(events.flatMap(event => event.effectVisualEventIds || []));
+  const effectVisualEventIds = (draw.effectVisualEvents || [])
+    .filter(event => event.type !== VISUAL_EVENT.STAT_EVENTS && !earlierEffects.has(event.id))
+    .map(event => event.id);
+  const created = createTurnDrawVisualEvents({ ...draw, drawOrder, effectVisualEventIds, msgs: (draw.msgs || []).filter(msg => !effectMsgs.has(msg)) });
+  events.push(...created);
+  return created.find(event => event?.type === VISUAL_EVENT.DRAW_CARD) || null;
+}
+
+function collectFreshStatEventIds(state, beforeEvents = []) {
+  const previousIds = new Set(beforeEvents.map(statEventIdentity));
+  return [...new Set((Array.isArray(state?._statEvents) ? state._statEvents : [])
+    .filter(event => event?.id && !previousIds.has(statEventIdentity(event)))
+    .map(event => event.id))];
+}
+
+function sameDrawnCard(left, right) {
+  if (!left || !right) return false;
+  if (left === right) return true;
+  if (left.id != null && right.id != null) return left.id === right.id;
+  return left.key === right.key && left.name === right.name && left.type === right.type;
+}
+
+// Income follows every effect, so its snapshot preserves the completed effects.
+function buildDrawKeepPresentation({ playersBefore = [], playersAfter = [], discardAfter = [], playerIdx = 0, card } = {}) {
+  const before = copyPlayers(playersBefore);
+  const after = copyPlayers(playersAfter);
+  const keptInHand = !!card && (after[playerIdx]?.hand || []).some(candidate => sameDrawnCard(candidate, card));
+  return {
+    keptInHand,
+    ...(after[playerIdx]?.isDead && discardAfter.some(candidate => sameDrawnCard(candidate, card))
+      ? { incomeDestination: 'discard', discardAfter: [...discardAfter] } : {}),
+    playersBefore: before,
+    ...(keptInHand ? { playersAfterKeep: copyPlayers(after) } : {}),
+    playersAfterResolution: after,
+  };
+}
+
+function withMergedVisualEvents(state, ...eventLists) {
+  const visualEvents = mergeVisualEventLists(state?._visualEvents, ...eventLists);
+  return visualEvents.length ? { ...state, _visualEvents: visualEvents } : state;
 }
 
 function getDebugForceTargetIndex(target) {
@@ -80,44 +176,6 @@ function consumeDebugForceKeepOverride(gs, ci) {
   gs.debugForceCardKeepPending = null;
   gs.debugForceCardKeepTarget = null;
   return keepOverride;
-}
-
-export function checkWin(players, isMP) {
-  const hasHunters = players.some(p => p.role === ROLE_HUNTER);
-  const hasCultists = players.some(p => p.role === ROLE_CULTIST);
-  // 1. SAN归零：有邪祀者则邪祀者获胜；无邪祀者则全员失败（邪神复活但无人受益）
-  for (const p of players) if (!p.isDead && p.san <= 0) {
-    if (hasCultists) {
-      const ws = players.filter(q => q.role === ROLE_CULTIST).map(q => q.name).join('、');
-      return { winner: ROLE_CULTIST, reason: `${p.name} 的理智归零，邪神苏醒！邪祀者（${ws}）获胜！` };
-    } else {
-      return { winner: 'LOSE_ALL', reason: `${p.name} 的理智归零，邪神复活，无人幸存！全员失败！` };
-    }
-  }
-  // 2. 非追猎者全灭：有追猎者则追猎者获胜；无追猎者则全员失败
-  const nonHunters = players.filter(p => p.role !== ROLE_HUNTER);
-  if (nonHunters.length && nonHunters.every(p => p.isDead)) {
-    if (hasHunters) {
-      const ws = players.filter(q => q.role === ROLE_HUNTER).map(q => q.name).join('、');
-      return { winner: ROLE_HUNTER, reason: `所有非追猎者已覆灭！追猎者（${ws}）获胜！` };
-    } else {
-      return { winner: 'LOSE_ALL', reason: '所有探险者均已覆灭，无人幸存！全员失败！' };
-    }
-  }
-  // 3. 场上只有一人存活：寻宝者获胜或邪祀者阵营获胜
-  const alivePlayers = players.filter(p => !p.isDead);
-  if (alivePlayers.length === 1) {
-    const survivor = alivePlayers[0];
-    if (survivor.role === ROLE_TREASURE) {
-      return { winner: ROLE_TREASURE, reason: `${survivor.name} 是唯一的幸存者，成功逃离！` };
-    } else if (survivor.role === ROLE_CULTIST) {
-      return { winner: ROLE_CULTIST, reason: `${survivor.name} 是唯一的幸存者，邪祀者阵营获胜！` };
-    }
-    // 追猎者单独存活的情况已被条件2覆盖
-  }
-  // 4. Player death — single-player only (MP games continue when a player dies)
-  if (!isMP && players[0].isDead) return { winner: 'LOSE', reason: '你已沉入永恒的黑暗…' };
-  return null;
 }
 
 export function shouldTriggerGodResurrection(gs) {
@@ -261,7 +319,7 @@ export function chooseAiGodEncounterAction(ci, godCard, players, forcedConvert =
   return convertScore >= 0.45 ? 'convert' : 'discard';
 }
 
-function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs }) {
+function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs, turnStartStage = null }) {
   if (!player || !hasGodPowerImmunity(player)) return null;
   const msg = buildGodPowerBlockedLog(player);
   if (Array.isArray(log)) log.push(msg);
@@ -270,42 +328,28 @@ function appendGodPowerBlockedFeedback({ player, playerIdx, log, events, msgs })
     playerIdx,
     playerName: player.name,
     msgs: [msg],
+    ...(turnStartStage ? { turnStartStage, turnStartStageOrder: 0 } : {}),
   });
   if (event && Array.isArray(events)) events.push(event);
   return event;
 }
 
 export function applySanLossToPlayerWithInspection(targetIndex, amount, startIndex, P, D, Disc, L, inspectionMeta, reason = 'SAN损失', options = {}) {
-  const beforePlayers = copyPlayers(P);
-  const etherealizeLoss = options.skipEtherealize ? null : buildEtherealizeLoss({
-      players: P,
-      targetIdx: targetIndex,
-      currentTurn: startIndex,
-      lostSan: amount,
-      source: reason,
-    });
-  if (etherealizeLoss) {
-    return {
-      P,
-      D,
-      Disc,
-      L,
-      inspectionMeta: {
-        ...inspectionMeta,
-        abilityData: buildEtherealizeRedirectDecision([etherealizeLoss], { _turnOwner: startIndex }),
-      },
-    };
-  }
-  P[targetIndex].san = clamp(P[targetIndex].san - amount);
-  const nextInspectionMeta = appendStatEventsToInspectionMeta(
-    inspectionMeta,
-    beforePlayers,
-    P,
-    L.slice(-1),
-    reason,
-  );
-  const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: startIndex });
-  if (slimeDecision) {
+  const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+  const damage = submitLossEvents({
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    currentTurn: startIndex,
+    events: [{ targetIdx: targetIndex, lostSan: amount, source: reason }],
+    skipEtherealize: !!options.skipEtherealize,
+    statEventSeq,
+    statEventReason: reason,
+    statEventLogs: L.slice(-1),
+  });
+  const nextInspectionMeta = appendStatChangeResult(inspectionMeta, damage);
+  if (damage.abilityData) {
     return {
       P,
       D,
@@ -314,12 +358,10 @@ export function applySanLossToPlayerWithInspection(targetIndex, amount, startInd
       inspectionMeta: {
         ...nextInspectionMeta,
         abilityData: {
-          ...slimeDecision,
-          pendingSanInspection: {
-            targetIndex,
-            startIndex,
-            reason,
-          },
+          ...damage.abilityData,
+          ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
+            pendingSanInspection: { targetIndex, startIndex, reason },
+          } : {}),
         },
       },
     };
@@ -345,37 +387,182 @@ function splitGodEncounterLogs(effectMsgs = []) {
 }
 
 export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg = `被邪神抛弃，${formatSanLoss(1)}`) {
-  L = [...L, `${P[targetIndex].name} ${logMsg}`];
+  let settlementMsg = `${P[targetIndex].name} ${logMsg}`;
+  const playersBeforeFaithExit = copyPlayers(P);
+  const discardBeforeFaithExit = [...Disc];
+  const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
+  const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const statEventsBefore = inspectionMeta?._statEvents || [];
+  const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+  // 信仰退出是抛弃结算的边界：先移除 Tag/神域牌，再结算 SAN 与其
+  // 连带检定。这样后续任何伤害或检定快照都不可能恢复已经失去的信仰。
+  clearPlayerGodZone(P[targetIndex], Disc);
+  const playersAfterFaithExit = copyPlayers(P);
+  const discardAfterFaithExit = [...Disc];
+  L = [...L, settlementMsg];
   const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
   P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  clearPlayerGodZone(P[targetIndex], Disc);
-  return { P, D, Disc, L, inspectionMeta };
+  if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+    settlementMsg = settlementMsg.replace('失去', '即将失去');
+    L[L.length - 1] = settlementMsg;
+  }
+  return {
+    P,
+    D,
+    Disc,
+    L,
+    inspectionMeta,
+    faithExit: {
+      playerIdx: targetIndex,
+      cards: discardedGodCards,
+      msgs: [settlementMsg],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      statEventIds: collectFreshStatEventIds(inspectionMeta, statEventsBefore),
+      inspectionSeqBefore,
+      inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
+      playersAfterResolution: copyPlayers(P),
+      discardAfterResolution: [...Disc],
+      effect: 'godAbandon',
+    },
+  };
+}
+
+function appendMissingLogOccurrences(log, routedLogs = []) {
+  const available = new Map();
+  log.forEach(line => available.set(line, (available.get(line) || 0) + 1));
+  const consumed = new Map();
+  routedLogs.forEach(line => {
+    const used = consumed.get(line) || 0;
+    if (used < (available.get(line) || 0)) {
+      consumed.set(line, used + 1);
+    } else {
+      log.push(line);
+    }
+  });
+}
+
+export function createFaithSettlementGodStatusEvent({
+  playerIdx = 0,
+  playersBeforeSettlement = null,
+  playersAfterSettlement = null,
+  faithEstablished = null,
+  previousFaithExit = null,
+  abandonedFollowers = [],
+  statusMsg = null,
+  presentAfterInspectionSeq = null,
+} = {}) {
+  const beforePlayer = playersBeforeSettlement?.[playerIdx];
+  const afterPlayer = playersAfterSettlement?.[playerIdx];
+  const normalizedAbandonedFollowers = (Array.isArray(abandonedFollowers) ? abandonedFollowers : []).filter(Boolean);
+  if (!afterPlayer?.godName) return null;
+  if (
+    beforePlayer?.godName === afterPlayer.godName &&
+    (beforePlayer?.godLevel || 0) === (afterPlayer.godLevel || 0)
+  ) return null;
+  const presentationBoundary = Math.max(
+    Number(presentAfterInspectionSeq) || 0,
+    Number(previousFaithExit?.inspectionSeqAfter) || 0,
+  );
+  return createGodStatusChangedEvent({
+    playerIdx,
+    playerName: afterPlayer.name,
+    godKey: afterPlayer.godName,
+    godLevel: afterPlayer.godLevel || 0,
+    msgs: statusMsg ? [statusMsg] : [],
+    playersBefore: faithEstablished?.playersBefore || playersBeforeSettlement,
+    playersAfter: faithEstablished?.playersAfter || playersAfterSettlement,
+    faithSettlement: {
+      previousFaithExit,
+      abandonedFollowers: normalizedAbandonedFollowers,
+    },
+    presentAfterInspectionSeq: presentationBoundary || null,
+  });
 }
 
 export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
-  const convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
+  let convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
   L = [...L, convertLog];
-  if (nextGodCard?.godKey) {
+  const playersBeforeFaithExit = copyPlayers(P);
+  const discardBeforeFaithExit = [...Disc];
+  const discardedGodCards = [...(P[targetIndex]?.godZone || [])];
+  const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+  const statEventsBefore = inspectionMeta?._statEvents || [];
+  const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+  if (P[targetIndex]?.godName || discardedGodCards.length) {
     clearPlayerGodZone(P[targetIndex], Disc);
+  }
+  const playersAfterFaithExit = copyPlayers(P);
+  const discardAfterFaithExit = [...Disc];
+  const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
+  P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
+  if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+    convertLog = convertLog.replace('失去', '即将失去');
+    L[L.length - 1] = convertLog;
+  }
+  const playersBeforeFaithEstablished = copyPlayers(P);
+  if (nextGodCard?.godKey) {
     P[targetIndex].godName = nextGodCard.godKey;
     P[targetIndex].godLevel = 1;
     P[targetIndex].godZone = [{ ...nextGodCard }];
+    P[targetIndex].hasBelievedGod = true;
   }
-  const processed = applySanLossToPlayerWithInspection(targetIndex, 1, startIndex, P, D, Disc, L, inspectionMeta);
-  P = processed.P; D = processed.D; Disc = processed.Disc; L = processed.L; inspectionMeta = processed.inspectionMeta;
-  if (!nextGodCard?.godKey) {
-    clearPlayerGodZone(P[targetIndex], Disc);
-  }
-  return { P, D, Disc, L, inspectionMeta };
+  return {
+    P,
+    D,
+    Disc,
+    L,
+    inspectionMeta,
+    faithExit: discardedGodCards.length ? {
+      playerIdx: targetIndex,
+      cards: discardedGodCards,
+      msgs: [convertLog],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: inspectionMeta?._statEventSeq || statEventSeqBefore,
+      statEventIds: collectFreshStatEventIds(inspectionMeta, statEventsBefore),
+      inspectionSeqBefore,
+      inspectionSeqAfter: inspectionMeta?._inspectionSeq || inspectionSeqBefore,
+      playersAfterResolution: playersBeforeFaithEstablished,
+      discardAfterResolution: [...Disc],
+      effect: 'godConvertDiscard',
+    } : null,
+    faithEstablished: nextGodCard?.godKey ? {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    } : null,
+  };
 }
 
 export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts = {}) {
   const msgs = []; const godKey = godCard.godKey;
+  let statusMsg = null;
   let statePatch = {};
   const visualEvents = [];
+  let apophisEclipseEvent = null;
+  const godStatusPlayersBefore = copyPlayers(P);
+  let previousFaithExit = null;
+  let faithEstablished = null;
+  // 放弃馈赠时把邪神牌结构化地带回给调用方，供规则层记录到摸牌事件上；
+  // 不要再靠扫描「放弃了邪神的馈赠」日志文本来推断弃牌结果。
+  let discardedGod = null;
+  const abandonedFaithExits = [];
+  let presentAfterInspectionSeq = null;
   let inspectionMeta = makeInspectionMeta(gs);
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
+  const hadWinnerAtSettlementStart = !!checkWin(P, gs?._isMP);
+  const settlementHasNewWinner = () => !hadWinnerAtSettlementStart && !!checkWin(P, gs?._isMP);
   const applyImmediateGodPower = () => {
+    // A conversion cost or an abandonment penalty can end the game before the
+    // newly gained/upgraded power resolves. Victory terminates that chain.
+    if (settlementHasNewWinner()) return;
     if (!canGodPowerAffect(P[ci])) {
       if (['APO', 'ZHU', 'SHU'].includes(godKey)) {
         appendGodPowerBlockedFeedback({ player: P[ci], playerIdx: ci, events: visualEvents, msgs });
@@ -384,10 +571,17 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
     if (godKey === 'APO') {
       statePatch.apophisNight = getApophisNightForLevel(P[ci].godLevel);
-      msgs.push(buildApophisNightLog());
+      const nightMsg = buildApophisNightLog();
+      msgs.push(nightMsg);
+      apophisEclipseEvent = createApophisEclipseEvent({
+        playerIdx: ci,
+        playerName: P[ci].name,
+        apophisNight: statePatch.apophisNight,
+        msgs: [nightMsg],
+      });
     }
     if (godKey === 'ZHU') {
-      statePatch.zhuLight = buildZhuLight(P, D, ci, gs?.zhuLight);
+      statePatch.zhuLight = refreshZhuLightAtOwnerTurn(P, D, ci, gs?.zhuLight);
     }
     if (godKey === 'SHU') {
       const count = GOD_DEFS.SHU.levels[(P[ci].godLevel || 1) - 1]?.offspringCount || 0;
@@ -413,101 +607,208 @@ export function resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConv
     }
   };
   if (forcedConvert && P[ci].godName && P[ci].godName !== godKey) {
-    msgs.push(`${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`);
+    let convertMsg = `${P[ci].name} 被迫改信新神，${formatSanLoss(1)}`;
+    msgs.push(convertMsg);
+    const playersBeforeFaithExit = copyPlayers(P);
+    const discardBeforeFaithExit = [...Disc];
+    const discardedGodCards = [...(P[ci]?.godZone || [])];
+    const statEventSeqBefore = inspectionMeta?._statEventSeq || 0;
+    const statEventsBefore = inspectionMeta?._statEvents || [];
+    const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
+    clearPlayerGodZone(P[ci], Disc);
+    const playersAfterFaithExit = copyPlayers(P);
+    const discardAfterFaithExit = [...Disc];
+    previousFaithExit = {
+      playerIdx: ci,
+      cards: discardedGodCards,
+      msgs: [convertMsg],
+      playersBefore: playersBeforeFaithExit,
+      playersAfter: playersAfterFaithExit,
+      discardBefore: discardBeforeFaithExit,
+      discardAfter: discardAfterFaithExit,
+      statEventSeqBefore,
+      statEventSeqAfter: null,
+      inspectionSeqBefore,
+      inspectionSeqAfter: null,
+      effect: 'godConvertDiscard',
+    };
     const inspectionBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const processed = applySanLossToPlayerWithInspection(ci, 1, gs?.currentTurn ?? ci, P, D, Disc, inspectionBaseLog, inspectionMeta);
     P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta;
+    if (inspectionMeta?.abilityData?.type === 'etherealizeRedirect') {
+      convertMsg = convertMsg.replace('失去', '即将失去');
+      msgs[msgs.length - 1] = convertMsg;
+      previousFaithExit.msgs = [convertMsg];
+    }
+    previousFaithExit.statEventSeqAfter = inspectionMeta?._statEventSeq || statEventSeqBefore;
+    previousFaithExit.statEventIds = collectFreshStatEventIds(inspectionMeta, statEventsBefore);
+    previousFaithExit.inspectionSeqAfter = inspectionMeta?._inspectionSeq || inspectionSeqBefore;
+    previousFaithExit.playersAfterResolution = copyPlayers(P);
+    previousFaithExit.discardAfterResolution = [...Disc];
     const extraMsgs = (processed.L || []).slice(inspectionBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-    clearPlayerGodZone(P[ci], Disc);
+    if ((inspectionMeta?._inspectionSeq || 0) > inspectionSeqBefore) {
+      presentAfterInspectionSeq = inspectionMeta._inspectionSeq;
+    }
   }
   const proliferatingZGainEvents = [];
+  const abandonCompetingFollowers = () => {
+    P.forEach((p, i) => {
+      if (i === ci || p.godName !== godKey) return;
+      const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
+      const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
+      P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
+      if (abandoned.faithExit) abandonedFaithExits.push(abandoned.faithExit);
+      const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
+    });
+  };
   const action = chooseAiGodEncounterAction(ci, godCard, P, forcedConvert);
   if (action === 'upgrade') {
+    const playersBeforeFaithEstablished = copyPlayers(P);
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
+    P[ci].hasBelievedGod = true;
+    faithEstablished = {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`);
+    statusMsg = `${P[ci].name} 邪神之力升至Lv.${P[ci].godLevel}（${godCard.power}）`;
+    msgs.push(statusMsg);
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'convert') {
+    statusMsg = `${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
+    msgs.push(statusMsg);
+    const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
     const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
+    previousFaithExit = converted.faithExit || previousFaithExit;
+    faithEstablished = converted.faithEstablished || faithEstablished;
+    if ((inspectionMeta?._inspectionSeq || 0) > inspectionSeqBefore) {
+      presentAfterInspectionSeq = inspectionMeta._inspectionSeq;
+    }
     const extraMsgs = (converted.L || []).slice(convertBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'worship') {
-    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }];
+    const playersBeforeFaithEstablished = copyPlayers(P);
+    P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
+    faithEstablished = {
+      playersBefore: playersBeforeFaithEstablished,
+      playersAfter: copyPlayers(P),
+    };
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
-    msgs.push(`${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`);
+    statusMsg = `${P[ci].name} 信仰了 ${godCard.name}，获得${godCard.power}(Lv.1)`;
+    msgs.push(statusMsg);
+    abandonCompetingFollowers();
     applyImmediateGodPower();
-    P.forEach((p, i) => {
-      if (i !== ci && p.godName === godKey) {
-        const abandonBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-        const abandoned = abandonGodFollower(i, gs?.currentTurn ?? ci, P, D, Disc, abandonBaseLog, inspectionMeta);
-        P = abandoned.P; D = abandoned.D; Disc = abandoned.Disc; inspectionMeta = abandoned.inspectionMeta;
-        const extraMsgs = (abandoned.L || []).slice(abandonBaseLog.length); if (extraMsgs.length) msgs.push(...extraMsgs);
-      }
-    });
   } else if (action === 'hand') {
     P[ci].roleRevealed = true;
-    P[ci].hand.push({ ...godCard }); msgs.push(`${P[ci].name}（邪祀者）将邪神牌收入手牌`);
+    const playersBeforeGodGiftKeep = copyPlayers(P);
+    P[ci].hand.push({ ...godCard });
+    const keepMsg = `${P[ci].name}（邪祀者）将邪神牌收入手牌`;
+    msgs.push(keepMsg);
+    const keepEvent = createGodGiftKeepEvent({
+      card: godCard,
+      drawerIdx: ci,
+      drawerName: P[ci].name,
+      drawEventId: opts?.drawEventId || null,
+      playersBefore: playersBeforeGodGiftKeep,
+      playersAfter: copyPlayers(P),
+      msgs: [keepMsg],
+      presentAfterInspectionSeq: inspectionMeta?._inspectionSeq || null,
+    });
+    if (keepEvent) visualEvents.push(keepEvent);
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
+    discardedGod = godCard;
   }
   let zBase = { ...gs, ...statePatch };
-  proliferatingZGainEvents.forEach(event => {
-    const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
-    if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
+  const godStatusEvent = createFaithSettlementGodStatusEvent({
+    playerIdx: ci,
+    playersBeforeSettlement: godStatusPlayersBefore,
+    playersAfterSettlement: copyPlayers(P),
+    faithEstablished,
+    previousFaithExit,
+    abandonedFollowers: abandonedFaithExits,
+    statusMsg,
+    presentAfterInspectionSeq,
   });
+  const faithResolutionEvents = [godStatusEvent, apophisEclipseEvent].filter(Boolean);
+  if (faithResolutionEvents.length > 1) {
+    visualEvents.unshift(...createRuleResolutionTransaction({
+      id: `faith:${godStatusEvent.id}`,
+      phase: 'faithSettlement',
+      events: faithResolutionEvents,
+    }).events.map(event => ({
+      ...event,
+      ...(presentAfterInspectionSeq != null ? { presentAfterInspectionSeq } : {}),
+    })));
+  } else if (faithResolutionEvents.length) {
+    visualEvents.unshift(...faithResolutionEvents);
+  }
+  if (!settlementHasNewWinner()) {
+    proliferatingZGainEvents.forEach(event => {
+      const patch = appendPublicCardGainTriggers(zBase, P, event.ownerIdx, event.cards);
+      if (patch.proliferatingZQueue) zBase = { ...zBase, proliferatingZQueue: patch.proliferatingZQueue };
+    });
+  }
+  const settlementEvents = [
+    ...(inspectionMeta?._visualEvents || []),
+    ...visualEvents,
+  ].filter((event, index, events) => (
+    !event?.id || events.findIndex(candidate => candidate?.id === event.id) === index
+  ));
+  const priorStatKeys = new Set((gs?._statEvents || []).map(statEventIdentity));
+  const freshSettlementStatEvents = (inspectionMeta?._statEvents || [])
+    .filter(event => !priorStatKeys.has(statEventIdentity(event)));
   statePatch = {
     ...statePatch,
     ...(zBase.proliferatingZQueue ? { proliferatingZQueue: zBase.proliferatingZQueue } : {}),
-    ...(visualEvents.length ? { _visualEvents: visualEvents } : {}),
+    _visualEvents: createOrderedSettlementEvents({
+      events: settlementEvents,
+      statEvents: freshSettlementStatEvents,
+    }),
   };
-  return { P, D, Disc, msgs, inspectionMeta, statePatch };
+  return { P, D, Disc, msgs, inspectionMeta, statePatch, discardedGod };
 }
 
 export function aiHandleGodCard(ci, godCard, P, D, Disc, L, gs, skipEffectMsg = false, forcedConvert = false, opts = {}) {
-  const sanCost = P[ci].godEncounters || 0;
+  const progress = getLatestGodEncounterProgress(P[ci], gs);
+  const sanCost = progress.sanLoss;
   // 已揭晓的邪祀者遭遇邪神时免疫SAN损耗；未揭晓时照常结算
   if (!skipEffectMsg) {
     const revealedCultist = isRevealedCultist(P[ci]);
     let effectMsg = '';
     if (revealedCultist) {
-      effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`;
+      effectMsg = `${P[ci].name}（邪祀者）遭遇邪神 ${godCard.name}！（${formatGodEncounterProgress(progress)}）免疫SAN损耗`;
     } else {
-      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(sanCost)}`;
+      effectMsg = `${P[ci].name} 遭遇邪神 ${godCard.name}！（${formatGodEncounterProgress(progress)}）${formatSanLoss(sanCost)}`;
     }
     L.push(effectMsg);
   }
   const gres = resolveGodEncounterForAI(ci, godCard, P, D, Disc, gs, forcedConvert, opts);
   P = gres.P; D = gres.D; Disc = gres.Disc;
   L.push(...gres.msgs);
-  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch };
+  return { P, D, Disc, L, inspectionMeta: gres.inspectionMeta, statePatch: gres.statePatch, discardedGod: gres.discardedGod || null };
 }
 
-export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
+function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
   let P = copyPlayers(ps), D = [...deck], Disc = [...disc];
-  if (!D.length && Disc.length) { D = shuffle(Disc); Disc = []; }
-  if (!D.length) return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
+  let reshuffleLog = '';
+  // 地磁反转生效时，弃牌堆就是当前摸牌来源。即使普通牌堆已空，也不能
+  // 先把弃牌堆重洗回牌堆，否则“反转复原”会被困在普通牌堆，而刚弃掉的
+  // 单张区域牌会被无限重复抽取。
+  if (!D.length && Disc.length && !gs?.geomagneticReversalActive) {
+    reshuffleLog = '牌堆耗尽，重洗弃牌堆';
+    D = shuffle(Disc);
+    Disc = [];
+  }
+  if (!D.length && !(gs?.geomagneticReversalActive && Disc.length)) {
+    return { P, D, Disc, drawnCard: null, effectMsgs: [], needsDecision: false };
+  }
 
   const whoName = ci === 0 ? '你' : P[ci].name;
 
@@ -522,12 +823,15 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const drawnFromDisc = shuffledDisc.shift();
 
     if (isGeomagneticRestore(drawnFromDisc)) {
-      // 反转复原：消除地磁反转效果，不进入手牌
+      // 反转复原：消除地磁反转效果，不进入手牌。仍保留 drawnCard，供上层
+      // 区分“抽到后销毁”与“无牌可抽”，并播放从弃牌堆翻开的摸牌动画。
       return {
         P, D, Disc: shuffledDisc,
-        drawnCard: null,
+        drawnCard: drawnFromDisc,
         effectMsgs: [`【反转复原】${whoName} 抽到了反转复原，地磁反转效果被消除！`],
+        kept: true,
         needsDecision: false,
+        sourcePile: 'discard',
         statePatch: { geomagneticReversalActive: false },
       };
     }
@@ -541,8 +845,13 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   if (!geomagneticDraw) {
     if (gs?._zhuRequestDecision && !gs?._zhuBypassTopGuard) {
-      const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D }, D);
-      if (zhuGuard) {
+      const zhuRequest = requestZhuReveal({ ...gs, players: P, deck: D }, {
+        deck: D,
+        drawerIdx: ci,
+        source: gs?._zhuRevealSource || ZHU_REVEAL_SOURCE.TURN_DRAW,
+        continuation: gs?._zhuRevealContinuation || null,
+      });
+      if (zhuRequest) {
         return {
           P,
           D,
@@ -551,7 +860,8 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
           effectMsgs: [],
           needsDecision: false,
           zhuHideDecision: true,
-          zhuGuard,
+          zhuGuard: zhuRequest.guard,
+          zhuDecision: zhuRequest.decision,
         };
       }
     }
@@ -561,34 +871,62 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
 
   // God card handling
   if (drawnCard.isGod) {
-    P[ci].godEncounters = (P[ci].godEncounters || 0) + 1;
-    const cost = P[ci].godEncounters;
+    const encounterProgress = advanceGodEncounter(P[ci], gs);
+    const cost = encounterProgress.sanLoss;
     const revealedCultist = isRevealedCultist(P[ci]);
 
     if (isAI) {
       let L2 = [];
       let inspectionMeta = makeInspectionMeta(gs);
+      // 同步结算路径（如黏液额外摸到邪神牌）需要把这次遭遇产出的属性/检定事件
+      // 归属到本次摸牌，供回合开始动画把它们排在邪神翻牌之后、下一张摸牌之前。
+      const encounterStatEventsBefore = inspectionMeta?._statEvents || [];
+      const encounterInspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       let effectMsg = revealedCultist
-        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
+        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
       L2.push(effectMsg);
       // AI处理邪神牌时，仍然立即扣减SAN值；教程可在检定前暂停。
-      if (!revealedCultist) {
-        const beforePlayers = copyPlayers(P);
-        P[ci].san = clamp(P[ci].san - cost);
-        inspectionMeta = appendStatEventsToInspectionMeta(
-          inspectionMeta,
-          beforePlayers,
-          P,
-          [effectMsg],
-          '邪神遭遇',
-        );
+      if (!revealedCultist && cost > 0) {
+        const pendingGodChoice = {
+          playerIndex: ci,
+          godCard: drawnCard,
+          pendingEncounterInspection: true,
+        };
+        const damage = submitLossEvents({
+          players: P, deck: D, discard: Disc, log: L2, currentTurn: gs?.currentTurn ?? ci,
+          events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
+          continuation: { pendingGodChoice },
+          statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+          statEventLogs: [effectMsg],
+        });
+        pendingGodChoice.pendingEncounterInspection = P[ci].san > 0 && P[ci].san <= 6;
+        inspectionMeta = appendStatChangeResult(inspectionMeta, damage);
+        if (damage.abilityData) {
+          return {
+            P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true,
+            statePatch: { ...inspectionMeta, abilityData: damage.abilityData },
+          };
+        }
+        if (checkWin(P, gs?._isMP)) {
+          return {
+            P,
+            D,
+            Disc,
+            drawnCard,
+            reshuffleLog,
+            effectMsgs: L2,
+            kept: true,
+            statePatch: { ...inspectionMeta },
+          };
+        }
         if (gs?.deferAiGodChoice) {
           return {
             P,
             D,
             Disc,
             drawnCard,
+            reshuffleLog,
             effectMsgs: L2,
             kept: true,
             pendingAiGodChoice: {
@@ -610,12 +948,27 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
         const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
         P = processed.P; D = processed.D; Disc = processed.Disc; inspectionMeta = processed.inspectionMeta; L2.push(...processed.log.slice(baseLog.length));
       }
+      // 遭遇本身已经触发终局时，邪神馈赠不再继续结算。否则会留下
+      // AI_GOD_CHOICE，结算界面仍会替 AI 选择并播放弃牌动画/音效。
+      if (checkWin(P, gs?._isMP)) {
+        return {
+          P,
+          D,
+          Disc,
+          drawnCard,
+          reshuffleLog,
+          effectMsgs: L2,
+          kept: true,
+          statePatch: { ...inspectionMeta },
+        };
+      }
       if (gs?.deferAiGodChoice) {
         return {
           P,
           D,
           Disc,
           drawnCard,
+          reshuffleLog,
           effectMsgs: L2,
           kept: true,
           pendingAiGodChoice: { playerIndex: ci, godCard: drawnCard },
@@ -625,31 +978,102 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
           },
         };
       }
-      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, gs, true);
+      // 同步结算路径（如黏液额外摸到邪神牌）必须把「遭遇邪神」已经产生的
+      // SAN 扣减与 SAN 检定元数据一并带入邪神抉择，否则 resolveGodEncounterForAI
+      // 会用空 inspectionMeta 覆盖掉它们，导致后续动画队列丢掉 SAN 扣减与检定翻牌。
+      const gr = aiHandleGodCard(ci, drawnCard, P, D, Disc, L2, { ...gs, ...inspectionMeta }, true);
       P = gr.P; D = gr.D; Disc = gr.Disc;
-      return { P, D, Disc, drawnCard, effectMsgs: L2, kept: true, statePatch: { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) } };
+      const mergedMeta = { ...inspectionMeta, ...(gr.inspectionMeta || {}), ...(gr.statePatch || {}) };
+      // 本次遭遇产出的属性身份/检定事件序号 + 结构化的弃牌结果，供 startNextTurn
+      // 把对应的视觉事件归属到这次摸牌（godEncounter.visualEventIds）。
+      const godEncounter = {
+        statEventIds: collectFreshStatEventIds(mergedMeta, encounterStatEventsBefore),
+        inspectionSeqs: (mergedMeta._visualEvents || [])
+          .filter(event => event?.type === VISUAL_EVENT.INSPECTION)
+          .map(event => event?.legacySeq)
+          .filter(seq => Number.isFinite(seq) && seq > encounterInspectionSeqBefore),
+        discardedGod: gr.discardedGod || null,
+      };
+      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: L2, kept: true, statePatch: mergedMeta, godEncounter };
     } else {
       let effectMsg = revealedCultist
-        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）免疫SAN损耗`
-        : `${whoName} 遭遇邪神 ${drawnCard.name}！（第${P[ci].godEncounters}次）${formatSanLoss(cost)}`;
+        ? `${whoName}（邪祀者）遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）免疫SAN损耗`
+        : `${whoName} 遭遇邪神 ${drawnCard.name}！（${formatGodEncounterProgress(encounterProgress)}）${formatSanLoss(cost)}`;
 
       let inspectionMeta = makeInspectionMeta(gs);
       let effectMsgs = [effectMsg];
 
       if (!revealedCultist && cost > 0) {
+        const pendingGodChoice = {
+          godCard: drawnCard,
+          drawerIdx: ci,
+          godEncounterCost: 0,
+        };
+        const damage = submitLossEvents({
+          players: P, deck: D, discard: Disc, log: effectMsgs,
+          currentTurn: gs?.currentTurn ?? ci,
+          events: [{ targetIdx: ci, lostSan: cost, source: '邪神遭遇' }],
+          continuation: { pendingGodChoice },
+          statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+          statEventLogs: [effectMsg],
+        });
+        inspectionMeta = appendStatChangeResult(inspectionMeta, damage);
+        if (damage.abilityData) {
+          return {
+            P, D, Disc, drawnCard,
+            reshuffleLog,
+            effectMsgs,
+            kept: true,
+            needsDecision: false,
+            statePatch: {
+              ...appendGodChoiceContinuation(inspectionMeta, gs, pendingGodChoice),
+              abilityData: {
+                ...damage.abilityData,
+                ...(damage.phase === 'TSG_SLIME_BALANCE' ? {
+                  pendingSanInspection: {
+                    targetIndex: ci,
+                    startIndex: gs?.currentTurn ?? ci,
+                    reason: '邪神遭遇',
+                  },
+                } : {}),
+              },
+            },
+          };
+        }
         const baseLog = gs?.log ? [...gs.log, effectMsg] : [effectMsg];
-        const processed = applySanLossToPlayerWithInspection(ci, cost, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta, '邪神遭遇');
+        const processed = applyInspectionForSanLoss(ci, P[ci].san, gs?.currentTurn ?? ci, P, D, Disc, baseLog, inspectionMeta);
         P = processed.P; D = processed.D; Disc = processed.Disc;
         inspectionMeta = processed.inspectionMeta;
-        effectMsgs.push(...processed.L.slice(baseLog.length));
+        effectMsgs.push(...processed.log.slice(baseLog.length));
+      }
+
+      // SAN loss from the encounter resolves before the god-gift decision.
+      // If it already ended the game, never expose the card as an available
+      // worship/keep/discard choice (the AI branch has the same short-circuit).
+      if (!P[ci].isDead && P[ci].san <= 0) {
+        return {
+          P, D, Disc, drawnCard,
+          reshuffleLog,
+          effectMsgs,
+          kept: true,
+          needsDecision: false,
+          statePatch: { ...inspectionMeta },
+        };
       }
 
       return {
         P, D, Disc, drawnCard,
+        reshuffleLog,
         effectMsgs,
         needGodChoice: true, needsDecision: false,
         godEncounterCost: 0,
-        statePatch: { ...inspectionMeta }
+        statePatch: hasPendingDamageReaction(inspectionMeta)
+          ? appendGodChoiceContinuation(inspectionMeta, gs, {
+              godCard: drawnCard,
+              drawerIdx: ci,
+              godEncounterCost: 0,
+            })
+          : { ...inspectionMeta }
       };
     }
   }
@@ -657,8 +1081,9 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   // Forced trigger cards
   if (drawnCard.forced) {
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+    P = res.P; D = res.D; Disc = res.Disc;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
 
   // 穴居人战争隐藏规则1：如果摸到"穴居人战争"之前没有牌，强制展示"穴居人战争"
@@ -666,7 +1091,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     // 强制展示穴居人战争
     P[ci].hand.push(drawnCard);
     const logMsg = `${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，之前没有牌，强制展示！`;
-    return { P, D, Disc, drawnCard, effectMsgs: [logMsg], kept: true, needsDecision: false };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [logMsg], kept: true, needsDecision: false };
   }
 
   // AI auto-decision
@@ -677,7 +1102,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const keep = keepOverride === 'keep' ? true : keepOverride === 'discard' ? false : blindZoneIdentity ? Math.random() < 0.5 : aiShouldKeepZoneCard(drawnCard, ci, P, false, { discard: Disc, deck: D, gs });
     if (!keep) {
       Disc.push(drawnCard);
-      return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
+      return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，评估后选择弃置`], needsDecision: false, _aiDrawnCard: drawnCard, discardedDrawnCard: true };
     }
 
     // AI Treasure Hunter dodge logic
@@ -685,21 +1110,38 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     const isTreasureHunter = effectiveRole === ROLE_TREASURE;
     const isDodgeableEffect = isDodgeableZoneCard(drawnCard);
 
-    if (isTreasureHunter && isDodgeableEffect) {
+    const moldyFoodRoll = drawnCard.type === 'moldyFood' ? 1 + (Math.random() * 6 | 0) : null;
+    const conditionalNegativeApplies = shouldTriggerTreasureDodge(
+      drawnCard,
+      P[ci],
+      { moldyFoodRoll },
+    );
+    let effectGs = moldyFoodRoll == null ? gs : { ...gs, _pendingMoldyFoodRoll: moldyFoodRoll };
+    let failedDodgeLog = null;
+    if (isTreasureHunter && isDodgeableEffect && conditionalNegativeApplies) {
       P[ci].roleRevealed = true;
       const d1 = 1 + (Math.random() * 6 | 0);
       const dodgeSuccess = d1 >= 4;
+      // The roll belongs to this rule resolution, before the card's effects.
+      const dodgeLog = `${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，${dodgeSuccess ? '成功规避负面效果！' : '未能规避，触发负面效果！'}`;
+      const dodgeEvent = createDiceResultVisualEvent({ mode: 'treasureDodge', actorIdx: ci, actorName: P[ci].name, d1, msgs: [dodgeLog] });
+      effectGs = { ...effectGs, _visualEvents: [...(effectGs._visualEvents || []), dodgeEvent] };
       if (dodgeSuccess) {
-        const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, true, [], isAI);
-        P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-        return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name}（寻宝者）摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，掷出 ${d1} 点，成功规避负面效果！`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+        const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, true, [], isAI);
+        P = res.P; D = res.D; Disc = res.Disc;
+        res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+        const effectMsgs = drawnCard.type === 'albinoCreature' ? [...res.msgs, dodgeLog] : [dodgeLog, ...res.msgs];
+        return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs, statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
       }
+      failedDodgeLog = dodgeLog;
     }
 
     // Apply effect for AI
-    const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择收入手牌并触发效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
+    const res = applyFx(drawnCard, ci, null, P, D, Disc, effectGs, false, [], isAI);
+    P = res.P; D = res.D; Disc = res.Disc;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    const keepLog = `${P[ci].name} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择保留，先结算效果`;
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: failedDodgeLog ? [failedDodgeLog, ...res.msgs] : [keepLog, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false, _aiDrawnCard: drawnCard };
   }
 
   const playerKeepOverride = consumeDebugForceKeepOverride(gs, ci);
@@ -707,17 +1149,47 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (playerKeepOverride === 'keep') {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
-    P = res.P; D = res.D; Disc = res.Disc; P[ci].hand.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 收入了 ${cardLogText(drawnCard, { alwaysShowName: true })}`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
+    P = res.P; D = res.D; Disc = res.Disc;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 选择保留 ${cardLogText(drawnCard, { alwaysShowName: true })}，先结算效果`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
   if (playerKeepOverride === 'discard') {
     if (blindZoneIdentity) P[ci].blindNextZoneDecision = false;
     Disc.push(drawnCard);
-    return { P, D, Disc, drawnCard, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，选择弃置`], kept: true, needsDecision: false, discardedDrawnCard: true };
   }
 
   // Player needs decision
-  return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
+  return { P, D, Disc, drawnCard: markBlindZoneCard(drawnCard, blindZoneIdentity), reshuffleLog, effectMsgs: [], needTarget: false, needsDecision: true, forcedKeep: false, blindZoneIdentity };
+}
+
+export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
+  // The animation source belongs to this draw, not to the resulting global
+  // reversal state. In particular, drawing "反转复原" turns the effect off but
+  // still came from discard; the following normal draw must explicitly switch
+  // back to deck instead of inheriting the previous `_drawSourcePile` hint.
+  // The restore card is also the authoritative lifetime token for this effect.
+  // If an older/remote state lost the `false` patch after that token was drawn,
+  // never let the stale boolean keep drawing real cards from discard forever.
+  const hasRestoreInDiscard = disc.some(isGeomagneticRestore);
+  const reversalActive = !!gs?.geomagneticReversalActive && hasRestoreInDiscard;
+  const drawGs = reversalActive === !!gs?.geomagneticReversalActive
+    ? gs
+    : { ...gs, geomagneticReversalActive: reversalActive };
+  const sourcePile = reversalActive && disc.length > 0
+    ? 'discard'
+    : 'deck';
+  const result = handleCardDrawCore(ci, ps, deck, disc, isAI, drawGs);
+  const staleReversalPatch = gs?.geomagneticReversalActive && !reversalActive
+    ? { geomagneticReversalActive: false }
+    : null;
+  return {
+    ...result,
+    ...(result.drawnCard ? { sourcePile: result.sourcePile || sourcePile } : {}),
+    ...(staleReversalPatch ? {
+      statePatch: { ...(result.statePatch || {}), ...staleReversalPatch },
+    } : {}),
+  };
 }
 
 export function aiDrawAndApply(ci, ps, deck, disc, gs = {}) {
@@ -728,53 +1200,74 @@ export function playerDrawCard(ps, deck, disc, ci = 0, gs = {}) {
   return handleCardDraw(ci, ps, deck, disc, false, gs);
 }
 
-// ══════════════════════════════════════════════════════════════
-// 回合开始事件优先级定义
-// 规则：
-// 1. 被动事件优先于主动事件
-// 2. 同为被动/主动时：神牌 > 神牌衍生 > 其他卡牌
-// 新增事件必须按优先级插入到 startNextTurn 的正确位置
-// ══════════════════════════════════════════════════════════════
-const TURN_START_PRIORITY = {
-  PASSIVE_GOD: 1,
-  PASSIVE_GOD_DERIVATIVE: 2,
-  PASSIVE_OTHER: 3,
-  ACTIVE_GOD: 4,
-  ACTIVE_OTHER: 5,
-};
-
 // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
 function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
   if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
 
   const bgyCount = P[next].hand.filter(isBlackGoatYoung).length;
   if (bgyCount > 0) {
-    const beforePlayers = copyPlayers(P);
-    P[next].hp = clamp(P[next].hp - bgyCount);
-    P[next].san = clamp(P[next].san - bgyCount);
-    L.push(`【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`);
-    inspectionMeta = appendStatEventsToInspectionMeta(
-      inspectionMeta,
-      beforePlayers,
-      P,
-      L.slice(-1),
-      '黑山羊幼仔',
-    );
-    const slimeDecision = buildTsathogguaSlimeBalanceDecision(beforePlayers, P, { _turnOwner: next });
+    const linkPartnerIndices = getActiveDamageLinksForPlayer(P, next)
+      .map(link => link.a === next ? link.b : link.a);
+    const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+    const damageLog = `【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP 和 ${bgyCount} SAN`;
+    const damageLogs = [damageLog];
+    const damage = submitLossEvents({
+      players: P, deck: D, discard: Disc, log: damageLogs, currentTurn: next,
+      events: [{ targetIdx: next, lostHp: bgyCount, lostSan: bgyCount, source: '黑山羊幼仔' }],
+      statEventSeq,
+      statEventLogs: damageLogs,
+    });
+    L.push(...damageLogs);
+    // Damage already owns the ordered rope-break/defeat reactions. Rebuilding
+    // from final stats loses the consumed reaction timeline and its messages.
+    const damageEvent = createStatEventsEvent({
+      statEvents: damage.statEvents,
+      msgs: damage.logs,
+      turnStartStage: 'turnStart',
+    });
+    if (damageEvent) inspectionMeta = {
+      ...inspectionMeta,
+      _statEvents: [...(inspectionMeta?._statEvents || []), ...damage.statEvents],
+      _statEventSeq: statEventSeq,
+      _visualEvents: [...(inspectionMeta?._visualEvents || []), damageEvent],
+    };
+    const slimeDecision = damage.phase === 'TSG_SLIME_BALANCE' ? damage.abilityData : null;
     if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
     const winAfterSanDepletion = checkWin(P, gs._isMP);
     if (winAfterSanDepletion) return { P, D, Disc, L, inspectionMeta, winAfterBgy: winAfterSanDepletion };
-    if (P[next].san > 0 && P[next].san <= 6) {
+    // submitLossEvents may kill the turn owner while resolving the HP half of
+    // the combined loss. A defeated player must not perform the SAN inspection
+    // (or any later turn-start work) after their death has been committed.
+    if (!P[next].isDead && P[next].san > 0 && P[next].san <= 6) {
       const baseLog = [...L];
+      const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
       const processed = applyInspectionForSanLoss(next, P[next].san, next, P, D, Disc, baseLog, inspectionMeta);
       P = processed.P; D = processed.D; Disc = processed.Disc;
-      inspectionMeta = processed.inspectionMeta;
+      inspectionMeta = {
+        ...processed.inspectionMeta,
+        // This inspection is caused by a pre-draw passive. Declare that
+        // ownership at the rule boundary so the turn-start transaction can
+        // compile it once, before the fixed draw, without log/state-diff
+        // inference in the presentation layer.
+        _visualEvents: (processed.inspectionMeta?._visualEvents || []).map(event => (
+          event?.type === VISUAL_EVENT.INSPECTION &&
+          Number.isFinite(event?.legacySeq) &&
+          event.legacySeq > inspectionSeqBefore
+            ? { ...event, turnStartStage: 'turnStart', turnStartStageOrder: 2 }
+            : event
+        )),
+      };
       L.push(...processed.log.slice(baseLog.length));
     }
     if (P[next].hp <= 0) {
       killPlayerState(P, next, Disc, L);
     }
+    if (!P[next]._pendingDamageLinkBreak) linkPartnerIndices.forEach(partnerIdx => {
+      if (P[partnerIdx]?.hp <= 0 && !tryVritraImmortal(P, partnerIdx, next, D, Disc, L)) {
+        killPlayerState(P, partnerIdx, Disc, L);
+      }
+    });
   }
 
   const winAfterBgy = checkWin(P, gs._isMP);
@@ -784,49 +1277,69 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
 // [PASSIVE_OTHER] 两人一绳治愈
 function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs = null) {
   for (const heal of pendingLinkHeals) {
-    const beforePlayers = copyPlayers(P);
-    if (!P[heal.i].isDead) { P[heal.i].hp = clamp(P[heal.i].hp + heal.amount); }
-    if (!P[heal.partnerIdx].isDead) { P[heal.partnerIdx].hp = clamp(P[heal.partnerIdx].hp + heal.amount); }
+    const activeLink = getAllDamageLinks(P, { activeOnly: true }).find(link => link.id === heal.linkId);
+    if (!activeLink) continue;
     L.push(heal.msg);
-    inspectionMeta = appendStatEventsToInspectionMeta(
-      inspectionMeta,
-      beforePlayers,
-      P,
-      [heal.msg],
-      '两人一绳',
-    );
+    const statEventSeq = (inspectionMeta?._statEventSeq || 0) + 1;
+    const recovery = submitRecoveryEvents({
+      players: P,
+      events: [
+        { targetIdx: heal.i, gainHp: heal.amount, source: '两人一绳', logHint: heal.msg },
+        { targetIdx: heal.partnerIdx, gainHp: heal.amount, source: '两人一绳', logHint: heal.msg },
+      ],
+      statEventSeq,
+      logs: [heal.msg],
+    });
+    inspectionMeta = appendStatChangeResult(inspectionMeta, recovery);
     if (statLogs) statLogs.push(heal.msg);
+    removeDamageLink(P, heal.linkId);
   }
   return { P, L, inspectionMeta };
 }
 
 // [PASSIVE_OTHER] 中毒回合开始伤害
 function turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs = null) {
-  if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null };
+  if (P[next].isDead) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision: null };
   const poisonStacks = P[next].poisonStacks || 0;
-  if (poisonStacks <= 0) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null };
+  if (poisonStacks <= 0) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision: null };
 
-  const beforePlayers = copyPlayers(P);
-  P[next].hp = clamp(P[next].hp - poisonStacks);
+  const msg = `【中毒】${P[next].name} 失去 ${poisonStacks} HP，消耗1层中毒`;
+  const reactionLogs = [];
+  const damage = submitLossEvents({
+    players: P, deck: D, discard: Disc, log: reactionLogs, currentTurn: next,
+    events: [{ targetIdx: next, lostHp: poisonStacks, source: '中毒' }],
+    statEventSeq: (inspectionMeta?._statEventSeq || 0) + 1,
+    statEventLogs: [msg],
+  });
   P[next].poisonStacks = Math.max(0, poisonStacks - 1);
   if (P[next].poisonStacks <= 0) delete P[next].poisonStacks;
-  const msg = `【中毒】${P[next].name} 失去 ${poisonStacks} HP，消耗1层中毒`;
   L.push(msg);
+  L.push(...reactionLogs);
   if (statLogs) statLogs.push(msg);
-  inspectionMeta = appendStatEventsToInspectionMeta(
-    inspectionMeta,
-    beforePlayers,
-    P,
-    [msg],
-    '中毒',
-  );
+  inspectionMeta = appendStatChangeResult(inspectionMeta, { ...damage, turnStartStage: 'turnStart' });
+  const slimeDecision = damage.phase === 'TSG_SLIME_BALANCE' ? damage.abilityData : null;
+  if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision };
   if (P[next].hp <= 0) {
     if (!tryVritraImmortal(P, next, next, D, Disc, L)) {
       killPlayerState(P, next, Disc, L);
     }
   }
   const winAfterPoison = checkWin(P, gs._isMP);
-  return { P, D, Disc, L, inspectionMeta, winAfterPoison };
+  return { P, D, Disc, L, inspectionMeta, winAfterPoison, slimeDecision: null };
+}
+
+function hasPendingDamageReaction(statePatch) {
+  return ['tsgSlimeBalance', 'etherealizeRedirect'].includes(statePatch?.abilityData?.type);
+}
+
+function deriveGodEncounterDecisionState(statePatch, godChoiceAbilityData) {
+  if (!hasPendingDamageReaction(statePatch)) {
+    return { phase: 'GOD_CHOICE', abilityData: godChoiceAbilityData };
+  }
+  return deriveEffectDecisionState(statePatch, {
+    baseAbilityData: {},
+    fallbackPhase: 'GOD_CHOICE',
+  });
 }
 
 // [ACTIVE_GOD] NYA 偷身份
@@ -854,14 +1367,16 @@ function turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents = []) {
       if (aiRole === ROLE_CULTIST) borrow = deadPlayers.find(p => p.role === ROLE_HUNTER) || deadPlayers[0];
       const handLimit = 4 - (GOD_DEFS.NYA.levels[P[next].godLevel - 1].handPenalty);
       P[next] = { ...P[next], _nyaBorrow: borrow.role, _nyaHandLimit: handLimit };
-      L.push(`${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`);
+      const msg = `${P[next].name}（NYA Lv.${P[next].godLevel}）千人千貌：本回合借用 [${borrow.role}]`;
+      L.push(msg);
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'turnStart' }));
     }
   }
   return { shouldEnterPhase: false };
 }
 
-function turnStartEvent_ZhuLight(P, D, next, gs) {
-  return buildZhuLight(P, D, next, gs.zhuLight);
+function turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight) {
+  return refreshZhuLightAtOwnerTurn(P, D, next, zhuLight);
 }
 
 function endPreviousTurnCleanup(P, prevTurn) {
@@ -880,7 +1395,13 @@ export function grantTsathogguaSlimeAtEndTurn(P, prevTurn, L, visualEvents = [])
   const count = GOD_DEFS.TSG.levels[(p.godLevel || 1) - 1]?.slimeCount || 0;
   if (!count) return null;
   if (hasGodPowerImmunity(p)) {
-    appendGodPowerBlockedFeedback({ player: p, playerIdx: prevTurn, log: L, events: visualEvents });
+    appendGodPowerBlockedFeedback({
+      player: p,
+      playerIdx: prevTurn,
+      log: L,
+      events: visualEvents,
+      turnStartStage: 'turnBoundary',
+    });
     return null;
   }
   const playersBefore = copyPlayers(P);
@@ -925,15 +1446,15 @@ function findCardIndexByIdentity(cards = [], target) {
   ));
 }
 
-function consumeTsathogguaSlimeAfterDraw(P, ownerIdx, slime, L, visualEvents = []) {
-  let holderIdx = ownerIdx;
-  let cardIdx = findCardIndexByIdentity(P?.[holderIdx]?.hand || [], slime);
-  if (cardIdx < 0) {
-    holderIdx = (P || []).findIndex(player => findCardIndexByIdentity(player?.hand || [], slime) >= 0);
-    cardIdx = holderIdx >= 0 ? findCardIndexByIdentity(P[holderIdx]?.hand || [], slime) : -1;
-  }
+function consumeTsathogguaSlimeBeforeDraw(P, ownerIdx, slime, L, visualEvents = []) {
+  const holderIdx = ownerIdx;
+  const cardIdx = findCardIndexByIdentity(P?.[holderIdx]?.hand || [], slime);
+  // Extra-draw rights are checked at resolution time, not locked when the
+  // draw phase opens. A slime transferred away before its turn is reached no
+  // longer grants the original owner a draw and must not be consumed remotely.
   if (holderIdx < 0 || cardIdx < 0) return null;
   const holder = P[holderIdx];
+  const playersBefore = copyPlayers(P);
   const [removed] = holder.hand.splice(cardIdx, 1);
   const msg = `【无定形体】${holder.name} 的1张撒托古亚的赐福黏液消失`;
   L.push(msg);
@@ -942,16 +1463,20 @@ function consumeTsathogguaSlimeAfterDraw(P, ownerIdx, slime, L, visualEvents = [
     playerName: holder.name,
     cards: [removed || slime].filter(Boolean),
     msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
   });
   if (event) visualEvents.push(event);
   return {
     targetPid: holderIdx,
     cards: [removed || slime].filter(Boolean),
     msgs: [msg],
+    playersBefore,
+    playersAfter: copyPlayers(P),
   };
 }
 
-function consumeSkipNextDraw(P, playerIdx, L, { local = false } = {}) {
+function consumeSkipNextDraw(P, playerIdx, L, { local = false, visualEvents = [] } = {}) {
   const player = P?.[playerIdx];
   if (!player?.skipNextDraw) return null;
   const reason = player.skipNextDrawReason || '扭伤';
@@ -961,6 +1486,7 @@ function consumeSkipNextDraw(P, playerIdx, L, { local = false } = {}) {
     ? `你因${reason}而无法摸牌`
     : `${player.name} 因${reason}而无法摸牌`;
   L.push(msg);
+  visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'draw' }));
   return { reason, msg };
 }
 
@@ -1009,17 +1535,178 @@ function buildSkippedDrawActionState({
   };
 }
 
-export function startNextTurn(gs, opts = {}) {
-  const { isDebugMode = false } = opts;
+function buildPendingZhuRevealState({
+  gs, request, guard = request?.guard, players, deck, discard, log, currentTurn, newTurn, newTurnKey,
+  turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs, preTurnPlayers,
+  beforeDrawPlayers, globalOnlySwapOwner, abilityData = {},
+}) {
+  return {
+    ...gs,
+    zhuLight: request?.zhuLight || guard.zhuLight,
+    players,
+    deck,
+    discard,
+    log,
+    currentTurn,
+    phase: 'ZHU_HIDE_AI_DRAW',
+    drawReveal: null,
+    selectedCard: null,
+    abilityData: buildZhuRevealAbilityData(request || {
+      guard,
+      decision: { ownerIdx: guard.ownerIdx, drawerIdx: currentTurn, cardId: guard.card?.id || null, source: ZHU_REVEAL_SOURCE.TURN_DRAW, continuation: null },
+    }, abilityData),
+    skillUsed: false,
+    restUsed: false,
+    huntAbandoned: [],
+    godFromHandUsed: false,
+    godTriggeredThisTurn: false,
+    globalOnlySwapOwner,
+    turn: newTurn,
+    _turnKey: newTurnKey,
+    _turnStartLogs: turnStartLogs,
+    _drawLogs: drawLogs,
+    _visualEvents: mergeVisualEventLists(gs._visualEvents, turnDrawVisualEvents),
+    _statLogs: statLogs,
+    _preTurnPlayers: preTurnPlayers,
+    _playersBeforeThisDraw: beforeDrawPlayers,
+  };
+}
+
+export function continueTurnStartAfterDamageReaction(state) {
+  if (!state?.abilityData) return state;
+  const previousStatSeq = maxKnownStatEventSeq(state);
+  const abilityData = state.abilityData;
+  const next = abilityData._turnOwner ?? state.currentTurn;
+  let P = copyPlayers(state.players || []);
+  let D = [...(state.deck || [])];
+  let Disc = [...(state.discard || [])];
+  let L = [...(state.log || [])];
+  let inspectionMeta = makeInspectionMeta(state);
+  const statLogs = [...(state._statLogs || [])];
+  const pendingEventIds = new Set(abilityData._pendingTurnStartEventIds || []);
+  if (abilityData._pendingTurnStartPoison) pendingEventIds.add(TURN_START_EVENT.POISON_DAMAGE);
+  if (abilityData._pendingTurnStartLinkHeals?.length) pendingEventIds.add(TURN_START_EVENT.DAMAGE_LINK_HEAL);
+  if (pendingEventIds.has(TURN_START_EVENT.POISON_DAMAGE)) {
+    const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, state, inspectionMeta, statLogs);
+    P = poison.P; D = poison.D; Disc = poison.Disc; L = poison.L; inspectionMeta = poison.inspectionMeta;
+    if (poison.slimeDecision) {
+      return {
+        ...state,
+        ...inspectionMeta,
+        players: P, deck: D, discard: Disc, log: L,
+        phase: 'TSG_SLIME_BALANCE',
+        abilityData: {
+          ...abilityData,
+          ...poison.slimeDecision,
+          _pendingTurnStartPoison: false,
+          _pendingTurnStartEventIds: [...pendingEventIds].filter(id => id !== TURN_START_EVENT.POISON_DAMAGE),
+        },
+        _statLogs: statLogs,
+      };
+    }
+    if (poison.winAfterPoison) {
+      const terminalState = {
+        ...state,
+        ...inspectionMeta,
+        players: P,
+        deck: D,
+        discard: Disc,
+        log: L,
+        gameOver: poison.winAfterPoison,
+        _statLogs: statLogs,
+        _turnStartDrawAborted: true,
+      };
+      const terminalEvents = mergeVisualEventLists(
+        terminalState._visualEvents,
+        buildFreshStatVisualEvents(terminalState, previousStatSeq),
+      );
+      return {
+        ...terminalState,
+        _visualEvents: markTerminalVisualEventBoundary(terminalEvents, terminalState),
+      };
+    }
+  }
+  const validHeals = pendingEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL)
+    ? (abilityData._pendingTurnStartLinkHeals || []).filter(heal => (
+    getAllDamageLinks(P, { activeOnly: true }).some(link => link.id === heal.linkId)
+    ))
+    : [];
+  const link = turnStartEvent_LinkHeal(P, validHeals, L, inspectionMeta, statLogs);
+  P = link.P; L = link.L; inspectionMeta = link.inspectionMeta;
+  const cleanedAbilityData = { ...abilityData };
+  delete cleanedAbilityData._pendingTurnStartPoison;
+  delete cleanedAbilityData._pendingTurnStartLinkHeals;
+  delete cleanedAbilityData._pendingTurnStartEventIds;
+  let zhuLight = reconcileZhuLight(P, D, state.zhuLight);
+  if (pendingEventIds.has(TURN_START_EVENT.ZHU_LIGHT_REFRESH)) {
+    zhuLight = turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight);
+  }
+  const nya = pendingEventIds.has(TURN_START_EVENT.NYA_BORROW)
+    ? turnStartEvent_NyaBorrow(P, next, L, state, state._visualEvents || [])
+    : { shouldEnterPhase: false };
+  if (nya.shouldEnterPhase) {
+    return {
+      ...state,
+      ...inspectionMeta,
+      zhuLight,
+      players: P,
+      deck: D,
+      discard: Disc,
+      log: [...L, nya.logMsg],
+      _visualEvents: [...(inspectionMeta._visualEvents || state._visualEvents || []), createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' })],
+      phase: 'NYA_BORROW',
+      abilityData: {},
+      _statLogs: statLogs,
+    };
+  }
+  return {
+    ...state,
+    ...inspectionMeta,
+    zhuLight,
+    players: P, deck: D, discard: Disc, log: L,
+    phase: 'ACTION',
+    abilityData: cleanedAbilityData,
+    _statLogs: statLogs,
+  };
+}
+
+function resolveNextTurnState(gs, opts = {}) {
+  const {
+    isDebugMode = false,
+    allAi = false,
+    isAiControlled = null,
+    skipCurrentEndTurnStage = false,
+  } = opts;
+  const shouldUseAiController = (playerIndex) => (
+    allAi || (typeof isAiControlled === 'function' && !!isAiControlled(playerIndex, gs))
+  );
   // Reset multiplyUsed at the start of every turn
-  const inheritedTsgSlimeGrantEvents = Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [];
+  const inheritedTsgSlimeGrantEvents = (Array.isArray(gs._carryTsgSlimeGrantEvents) ? gs._carryTsgSlimeGrantEvents : [])
+    .map(event => event?.type === VISUAL_EVENT.TSG_SLIME_GRANT ? event : createTsathogguaSlimeGrantEvent(event))
+    .filter(Boolean);
   const inheritedGodPowerBlockedEvents = Array.isArray(gs._carryGodPowerBlockedEvents) ? gs._carryGodPowerBlockedEvents : [];
+  const inheritedSkippedTurnReplays = Array.isArray(gs._carrySkippedTurnReplays) ? gs._carrySkippedTurnReplays : [];
   // 黄液（蟾蜍之神回合结束发放）属神牌事件，按 END_TURN_PRIORITY 应先于其他卡牌（如无尽通道）结算。
   // 若已在无尽通道重播前发放（见 App.beginEndTurnReplay），此处跳过，避免重复发放。
   const skipEndTurnTsgSlimeGrant = !!gs._tsgSlimeGrantedAtTurnEnd;
-  gs = { ...gs, multiplyUsed: false, _visualEvents: [...inheritedGodPowerBlockedEvents], _tsgSlimeGrantEvents: null, _carryTsgSlimeGrantEvents: null, _carryGodPowerBlockedEvents: null, _tsgSlimeGrantedAtTurnEnd: undefined };
+  gs = {
+    ...gs,
+    multiplyUsed: false,
+    // Target events are one-shot animation payloads. Keep the monotonically
+    // increasing _apophisTargetSeq watermark across turns, but never let the
+    // previous turn's final roll enter the next turn's draw replay.
+    _apophisTargetEvent: null,
+    _visualEvents: [...inheritedGodPowerBlockedEvents, ...inheritedTsgSlimeGrantEvents],
+    _skippedTurnReplays: inheritedSkippedTurnReplays,
+    _carryTsgSlimeGrantEvents: inheritedTsgSlimeGrantEvents,
+    _carryGodPowerBlockedEvents: inheritedGodPowerBlockedEvents,
+    _carrySkippedTurnReplays: null,
+    _tsgSlimeGrantedAtTurnEnd: undefined,
+    // One-shot rule/presentation guard. A later startNextTurn call must not
+    // inherit the previous dead owner's pre-draw abort marker.
+    _turnStartAbortedByDeath: undefined,
+  };
   const visualEvents = gs._visualEvents;
-  const inheritedGodPowerBlockedEventCount = visualEvents.length;
   const N = gs.players.length;
   let P = copyPlayers(gs.players), D = [...gs.deck], Disc = [...gs.discard], L = [...gs.log];
   let _P_beforeTurn = copyPlayers(P);
@@ -1027,20 +1714,30 @@ export function startNextTurn(gs, opts = {}) {
   let turnStartLogs = [];
   let drawLogs = [];
   let statLogs = [];
-  let zhuLight = null;
+  // Persistent ZHU state is reconciled independently from turn-start event
+  // registration. A face-down/resting player has no refresh event, but reveal
+  // draws may still be intercepted by an existing light from its owner.
+  let zhuLight = reconcileZhuLight(P, D, gs.zhuLight);
   let pendingLinkHeals = [];
   let inspectionMeta = makeInspectionMeta(gs);
   const turnDir = gs.turnDirection || 1;
   const tsgSlimeGrantEvents = [...inheritedTsgSlimeGrantEvents];
-  const tsgSlimeGrant = skipEndTurnTsgSlimeGrant ? null : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
+  // A recursive hop over a face-down player represents a skipped turn, which
+  // has no end-turn stage. Do not manufacture its passive end-turn events.
+  const tsgSlimeGrant = (skipEndTurnTsgSlimeGrant || skipCurrentEndTurnStage)
+    ? null
+    : grantTsathogguaSlimeAtEndTurn(P, gs.currentTurn, L, visualEvents);
   if (tsgSlimeGrant) {
-    tsgSlimeGrantEvents.push(tsgSlimeGrant);
+    const grantVisualEvent = createTsathogguaSlimeGrantEvent(tsgSlimeGrant);
+    if (grantVisualEvent) {
+      tsgSlimeGrantEvents.push(grantVisualEvent);
+      visualEvents.push(grantVisualEvent);
+    }
     const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, tsgSlimeGrant.ownerIdx, tsgSlimeGrant.cards);
     if (proliferatingZPatch.proliferatingZQueue) {
       gs = { ...gs, proliferatingZQueue: proliferatingZPatch.proliferatingZQueue };
     }
   }
-  gs = { ...gs, _tsgSlimeGrantEvents: tsgSlimeGrantEvents.length ? tsgSlimeGrantEvents : null };
   for (let i = 1; i <= N; i++) { next = (gs.currentTurn + i * turnDir + N) % N; if (!P[next].isDead) break; }
   const nextProliferatingZ = clearExpiredProliferatingZ(gs, gs.currentTurn);
   gs = nextProliferatingZ === gs.proliferatingZ
@@ -1052,34 +1749,77 @@ export function startNextTurn(gs, opts = {}) {
   // 清理上回合玩家的临时状态
   P = endPreviousTurnCleanup(P, gs.currentTurn);
   _P_beforeTurn = copyPlayers(P);
-  // 清理过期的两人一绳链条
-  P.forEach((p, i) => {
-    const shouldExpire = p.damageLink && (
-      p.damageLink.expiryOwner === next ||
-      (p.damageLink.expiryOwner != null && (!P[p.damageLink.expiryOwner] || P[p.damageLink.expiryOwner].isDead)) ||
-      (p.damageLink.expiryOwner == null && p.damageLink.expiryTurn <= newTurn)
+  // 此后所有回合内操作（摸牌、效果结算）都应以 next 为当前回合拥有者，
+  // 否则 applyFx 等函数会拿 gs.currentTurn（旧回合）去决定 _turnOwner/检定触发者。
+  gs = enterTurnFlowStage({ ...gs, currentTurn: next }, TURN_FLOW_STAGE.TURN_START);
+  // 清理过期的两人一绳链条；多条链按创建顺序分别治疗或移除。
+  const expiredInactiveIds = [];
+  getAllDamageLinks(P).forEach(link => {
+    const shouldExpire = !P[next].isResting && (
+      link.expiryOwner === next ||
+      (link.expiryOwner != null && (!P[link.expiryOwner] || P[link.expiryOwner].isDead)) ||
+      (link.expiryOwner == null && link.expiryTurn <= newTurn)
     );
-    if (shouldExpire) {
-      // 如果链条仍然激活，双方各回复4HP
-      if (p.damageLink.active) {
-        const partnerIdx = p.damageLink.partner;
-        if (P[partnerIdx] && !P[partnerIdx].isDead) {
-          const healAmount = 4;
-          const linkMsg = `【两人一绳】绳索未断裂！${P[i].name} 和 ${P[partnerIdx].name} 各回复 ${healAmount} HP`;
-          pendingLinkHeals.push({ i, partnerIdx, amount: healAmount, msg: linkMsg });
-        }
-      }
-      if (p.damageLink?.partner != null && P[p.damageLink.partner]?.damageLink?.partner === i) {
-        delete P[p.damageLink.partner].damageLink;
-      }
-      delete p.damageLink;
+    if (!shouldExpire) return;
+    if (link.active) {
+      const healAmount = 4;
+      const linkMsg = `【两人一绳】绳索未断裂！${P[link.a].name} 和 ${P[link.b].name} 各回复 ${healAmount} HP`;
+      pendingLinkHeals.push({ linkId: link.id, i: link.a, partnerIdx: link.b, amount: healAmount, msg: linkMsg });
+    } else {
+      expiredInactiveIds.push(link.id);
     }
+  });
+  removeDamageLinks(P, expiredInactiveIds);
+  P.forEach(p => {
     // 重置当前回合生效的检定牌相关状态
     p.disableRest = false;
     p.disableSkill = false;
     p.handLimitDecrease = 0;
   });
-  // 结转"下一回合生效"的检定牌负面状态
+  let globalOnlySwapOwner = gs.globalOnlySwapOwner;
+  // If this player was resting: wake up (flip card face-up), skip their turn entirely
+  if (P[next].isResting) {
+    const skippedTurnBeforePlayers = copyPlayers(_P_beforeTurn);
+    const skippedTurnBeforeLog = [...L];
+    const skippedTurnBeforeStatSeq = inspectionMeta?._statEventSeq || 0;
+    const skippedTurnBeforeInspectionSeq = inspectionMeta?._inspectionSeq || 0;
+    const skippedTurnCthReplay = null;
+    // A resting player still owns a distinct turn, even though that turn has no
+    // start phase (and therefore no turn-start effects or draw phase). Keep the
+    // visual/log boundary before recording the wake-up skip.
+    turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
+    L.push(...turnStartLogs);
+    P[next].isResting = false;
+    const wakeMsg = `${P[next].name} 从休息中醒来，跳过本回合`;
+    L.push(wakeMsg);
+    // Skip the turn: advance past player to the next living player
+    // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
+    const skippedTurnReplay = {
+      logEvents: bindTurnFlowEvents({ currentTurn: next, _turnKey: newTurnKey }, [
+        createLogOnlyVisualEvent({ msgs: turnStartLogs, turnStartStage: 'turnBanner' }),
+        createLogOnlyVisualEvent({ msgs: [wakeMsg], turnStartStage: 'turnBoundary' }),
+      ]),
+      restingSkip: true,
+      playerIdx: next,
+      playerName: P[next].name,
+      beforePlayers: skippedTurnBeforePlayers,
+      afterPlayers: copyPlayers(P),
+      beforeLog: skippedTurnBeforeLog,
+      afterLog: [...L],
+      turnStartLogs: [...turnStartLogs],
+      beforeStatSeq: skippedTurnBeforeStatSeq,
+      afterStatSeq: inspectionMeta?._statEventSeq || skippedTurnBeforeStatSeq,
+      beforeInspectionSeq: skippedTurnBeforeInspectionSeq,
+      afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
+      cthReplay: skippedTurnCthReplay,
+    };
+    return resolveNextTurnState(
+      { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
+      { ...opts, skipCurrentEndTurnStage: true },
+    );
+  }
+  // 翻面跳过回合没有回合开始/摸牌/行动/结束阶段，因此所有“下一回合”
+  // 状态都只在角色真正进入正常回合时结转或到期。
   if (P[next]) {
     P[next].disableRest = !!P[next].disableRestNextTurn;
     P[next].disableSkill = !!P[next].disableSkillNextTurn;
@@ -1088,114 +1828,137 @@ export function startNextTurn(gs, opts = {}) {
     P[next].disableSkillNextTurn = false;
     P[next].handLimitDecreaseNextTurn = 0;
   }
-  let globalOnlySwapOwner = gs.globalOnlySwapOwner;
   if (globalOnlySwapOwner === next) {
     globalOnlySwapOwner = null;
-    L.push('"全员技能变为掉包"的效果结束了');
-  }
-  // If this player was resting: wake up (flip card face-up), skip their turn entirely
-  if (P[next].isResting) {
-    P[next].isResting = false;
-    turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
-    zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
-    L.push(...turnStartLogs);
-    // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-    const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
-    P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-    if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: bgy.winAfterBgy, multiplyUsed: false };
-    if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
-    }
-    // [PASSIVE_OTHER] 中毒回合开始伤害
-    const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta);
-    P = poison.P; D = poison.D; Disc = poison.Disc; L = poison.L; inspectionMeta = poison.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-    if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
-    // [PASSIVE_OTHER] 两人一绳治愈
-    const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta);
-    P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-    L.push(`${P[next].name} 从休息中醒来，跳过本回合`);
-    // CTH power: draw when ending/skipping turn while face-down
-    if (P[next].godName === 'CTH' && P[next].godLevel >= 1 && hasGodPowerImmunity(P[next])) {
-      appendGodPowerBlockedFeedback({ player: P[next], playerIdx: next, log: L, events: visualEvents });
-    } else if (P[next].godName === 'CTH' && P[next].godLevel >= 1) {
-      const extraDraws = P[next].godLevel; // lv1→1, lv2→2, lv3→3
-      const whoName = localDisplayName(next, P[next].name);
-      L.push(`${whoName}（克苏鲁信徒Lv.${P[next].godLevel}）梦访拉莱耶，翻面跳过回合时额外摸${extraDraws}张牌`);
-      let cthRestDraws = [];
-      let cthRestDrawLogs = [];
-      const _P_beforeCthDraws = copyPlayers(P);
-      for (let _d = 0; _d < extraDraws; _d++) {
-        const r2 = playerDrawCard(P, D, Disc, next, gs); P = r2.P; D = r2.D; Disc = r2.Disc;
-        if (r2.drawnCard) {
-          L.push(`  摸到 ${cardLogText(r2.drawnCard, { alwaysShowName: true })}`);
-          if (next === 0) cthRestDraws.push(r2.drawnCard);
-        }
-        if (r2.needGodChoice) {
-          // AI角色不会触发神牌选择UI，直接处理
-          if (next === 0) {
-            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`];
-            return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: r2.drawnCard, fromRest: true, cthDrawsRemaining: extraDraws - _d - 1, drawerIdx: 0 }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: [], _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
-          }
-        }
-        if (r2.needsDecision) {
-          // AI角色自动处理决策
-          if (next === 0) {
-            const split = splitAnimBoundLogs(r2.effectMsgs || []);
-            const drawLogs = [`${whoName} 摸到 ${drawCardDecisionText(r2.drawnCard)}`, ...split.preStat];
-            return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: r2.drawnCard, msgs: [], needsDecision: true, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, fromRest: true }, selectedCard: null, abilityData: { fromRest: true, cthDrawsRemaining: extraDraws - _d - 1 }, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: split.stat, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
-          } else {
-            // AI角色自动选择收入手牌
-            const aiRes = applyFx(r2.drawnCard, next, null, P, D, Disc, gs);
-            P = aiRes.P; D = aiRes.D; Disc = aiRes.Disc; P[next].hand.push(r2.drawnCard);
-            if (aiRes.msgs.length) L.push(...aiRes.msgs);
-          }
-        }
-        // forced card: already applied, continue
-        if (r2.kept) {
-          if (r2.effectMsgs.length) {
-            L.push(...r2.effectMsgs);
-            if (next === 0) cthRestDrawLogs.push(...r2.effectMsgs);
-          }
-          continue;
-        }
-      }
-      if (next === 0 && cthRestDraws.length > 0) {
-        const nextGs = startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner }, opts);
-        return { ...nextGs, zhuLight: nextGs.zhuLight ?? zhuLight, _cthRestDraws: cthRestDraws, _cthRestDrawLogs: cthRestDrawLogs, _playersBeforeCthDraws: _P_beforeCthDraws };
-      }
-    }
-    // Skip the turn: advance past player to the next living player
-    // Hand limit is NOT enforced here — excess cards are kept until the next normal turn ends
-    return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount) }, opts);
+    const msg = '"全员技能变为掉包"的效果结束了';
+    L.push(msg);
+    visualEvents.push(createLogOnlyVisualEvent({ msgs: [msg], turnStartStage: 'turnBoundary' }));
   }
   turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
   L.push(...turnStartLogs);
-  zhuLight = turnStartEvent_ZhuLight(P, D, next, gs);
+  // The registry is the single shared ordering source for local, multiplayer
+  // and AI turns. It puts passive effects first, then active god powers.
+  const turnStartEvents = getTurnStartEvents(P, next, { pendingLinkHeals });
+  const turnStartEventIds = new Set(turnStartEvents.map(event => event.id));
+  const pendingAfter = eventId => {
+    const eventIndex = turnStartEvents.findIndex(event => event.id === eventId);
+    return turnStartEvents.slice(eventIndex + 1).map(event => event.id);
+  };
+  const isAiTurnOwner = (next !== 0 && !gs._isMP) || shouldUseAiController(next);
+  const buildTurnOpeningVisualMeta = ({ drawAborted = false, beforeDrawPlayers = null } = {}) => ({
+    _turnStartLogs: turnStartLogs,
+    _drawLogs: drawLogs,
+    _statLogs: statLogs,
+    _preTurnPlayers: _P_beforeTurn,
+    _playersBeforeThisDraw: beforeDrawPlayers || copyPlayers(P),
+    ...(drawAborted ? { _turnStartDrawAborted: true } : {}),
+  });
+  const buildTurnStartDeathAbortState = () => ({
+    ...gs,
+    ...inspectionMeta,
+    zhuLight,
+    players: P,
+    deck: D,
+    discard: Disc,
+    log: L,
+    currentTurn: next,
+    turn: newTurn,
+    _turnKey: newTurnKey,
+    phase: 'AI_TURN',
+    abilityData: {},
+    drawReveal: null,
+    selectedCard: null,
+    skillUsed: false,
+    restUsed: false,
+    huntAbandoned: [],
+    godFromHandUsed: false,
+    godTriggeredThisTurn: false,
+    globalOnlySwapOwner,
+    _aiDrawnCard: null,
+    _drawnCard: null,
+    _drawSourcePile: null,
+    _discardedDrawnCard: false,
+    ...buildTurnOpeningVisualMeta({ drawAborted: true }),
+    _drawLogs: [],
+    _turnStartAbortedByDeath: true,
+  });
+  // Lifecycle reconciliation is not a registered event. The owner refresh is
+  // an active-god event and can therefore be resumed after passive decisions.
   // [PASSIVE_GOD_DERIVATIVE] 黑山羊幼仔回合开始伤害
-  const bgy = turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta);
+  const bgy = turnStartEventIds.has(TURN_START_EVENT.BLACK_GOAT_YOUNG_DAMAGE)
+    ? turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta)
+    : { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
   P = bgy.P; D = bgy.D; Disc = bgy.Disc; L = bgy.L; inspectionMeta = bgy.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (bgy.winAfterBgy) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: bgy.winAfterBgy, multiplyUsed: false };
+  if (bgy.winAfterBgy) return {
+    ...buildTurnStartDeathAbortState(),
+    gameOver: bgy.winAfterBgy,
+    multiplyUsed: false,
+  };
+  // Death during the pre-draw opening is a hard rule boundary for AI turns.
+  // Return a draw-less state so the presentation can finish the fatal effect;
+  // aiStep's dead-owner guard will then advance to the next living player.
+  if (isAiTurnOwner && P[next].isDead) return buildTurnStartDeathAbortState();
   if (inspectionMeta?.abilityData?.type === 'tsgSlimeBalance') {
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+    // 黑山羊伤害发生在本回合的摸牌阶段之前。黏液平衡会暂时
+    // 中断 startNextTurn，因此必须显式保存后续的黏液额外摸牌与
+    // 固定摸牌；否则决策结束后会直接恢复 AI_TURN 并开始行动。
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...inspectionMeta.abilityData, _turnOwner: next, continueTurnStartDraw: true, _pendingTurnStartLinkHeals: pendingLinkHeals, _pendingTurnStartEventIds: pendingAfter(TURN_START_EVENT.BLACK_GOAT_YOUNG_DAMAGE) }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
   }
   // [PASSIVE_OTHER] 中毒回合开始伤害
-  const poison = turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs);
+  const poison = turnStartEventIds.has(TURN_START_EVENT.POISON_DAMAGE)
+    ? turnStartEvent_PoisonDamage(P, next, D, Disc, L, gs, inspectionMeta, statLogs)
+    : { P, D, Disc, L, inspectionMeta, winAfterPoison: null, slimeDecision: null };
   P = poison.P; D = poison.D; Disc = poison.Disc; L = poison.L; inspectionMeta = poison.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (poison.winAfterPoison) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: poison.winAfterPoison, multiplyUsed: false };
+  if (poison.slimeDecision) {
+    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, phase: 'TSG_SLIME_BALANCE', abilityData: { ...poison.slimeDecision, _turnOwner: next, continueTurnStartDraw: true, _pendingTurnStartLinkHeals: pendingLinkHeals, _pendingTurnStartEventIds: pendingAfter(TURN_START_EVENT.POISON_DAMAGE) }, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
+  }
+  if (poison.winAfterPoison) return {
+    ...buildTurnStartDeathAbortState(),
+    gameOver: poison.winAfterPoison,
+    multiplyUsed: false,
+  };
+  if (isAiTurnOwner && P[next].isDead) return buildTurnStartDeathAbortState();
   // [PASSIVE_OTHER] 两人一绳治愈
-  const link = turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLogs);
+  const link = turnStartEvent_LinkHeal(P, turnStartEventIds.has(TURN_START_EVENT.DAMAGE_LINK_HEAL) ? pendingLinkHeals : [], L, inspectionMeta, statLogs);
   P = link.P; L = link.L; inspectionMeta = link.inspectionMeta; gs = { ...gs, ...inspectionMeta };
-  if (next === 0) {
+  zhuLight = reconcileZhuLight(P, D, zhuLight);
+  if (turnStartEventIds.has(TURN_START_EVENT.ZHU_LIGHT_REFRESH)) {
+    zhuLight = turnStartEvent_ZhuLightRefresh(P, D, next, zhuLight);
+  }
+  const pauseSlimeDrawForEffect = (result, events, beforeDrawPlayers) => {
+    if (!hasEffectDecisionState(result.statePatch)) return null;
+    const decision = deriveEffectDecisionState(result.statePatch, {
+      fallbackPhase: shouldUseAiController(next) ? 'AI_TURN' : 'ACTION',
+      turnOwner: next,
+      extraAbilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next },
+    });
+    return withMergedVisualEvents({
+      ...gs, ...result.statePatch, zhuLight, players: P, deck: D, discard: Disc, log: L,
+      currentTurn: next, turn: newTurn, _turnKey: newTurnKey,
+      phase: decision.phase, abilityData: decision.abilityData,
+      skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false,
+      godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, globalOnlySwapOwner,
+      _playersBeforeThisDraw: beforeDrawPlayers, _preTurnPlayers: _P_beforeTurn,
+      _drawnCard: result.drawnCard, _drawSourcePile: result.sourcePile,
+      _aiDrawnCard: shouldUseAiController(next) ? result.drawnCard : null,
+      _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs,
+    }, events);
+  };
+  if (next === 0 && !shouldUseAiController(next)) {
     // Debug: 强制摸牌 - 玩家
     applyDebugForceDrawToTop(gs, next, D);
     // [ACTIVE_GOD] NYA 偷身份
-    const nya = turnStartEvent_NyaBorrow(P, 0, L, gs, visualEvents);
+    const nya = turnStartEventIds.has(TURN_START_EVENT.NYA_BORROW)
+      ? turnStartEvent_NyaBorrow(P, 0, L, gs, visualEvents)
+      : { shouldEnterPhase: false };
     if (nya.shouldEnterPhase) {
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [nya.logMsg], turnStartStage: 'turnStart' }));
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nya.logMsg], currentTurn: 0, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, 0, L, { local: true })) {
-      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null };
+    if (consumeSkipNextDraw(P, 0, L, { local: true, visualEvents })) {
+      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, gameOver: win, turn: newTurn, _turnKey: newTurnKey, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
         zhuLight,
@@ -1214,44 +1977,134 @@ export function startNextTurn(gs, opts = {}) {
       });
     }
     const _P_beforeDraw = copyPlayers(P);
-    const turnDrawEvents = [];
-    const tsgSlimes = getTsathogguaSlimesForDraw(P, 0, L, visualEvents);
-    for (let _d = 0; _d < tsgSlimes.length; _d++) {
-      const tsgSlime = tsgSlimes[_d];
+    const turnDrawVisualEvents = [];
+    // Do not snapshot slime entitlement at draw-phase start. Each extra draw
+    // consumes one slime that is still in the current drawer's hand now; a
+    // slime lost during an earlier draw can no longer grant a later draw.
+    while (true) {
+      const tsgSlime = getTsathogguaSlimesForDraw(P, 0, L, visualEvents)[0];
+      if (!tsgSlime) break;
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, 0, tsgSlime, L, visualEvents);
+      if (!slimePop) continue;
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, {
+          deck: D,
+          drawerIdx: 0,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: 0 },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+          preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+          abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: 0 },
+        });
+      }
+      const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
       const rSlime = playerDrawCard(P, D, Disc, 0, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
-      let drawEvent = null;
+      // Every reveal draw re-evaluates its source. Effects such as geomagnetic
+      // reversal/restoration produced by this draw must affect the very next
+      // slime/fixed draw in the same draw phase.
+      if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
       if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
-        turnDrawEvents.push(drawEvent);
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: 0,
+          playerName: P[0].name,
+          card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
+          fromTsathogguaSlime: true,
+          slimePop,
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            discardAfter: Disc,
+            playerIdx: 0,
+            card: rSlime.drawnCard,
+          }),
+        });
       }
-      const pendingSlimeData = { pendingTsathogguaSlime: tsgSlime, pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
       if (rSlime.needGodChoice) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, drawerIdx: 0, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        const godChoiceAbilityData={godCard:rSlime.drawnCard,drawerIdx:0,godEncounterCost:rSlime.godEncounterCost,fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:0};
+        const decisionState=deriveGodEncounterDecisionState(rSlime.statePatch,godChoiceAbilityData);
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: decisionState.phase, abilityData: decisionState.abilityData, drawReveal: null, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: 0, drawerName: P[0].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: 0 }, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, 0, tsgSlime, L, visualEvents);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, globalOnlySwapOwner, gameOver: slimeDrawWin, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents);
       }
     }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const drawLogsSyncedCount = drawLogs.length;
+    {
+      const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: 0, zhuLight }, {
+        deck: D,
+        drawerIdx: 0,
+        source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+      });
+      if (request) return buildPendingZhuRevealState({
+        gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: 0,
+        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+        preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+      });
+    }
+    const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = playerDrawCard(P, D, Disc, 0, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
-    if (res.drawnCard && !res.kept) {
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
-      drawLogs.push(msg);
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile, msgs: [msg] });
+      if (!res.kept) drawLogs.push(msg);
+      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: 0,
+        playerName: P[0].name,
+        card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
+        sourcePile: res.sourcePile,
+        // Forced draws already resolved their effects. Author the reveal here
+        // so its messages exclude those owned by the card-effect events.
+        msgs: res.kept ? res.effectMsgs : [msg],
+        reshuffleLog: res.reshuffleLog,
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          discardAfter: Disc,
+          playerIdx: 0,
+          card: res.drawnCard,
+        }),
+      });
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
-        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 INSPECTION 视觉事件单独驱动。
         const split = splitGodEncounterLogs(res.effectMsgs);
         drawLogs.push(...split.encounterLogs);
         statLogs.push(...split.inspectionLogs);
@@ -1261,11 +2114,13 @@ export function startNextTurn(gs, opts = {}) {
         statLogs.push(...split.stat);
       }
     }
-    if (drawLogs.length) L.push(...drawLogs);
-    if (statLogs.length) L.push(...statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }; }
+    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
+    if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); const event = createLogOnlyVisualEvent({ msgs: ['牌堆耗尽！'], turnStartStage: 'draw' }); if (event) turnDrawVisualEvents.push(event); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn }, turnDrawVisualEvents); }
     if (res.needGodChoice) {
       const inspectionPatch = res.statePatch || {};
+      const godChoiceAbilityData={godCard:res.drawnCard,drawerIdx:0,godEncounterCost:res.godEncounterCost};
+      const decisionState=deriveGodEncounterDecisionState(inspectionPatch,godChoiceAbilityData);
       return {
         ...gs,
         zhuLight,
@@ -1279,8 +2134,8 @@ export function startNextTurn(gs, opts = {}) {
         huntAbandoned: [],
         godFromHandUsed: false,
         godTriggeredThisTurn: true,
-        phase: 'GOD_CHOICE',
-        abilityData: { godCard: res.drawnCard, drawerIdx: 0, godEncounterCost: res.godEncounterCost },
+        phase: decisionState.phase,
+        abilityData: decisionState.abilityData,
         drawReveal: null,
         selectedCard: null,
         globalOnlySwapOwner,
@@ -1289,7 +2144,7 @@ export function startNextTurn(gs, opts = {}) {
         _turnKey: newTurnKey,
         _turnStartLogs: turnStartLogs,
         _drawLogs: drawLogs,
-        _turnDrawEvents: turnDrawEvents,
+        _visualEvents: mergeVisualEventLists(inspectionPatch._visualEvents, turnDrawVisualEvents),
         _statLogs: statLogs,
         _preTurnPlayers: _P_beforeTurn,
         _aiDrawnCard: null,
@@ -1301,7 +2156,6 @@ export function startNextTurn(gs, opts = {}) {
         houndsOfTindalosActive: inspectionPatch.houndsOfTindalosActive,
         houndsOfTindalosTarget: inspectionPatch.houndsOfTindalosTarget,
         houndsOfTindalosElapsed: inspectionPatch.houndsOfTindalosElapsed,
-        _inspectionEvents: inspectionPatch._inspectionEvents,
         _inspectionSeq: inspectionPatch._inspectionSeq,
         _inspectionCard: inspectionPatch._inspectionCard,
         _inspectionTarget: inspectionPatch._inspectionTarget,
@@ -1309,6 +2163,7 @@ export function startNextTurn(gs, opts = {}) {
         _inspectionPrevLogLen: inspectionPatch._inspectionPrevLogLen,
         _statEvents: inspectionPatch._statEvents,
         _statEventSeq: inspectionPatch._statEventSeq,
+        _decisionContinuations: inspectionPatch._decisionContinuations || [],
       };
     }
     const playerTurnAnimMeta = {
@@ -1329,6 +2184,7 @@ export function startNextTurn(gs, opts = {}) {
         drawerIdx: 0,
         drawerName: P[0].name,
         sourcePile: res.sourcePile,
+        reshuffleLog: res.reshuffleLog,
       } : null,
       selectedCard: null,
       abilityData: {},
@@ -1336,31 +2192,35 @@ export function startNextTurn(gs, opts = {}) {
       _playersBeforeThisDraw: _P_beforeDraw,
       _turnStartLogs: turnStartLogs,
       _drawLogs: drawLogs,
-      _turnDrawEvents: turnDrawEvents,
+      _visualEvents: mergeVisualEventLists(res.statePatch?._visualEvents, turnDrawVisualEvents),
       _statLogs: statLogs,
       _preTurnPlayers: _P_beforeTurn,
       ...(res.statePatch || {}),
     };
-    const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, ...playerTurnAnimMeta };
     // 强制触发牌：效果已执行，直接进入 ACTION；drawReveal 保留卡牌供翻牌动画使用，但不广播 DRAW_REVEAL
     if (res.kept) {
       const decisionState = deriveEffectDecisionState(res.statePatch, {
         baseAbilityData: {},
         fallbackPhase: 'ACTION',
       });
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: decisionState.phase, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: decisionState.abilityData, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}), phase: decisionState.phase, abilityData: decisionState.abilityData }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile };
-  } else if (gs._isMP) {
+    return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: 0, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: 0, drawerName: P[0].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, globalOnlySwapOwner, _playersBeforeThisDraw: _P_beforeDraw, turn: newTurn, _turnKey: newTurnKey, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
+  } else if (gs._isMP && !shouldUseAiController(next)) {
     // Multiplayer: next player is human — draw their card and enter DRAW_REVEAL
     // [ACTIVE_GOD] NYA 偷身份
-    const nyaMp = turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
+    const nyaMp = turnStartEventIds.has(TURN_START_EVENT.NYA_BORROW)
+      ? turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents)
+      : { shouldEnterPhase: false };
     if (nyaMp.shouldEnterPhase) {
+      visualEvents.push(createLogOnlyVisualEvent({ msgs: [nyaMp.logMsg], turnStartStage: 'turnStart' }));
       return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: [...L, nyaMp.logMsg], currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'NYA_BORROW', abilityData: {}, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: copyPlayers(P) };
     }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, next, L)) {
-      const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
+    if (consumeSkipNextDraw(P, next, L, { visualEvents })) {
+      const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
       return buildSkippedDrawActionState({
         gs,
         zhuLight,
@@ -1379,44 +2239,126 @@ export function startNextTurn(gs, opts = {}) {
       });
     }
     const _P_beforeMpDraw = copyPlayers(P);
-    const turnDrawEvents = [];
-    const tsgSlimes = getTsathogguaSlimesForDraw(P, next, L, visualEvents);
-    for (let _d = 0; _d < tsgSlimes.length; _d++) {
-      const tsgSlime = tsgSlimes[_d];
+    const turnDrawVisualEvents = [];
+    while (true) {
+      const tsgSlime = getTsathogguaSlimesForDraw(P, next, L, visualEvents)[0];
+      if (!tsgSlime) break;
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, next, tsgSlime, L, visualEvents);
+      if (!slimePop) continue;
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+          deck: D,
+          drawerIdx: next,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: next },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+          preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
+          abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
+        });
+      }
+      const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
       const rSlime = playerDrawCard(P, D, Disc, next, gs);
       P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
-      let drawEvent = null;
+      if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
       if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
         const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
-        turnDrawEvents.push(drawEvent);
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: next,
+          playerName: P[next].name,
+          card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
+          fromTsathogguaSlime: true,
+          slimePop,
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            discardAfter: Disc,
+            playerIdx: next,
+            card: rSlime.drawnCard,
+          }),
+        });
       }
-      const pendingSlimeData = { pendingTsathogguaSlime: tsgSlime, pendingTsathogguaSlimes: tsgSlimes.slice(_d + 1) };
       if (rSlime.needGodChoice) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: rSlime.drawnCard, godEncounterCost: rSlime.godEncounterCost, fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+        const godChoiceAbilityData={godCard:rSlime.drawnCard,godEncounterCost:rSlime.godEncounterCost,fromTsathogguaSlime:true,continueTurnStartDraw:true,_turnOwner:next};
+        const decisionState=deriveGodEncounterDecisionState(rSlime.statePatch,godChoiceAbilityData);
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: decisionState.phase, abilityData: decisionState.abilityData, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
       if (rSlime.needsDecision) {
-        return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, ...pendingSlimeData }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw };
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: rSlime.drawnCard, msgs: rSlime.effectMsgs, needsDecision: true, forcedKeep: !!rSlime.forcedKeep, drawerIdx: next, drawerName: P[next].name, fromTsathogguaSlime: true, reshuffleLog: rSlime.reshuffleLog }, selectedCard: null, abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: next }, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, next, tsgSlime, L, visualEvents);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 团灭非追猎者）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeMpDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, true);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, gameOver: slimeDrawWin, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents);
       }
     }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const drawLogsSyncedCount = drawLogs.length;
+    {
+      const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+        deck: D,
+        drawerIdx: next,
+        source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+      });
+      if (request) return buildPendingZhuRevealState({
+        gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+        newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+        preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeMpDraw, globalOnlySwapOwner,
+      });
+    }
+    const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = playerDrawCard(P, D, Disc, next, gs);
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
-    if (res.drawnCard && !res.kept) {
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
-      drawLogs.push(msg);
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: [msg] });
+      if (!res.kept) drawLogs.push(msg);
+      appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: next,
+        playerName: P[next].name,
+        card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
+        sourcePile: res.sourcePile,
+        msgs: res.kept ? res.effectMsgs : [msg],
+        reshuffleLog: res.reshuffleLog,
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          discardAfter: Disc,
+          playerIdx: next,
+          card: res.drawnCard,
+        }),
+      });
     }
     if (res.effectMsgs?.length) {
       if (res.needGodChoice) {
-        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 _inspectionEvents 单独驱动检定动画
+        // 邪神牌：遭遇消息跟随翻牌动画；检定消息由 INSPECTION 视觉事件单独驱动。
         const split = splitGodEncounterLogs(res.effectMsgs);
         drawLogs.push(...split.encounterLogs);
         statLogs.push(...split.inspectionLogs);
@@ -1426,76 +2368,159 @@ export function startNextTurn(gs, opts = {}) {
         statLogs.push(...split.stat);
       }
     }
-    if (drawLogs.length) L.push(...drawLogs);
-    if (statLogs.length) L.push(...statLogs);
-    if (!res.drawnCard) { L.push('牌堆耗尽！'); return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }; }
-    if (res.needGodChoice) { return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, phase: 'GOD_CHOICE', abilityData: { godCard: res.drawnCard, godEncounterCost: res.godEncounterCost }, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}) }; }
-    const win = checkWin(P, true); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win };
-    // 强制触发牌：效果已执行，直接进入 ACTION；不向其他玩家广播 DRAW_REVEAL 界面
-    if (res.kept) {
-      return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}) };
+    if (drawLogs.length > drawLogsSyncedCount) L.push(...drawLogs.slice(drawLogsSyncedCount));
+    if (statLogs.length) appendMissingLogOccurrences(L, statLogs);
+    if (!res.drawnCard) { L.push('牌堆耗尽！'); const event = createLogOnlyVisualEvent({ msgs: ['牌堆耗尽！'], turnStartStage: 'draw' }); if (event) turnDrawVisualEvents.push(event); return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, phase: 'ACTION', drawReveal: null, abilityData: {}, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw }, turnDrawVisualEvents); }
+    if (res.needGodChoice) {
+      const decisionState=deriveGodEncounterDecisionState(res.statePatch,{godCard:res.drawnCard,godEncounterCost:res.godEncounterCost});
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: true, drawReveal: null, selectedCard: null, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, ...(res.statePatch || {}), phase:decisionState.phase,abilityData:decisionState.abilityData }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile };
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(P, true); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, gameOver: win, ...buildTurnOpeningVisualMeta({ beforeDrawPlayers: _P_beforeMpDraw }), ...(res.statePatch || {}) }, turnDrawVisualEvents);
+    // 强制触发牌不再询问保留；待收入的交互效果仍需先完成选择。
+    if (res.kept) {
+      const decisionState = res.statePatch?.abilityData?.pendingZoneIncome
+        ? deriveEffectDecisionState(res.statePatch)
+        : null;
+      return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'ACTION', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: false, forcedKeep: false, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile, ...(res.statePatch || {}), ...(decisionState ? { phase: decisionState.phase, abilityData: decisionState.abilityData } : {}) }, turnDrawVisualEvents);
+    }
+    return withMergedVisualEvents({ ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, _turnKey: newTurnKey, skillUsed: false, restUsed: false, huntAbandoned: [], godFromHandUsed: false, godTriggeredThisTurn: false, phase: 'DRAW_REVEAL', drawReveal: { card: res.drawnCard, msgs: res.effectMsgs, needsDecision: !!res.needsDecision, forcedKeep: !!res.forcedKeep, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile }, selectedCard: null, abilityData: {}, _isMP: gs._isMP, globalOnlySwapOwner, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, _playersBeforeThisDraw: _P_beforeMpDraw, _drawSourcePile: res.sourcePile }, turnDrawVisualEvents);
   } else {
     // [ACTIVE_GOD] NYA 偷身份（AI 自动处理）
-    turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
+    if (turnStartEventIds.has(TURN_START_EVENT.NYA_BORROW)) {
+      turnStartEvent_NyaBorrow(P, next, L, gs, visualEvents);
+    }
+    gs = enterTurnFlowStage(gs, TURN_FLOW_STAGE.DRAW);
     // 检查是否需要跳过摸牌
-    if (consumeSkipNextDraw(P, next, L)) {
-      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null };
-      return startNextTurn({ ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, debugForceCard: null, debugForceCardTarget: null, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.slice(inheritedGodPowerBlockedEventCount) }, opts);
-    }
-    applyDebugForceDrawToTop(gs, next, D);
-    const _P_beforeDraw = copyPlayers(P);
-    const turnDrawEvents = [];
-    const tsgSlimes = getTsathogguaSlimesForDraw(P, next, L, visualEvents);
-    for (let _d = 0; _d < tsgSlimes.length; _d++) {
-      const tsgSlime = tsgSlimes[_d];
-      const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
-      P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
-      let drawEvent = null;
-      if (rSlime.drawnCard) {
-        const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
-        L.push(msg);
-        drawLogs.push(msg);
-        drawEvent = { card: rSlime.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: rSlime.sourcePile, msgs: [msg], fromTsathogguaSlime: true };
-        turnDrawEvents.push(drawEvent);
-      }
-      if (rSlime.effectMsgs?.length) L.push(...rSlime.effectMsgs);
-      const slimePop = consumeTsathogguaSlimeAfterDraw(P, next, tsgSlime, L, visualEvents);
-      if (slimePop) {
-        drawLogs.push(...slimePop.msgs);
-        if (drawEvent) drawEvent.slimePop = slimePop;
-      }
-    }
-    const zhuGuard = getZhuTopGuard({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, D);
-    if (zhuGuard) {
-      return {
-        ...gs,
-        zhuLight: zhuGuard.zhuLight,
+    if (consumeSkipNextDraw(P, next, L, { visualEvents })) {
+      const win = checkWin(P, gs._isMP); if (win) return { ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: win, debugForceCard: null, debugForceCardTarget: null, ...buildTurnOpeningVisualMeta({ drawAborted: true }) };
+      return buildSkippedDrawActionState({
+        gs,
+        zhuLight,
         players: P,
         deck: D,
         discard: Disc,
         log: L,
         currentTurn: next,
-        phase: 'ZHU_HIDE_AI_DRAW',
-        drawReveal: null,
-        selectedCard: null,
-        abilityData: { zhuGuard, drawerIdx: next },
-        skillUsed: false,
-        restUsed: false,
-        huntAbandoned: [],
-        godFromHandUsed: false,
-        godTriggeredThisTurn: false,
-        _playersBeforeThisDraw: _P_beforeDraw,
-        _turnKey: (gs._turnKey || 0) + 1,
-        _turnStartLogs: turnStartLogs,
-        _drawLogs: drawLogs,
-        _turnDrawEvents: turnDrawEvents,
-        _statLogs: statLogs,
-        _preTurnPlayers: _P_beforeTurn,
+        newTurn,
+        newTurnKey,
+        turnStartLogs,
+        statLogs,
+        preTurnPlayers: _P_beforeTurn,
         globalOnlySwapOwner,
-      };
+        extra: {
+          phase: 'AI_TURN',
+          debugForceCard: null,
+          debugForceCardTarget: null,
+          _isMP: gs._isMP,
+        },
+      });
     }
+    applyDebugForceDrawToTop(gs, next, D);
+    const _P_beforeDraw = copyPlayers(P);
+    const turnDrawVisualEvents = [];
+    while (true) {
+      const tsgSlime = getTsathogguaSlimesForDraw(P, next, L, visualEvents)[0];
+      if (!tsgSlime) break;
+      const slimePop = consumeTsathogguaSlimeBeforeDraw(P, next, tsgSlime, L, visualEvents);
+      if (!slimePop) continue;
+      // ZHU is a per-reveal guard, not a once-per-phase precondition. Stop
+      // before consuming the lit top card even when this reveal comes from a
+      // slime extra draw.
+      {
+        const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+          deck: D,
+          drawerIdx: next,
+          source: ZHU_REVEAL_SOURCE.TSG_SLIME,
+          continuation: { continueTurnStartDraw: true, extraDrawReady: true, turnOwner: next },
+        });
+        if (request) return buildPendingZhuRevealState({
+          gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+          newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+          preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+          abilityData: { fromTsathogguaSlime: true, continueTurnStartDraw: true, _tsgExtraDrawReady: true, _turnOwner: next },
+        });
+      }
+      const playersBeforeSlimeDraw = copyPlayers(P);
+      const statEventsBeforeSlimeDraw = gs._statEvents || [];
+      const rSlime = aiDrawAndApply(next, P, D, Disc, gs);
+      P = rSlime.P; D = rSlime.D; Disc = rSlime.Disc;
+      if (rSlime.statePatch) gs = { ...gs, ...rSlime.statePatch };
+      if (rSlime.drawnCard) {
+        if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
+        if (slimePop) drawLogs.push(...slimePop.msgs);
+        const msg = `【无定形体】${P[next].name} 额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
+        L.push(msg);
+        drawLogs.push(msg);
+        // 黏液额外摸到邪神牌时是同步结算的（不进入 AI_GOD_CHOICE）。规则层把遭遇
+        // 产出的属性/检定事件序号与弃牌结果记录在摸牌事件上，startNextTurn 据此
+        // 把对应视觉事件归属到这次摸牌，动画队列才能按序补播 SAN/检定/弃牌。
+        appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+          playerIdx: next,
+          playerName: P[next].name,
+          card: rSlime.drawnCard,
+          effectVisualEvents: rSlime.statePatch?._visualEvents,
+          sourcePile: rSlime.sourcePile,
+          msgs: [msg],
+          reshuffleLog: rSlime.reshuffleLog,
+          fromTsathogguaSlime: true,
+          slimePop,
+          godEncounter: rSlime.godEncounter,
+          statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
+          ...buildDrawKeepPresentation({
+            playersBefore: playersBeforeSlimeDraw,
+            playersAfter: P,
+            discardAfter: Disc,
+            playerIdx: next,
+            card: rSlime.drawnCard,
+          }),
+        });
+      }
+      // 与固定摸牌一致：同步结算的效果日志按动画/统计分桶进 drawLogs/statLogs，
+      // 让对应 stat 事件在回合开始重放中能绑到正确的日志块。
+      if (rSlime.effectMsgs?.length) {
+        const splitSlimeEffectMsgs = splitAnimBoundLogs(rSlime.effectMsgs);
+        drawLogs.push(...splitSlimeEffectMsgs.preStat);
+        statLogs.push(...splitSlimeEffectMsgs.stat);
+        L.push(...rSlime.effectMsgs);
+      }
+      // 摸牌阶段的结算可能在两张牌之间终结对局（如夜风呼啸 AOE 杀死本地玩家）。
+      // 立即截断摸牌阶段：不再消耗后续黏液与固定摸牌，终结后的日志与动画不再产生。
+      const pendingSlimeDraw = pauseSlimeDrawForEffect(rSlime, turnDrawVisualEvents, _P_beforeDraw);
+      if (pendingSlimeDraw) return pendingSlimeDraw;
+      const slimeDrawWin = hasPendingDamageReaction(rSlime.statePatch) ? null : checkWin(P, gs._isMP);
+      if (slimeDrawWin) {
+        return withMergedVisualEvents({
+          ...gs, zhuLight, players: P, deck: D, discard: Disc, log: L, gameOver: slimeDrawWin,
+          currentTurn: next, turn: newTurn, phase: 'AI_TURN',
+          skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false,
+          drawReveal: null, selectedCard: null, huntAbandoned: [],
+          _aiDrawnCard: rSlime.drawnCard ?? null,
+          _drawnCard: rSlime.drawnCard ?? null,
+          _discardedDrawnCard: !!rSlime.discardedDrawnCard,
+          _playersBeforeThisDraw: _P_beforeDraw,
+          _turnKey: (gs._turnKey || 0) + 1,
+          _turnStartLogs: turnStartLogs,
+          _drawLogs: drawLogs,
+          _statLogs: statLogs,
+          _preTurnPlayers: _P_beforeTurn,
+          globalOnlySwapOwner,
+        }, turnDrawVisualEvents);
+      }
+    }
+    // 循环内的黏液额外摸牌消息已逐条写入 L，最终统一 flush 时只补固定摸牌新增的部分，
+    // 否则额外摸牌/黏液消失消息会在日志里重复出现两次。
+    const request = requestZhuReveal({ ...gs, players: P, deck: D, currentTurn: next, zhuLight }, {
+      deck: D,
+      drawerIdx: next,
+      source: ZHU_REVEAL_SOURCE.TURN_DRAW,
+    });
+    if (request) return buildPendingZhuRevealState({
+      gs, request, players: P, deck: D, discard: Disc, log: L, currentTurn: next,
+      newTurn, newTurnKey, turnStartLogs, drawLogs, turnDrawVisualEvents, statLogs,
+      preTurnPlayers: _P_beforeTurn, beforeDrawPlayers: _P_beforeDraw, globalOnlySwapOwner,
+    });
+    const playersBeforeFixedDraw = copyPlayers(P);
+    const statEventsBeforeFixedDraw = gs._statEvents || [];
     const res = aiDrawAndApply(next, P, D, Disc, { ...gs, deferAiGodChoice: true });
     gs.debugForceCardKeepPending = null;
     gs.debugForceCardKeepTarget = null;
@@ -1505,18 +2530,57 @@ export function startNextTurn(gs, opts = {}) {
       turnStartLogs.push(debugDrawLog);
       L.push(debugDrawLog);
     }
+    if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
     if (res.effectMsgs?.length) {
-      const split = splitAnimBoundLogs(res.effectMsgs);
-      drawLogs.push(...split.preStat);
-      statLogs.push(...split.stat);
-      if (drawLogs.length) L.push(...drawLogs);
-      if (statLogs.length) L.push(...statLogs);
+      // A deferred AI god choice returns only the encounter line here; the
+      // SAN inspection and gift decision are resolved by the later
+      // AI_GOD_CHOICE transition. Keep the encounter with the card reveal
+      // instead of classifying its "失去 N SAN" text as a stat log, otherwise
+      // realtime logs show inspection/discard before "遭遇邪神".
+      if (res.needGodChoice || res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice) {
+        const split = splitGodEncounterLogs(res.effectMsgs);
+        drawLogs.push(...split.encounterLogs);
+        statLogs.push(...split.inspectionLogs);
+      } else {
+        const split = splitAnimBoundLogs(res.effectMsgs);
+        drawLogs.push(...split.preStat);
+        statLogs.push(...split.stat);
+      }
     }
+    // drawLogs/statLogs are animation routing buckets, not the authoritative
+    // adventure-log order. Appending the buckets separately moves inspection
+    // text ahead of AOE lines (e.g. 夜风呼啸), because the AOE line is
+    // classified as a stat log while the inspection result is not.
+    if (res.reshuffleLog) L.push(res.reshuffleLog);
+    if (res.effectMsgs?.length) L.push(...res.effectMsgs);
+    let fixedDrawEvent = null;
     if (res.drawnCard) {
       const eventMsgs = (res.effectMsgs || []).filter(msg => (drawLogs || []).includes(msg));
-      turnDrawEvents.push({ card: res.drawnCard, drawerIdx: next, drawerName: P[next].name, sourcePile: res.sourcePile, msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1) });
+      fixedDrawEvent = appendTurnDrawVisualEvents(turnDrawVisualEvents, {
+        playerIdx: next,
+        playerName: P[next].name,
+        card: res.drawnCard,
+          effectVisualEvents: res.statePatch?._visualEvents,
+        sourcePile: res.sourcePile,
+        msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
+        reshuffleLog: res.reshuffleLog,
+        statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
+        ...buildDrawKeepPresentation({
+          playersBefore: playersBeforeFixedDraw,
+          playersAfter: P,
+          discardAfter: Disc,
+          playerIdx: next,
+          card: res.drawnCard,
+        }),
+      });
     }
-    const pendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const rawPendingAiGodChoice = res.pendingAiGodChoice || res.statePatch?._pendingAiGodChoice || null;
+    const pendingAiGodChoice = rawPendingAiGodChoice
+      ? {
+          ...rawPendingAiGodChoice,
+          ...(fixedDrawEvent?.id ? { drawEventId: fixedDrawEvent.id } : {}),
+        }
+      : null;
     const { phase: resolvedNextPhase, abilityData: resolvedNextAbilityData } = deriveEffectDecisionState(res.statePatch, {
       baseAbilityData: gs.abilityData,
       fallbackPhase: 'AI_TURN',
@@ -1527,6 +2591,7 @@ export function startNextTurn(gs, opts = {}) {
       : resolvedNextAbilityData;
     const aiTurnAnimMeta = {
       currentTurn: next,
+      turn: newTurn,
       phase: nextPhase,
       drawReveal: null,
       selectedCard: null,
@@ -1540,14 +2605,14 @@ export function startNextTurn(gs, opts = {}) {
       _turnKey: (gs._turnKey || 0) + 1,
       _turnStartLogs: turnStartLogs,
       _drawLogs: drawLogs,
-      _turnDrawEvents: turnDrawEvents,
+      _visualEvents: mergeVisualEventLists(res.statePatch?._visualEvents, turnDrawVisualEvents),
       _statLogs: statLogs,
       _preTurnPlayers: _P_beforeTurn,
     };
-    const win = checkWin(res.P, gs._isMP); if (win) return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
-    if (!res.P[next].isDead && res.P[next].role === ROLE_TREASURE && isWinHand(res.P[next].hand)) {
+    const win = hasEffectDecisionState(res.statePatch) ? null : checkWin(res.P, gs._isMP); if (win) return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, gameOver: win, ...aiTurnAnimMeta, ...(res.statePatch || {}), globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
+    if (!hasEffectDecisionState(res.statePatch) && !res.P[next].isDead && res.P[next].role === ROLE_TREASURE && isWinHand(res.P[next].hand)) {
       res.P[next].roleRevealed = true;
-      return {
+      return withMergedVisualEvents({
         ...gs,
         players: res.P,
         deck: D,
@@ -1557,8 +2622,263 @@ export function startNextTurn(gs, opts = {}) {
         ...aiTurnAnimMeta,
         ...(res.statePatch || {}),
         globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner)
-      };
+      }, turnDrawVisualEvents);
     }
-    return { ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, phase: nextPhase, drawReveal: null, selectedCard: null, abilityData: nextAbilityData, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _turnDrawEvents: turnDrawEvents, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) };
+    return withMergedVisualEvents({ ...gs, zhuLight, players: res.P, deck: D, discard: Disc, log: L, currentTurn: next, turn: newTurn, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, drawReveal: null, selectedCard: null, huntAbandoned: [], _aiDrawnCard: res.drawnCard ?? null, _drawnCard: res.drawnCard ?? null, _discardedDrawnCard: !!res.discardedDrawnCard, _playersBeforeThisDraw: _P_beforeDraw, _turnKey: (gs._turnKey || 0) + 1, _turnStartLogs: turnStartLogs, _drawLogs: drawLogs, _statLogs: statLogs, _preTurnPlayers: _P_beforeTurn, ...(res.statePatch || {}), phase: nextPhase, abilityData: nextAbilityData, globalOnlySwapOwner: (res.statePatch?.globalOnlySwapOwner ?? globalOnlySwapOwner) }, turnDrawVisualEvents);
   }
+}
+
+function maxKnownStatEventSeq(state) {
+  const explicit = Number.isFinite(state?._statEventSeq) ? state._statEventSeq : 0;
+  const fromStats = (Array.isArray(state?._statEvents) ? state._statEvents : [])
+    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
+  const fromVisualEvents = (Array.isArray(state?._visualEvents) ? state._visualEvents : [])
+    .flatMap(event => Array.isArray(event?.statEvents) ? event.statEvents : [])
+    .reduce((max, event) => Number.isFinite(event?.seq) ? Math.max(max, event.seq) : max, 0);
+  return Math.max(explicit, fromStats, fromVisualEvents);
+}
+
+function attachTurnDrawStatEventOwnership(events = []) {
+  let result = [...events];
+  const draws = result.filter(event => (
+    event?.type === VISUAL_EVENT.DRAW_CARD &&
+    event?.id &&
+    !event?.godEncounter &&
+    Array.isArray(event?.statEventIds) &&
+    event.statEventIds.length
+  ));
+
+  draws.forEach(drawEvent => {
+    const ownedStatIds = new Set(drawEvent.statEventIds);
+    const ownedVisualEventIds = [];
+    const splitEvents = [];
+
+    result.forEach(visualEvent => {
+      const statEvents = Array.isArray(visualEvent?.statEvents) ? visualEvent.statEvents : [];
+      const owned = statEvents.filter(statEvent => statEvent?.id && ownedStatIds.has(statEvent.id));
+      if (!owned.length) {
+        splitEvents.push(visualEvent);
+        return;
+      }
+
+      if (visualEvent.type !== VISUAL_EVENT.STAT_EVENTS) {
+        splitEvents.push(visualEvent);
+        if (visualEvent.id) ownedVisualEventIds.push(visualEvent.id);
+        return;
+      }
+
+      const rest = statEvents.filter(statEvent => !statEvent?.id || !ownedStatIds.has(statEvent.id));
+      const ownedHints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
+      const ownedMsgs = rest.length
+        ? (visualEvent.msgs || []).filter(msg => ownedHints.has(msg))
+        : (visualEvent.msgs || []);
+      const restMsgs = (visualEvent.msgs || []).filter(msg => !ownedMsgs.includes(msg));
+      const recreate = (slice, msgs) => createStatEventsEvent({
+        statEvents: slice,
+        msgs,
+        turnStartStage: visualEvent.turnStartStage,
+        transactionId: visualEvent.transactionId,
+        order: visualEvent.order,
+        resolutionPhase: visualEvent.resolutionPhase,
+        barrier: visualEvent.barrier,
+      });
+      if (rest.length) {
+        const restEvent = recreate(rest, restMsgs);
+        if (restEvent) splitEvents.push(restEvent);
+      }
+      // The draw already owns its announcement (notably the god encounter).
+      // Its linked stat settlement must not publish that same rule message again.
+      const ownedEvent = recreate(owned, ownedMsgs.filter(msg => !(drawEvent.msgs || []).includes(msg)));
+      if (ownedEvent) {
+        splitEvents.push(ownedEvent);
+        ownedVisualEventIds.push(ownedEvent.id);
+      }
+    });
+
+    const uniqueOwnedIds = [...new Set(ownedVisualEventIds)];
+    result = splitEvents.map(event => event?.id === drawEvent.id
+      ? { ...event, statVisualEventIds: uniqueOwnedIds }
+      : event);
+  });
+
+  return result;
+}
+
+function visualStatEventCrossesTerminalThreshold(statEvent = {}) {
+  const fromHp = Number(statEvent?.from?.hp);
+  const toHp = Number(statEvent?.to?.hp);
+  const fromSan = Number(statEvent?.from?.san);
+  const toSan = Number(statEvent?.to?.san);
+  return (
+    Number.isFinite(toHp) && toHp <= 0 && (!Number.isFinite(fromHp) || fromHp > 0)
+  ) || (
+    Number.isFinite(toSan) && toSan <= 0 && (!Number.isFinite(fromSan) || fromSan > 0)
+  );
+}
+
+function markTerminalVisualEventBoundary(events = [], state = null) {
+  const source = Array.isArray(events) ? events.filter(Boolean) : [];
+  if (!state?.gameOver || !source.length || source.some(event => event?.terminalBoundary === true)) return source;
+  const terminalStatIndex = source.findIndex(event => (
+    Array.isArray(event?.statEvents) && event.statEvents.some(visualStatEventCrossesTerminalThreshold)
+  ));
+  const lastDrawIndex = source.findLastIndex(event => event?.type === VISUAL_EVENT.DRAW_CARD);
+  const boundaryIndex = terminalStatIndex >= 0
+    ? terminalStatIndex
+    : lastDrawIndex >= 0
+      ? lastDrawIndex
+      : source.length - 1;
+  return source.map((event, index) => (
+    index === boundaryIndex ? { ...event, terminalBoundary: true } : event
+  ));
+}
+
+// Rule and presentation metadata are produced at the same boundary. Every
+// caller (local player, AI, multiplayer takeover, and setup) receives the same
+// one-shot visual events instead of reconstructing them later in React.
+export function startNextTurn(gs, opts = {}) {
+  const previousStatSeq = maxKnownStatEventSeq(gs);
+  const { _aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...turnInput } = gs;
+  const cleanInput = Array.isArray(gs?._visualEvents) && gs._visualEvents.length
+    ? { ...turnInput, _visualEvents: [] }
+    : turnInput;
+  // Cleanup, expiry, next-seat selection and turn-key advancement are rules
+  // executed at the turn boundary, before the next TURN_START stage begins.
+  const boundaryInput = enterTurnBoundary(cleanInput);
+  const nextState = normalizeTurnOpeningFlowState(resolveNextTurnState(boundaryInput, opts));
+  const engineEvents = mergeVisualEventLists(
+    nextState?._carryGodPowerBlockedEvents,
+    nextState?._carryTsgSlimeGrantEvents,
+    nextState?._visualEvents,
+  );
+  const freshStatVisualEvents = buildFreshStatVisualEvents(nextState, previousStatSeq);
+  const freshStatEvents = freshStatVisualEvents.flatMap(event => event?.statEvents || []);
+  // resolveNextTurnState only produces events for the newly entered turn.
+  // Tag its remaining card/god/effect events as draw-stage events so an AI
+  // action queue can exclude the entire future turn transaction explicitly.
+  const stagedEngineEvents = engineEvents.map(event => {
+    if (event?.turnStartStage) return event;
+    const isPreDrawEvent = [VISUAL_EVENT.GOD_POWER_BLOCKED, VISUAL_EVENT.TSG_SLIME_GRANT]
+      .includes(event?.type);
+    const ownedStatEvents = event?.type === VISUAL_EVENT.SPHINX_RESULT
+      ? freshStatEvents.filter(statEvent => (
+          statEvent?.target === event.actorIdx &&
+          (!statEvent?.logHint || (event.msgs || []).includes(statEvent.logHint))
+        ))
+      : [];
+    return {
+      ...event,
+      ...(event?.type === VISUAL_EVENT.SPHINX_RESULT ? { statEvents: ownedStatEvents } : {}),
+      turnStartStage: isPreDrawEvent ? 'turnStart' : 'draw',
+      turnStartStageOrder: isPreDrawEvent ? 1 : 2,
+    };
+  });
+  let visualEvents = [
+    ...buildTurnStartDrawVisualEvents(nextState),
+    ...freshStatVisualEvents,
+    ...stagedEngineEvents,
+  ];
+  // A draw phase may reveal several cards (notably one slime draw followed by
+  // the fixed draw). Keep each ordinary card's stat settlement beside the draw
+  // that produced it, instead of leaving every HP/SAN step in one phase-wide
+  // bucket that later full-hand transfers can jump ahead of.
+  visualEvents = attachTurnDrawStatEventOwnership(visualEvents);
+  // 黏液额外摸到邪神牌的同步遭遇：把属于该次遭遇的视觉事件显式归属到对应的
+  // 摸牌事件（godEncounter.visualEventIds）。归属信息来自规则层结算时记录的
+  // 属性事件 ID，呈现层据此把遭遇块（SAN 扣减 → 检定 → 弃牌）插到该邪神牌翻牌之后、
+  // 下一张摸牌之前，不再按步骤类型/队列位置启发式猜测。
+  const godEncounterDraws = visualEvents
+    .filter(event => event?.type === VISUAL_EVENT.DRAW_CARD && event?.id && event?.godEncounter);
+  if (godEncounterDraws.length) {
+    const ownedIdsByDraw = new Map();
+    godEncounterDraws.forEach(drawEvent => {
+      const encounter = drawEvent.godEncounter;
+      const ownedIds = [];
+      const ownedStatIds = new Set((encounter.statEventIds || []).filter(Boolean));
+      if (ownedStatIds.size) {
+        // 遭遇的 SAN 扣减可能与本次摸牌阶段的其它属性事件打包在同一个
+        // STAT_EVENTS 事件里；按规则层记录的身份拆出独立事件，才能整体随遭遇块移动。
+        const splitEvents = [];
+        visualEvents.forEach(visualEvent => {
+          if (visualEvent?.type !== VISUAL_EVENT.STAT_EVENTS || visualEvent?.turnStartStage !== 'draw'
+            || !Array.isArray(visualEvent.statEvents)) {
+            splitEvents.push(visualEvent);
+            return;
+          }
+          const owned = visualEvent.statEvents.filter(statEvent => statEvent?.id && ownedStatIds.has(statEvent.id));
+          if (!owned.length) {
+            splitEvents.push(visualEvent);
+            return;
+          }
+          const rest = visualEvent.statEvents.filter(statEvent => !statEvent?.id || !ownedStatIds.has(statEvent.id));
+          const hints = new Set(owned.map(statEvent => statEvent?.logHint).filter(Boolean));
+          const ownedMsgs = (visualEvent.msgs || []).filter(msg => hints.has(msg));
+          const restMsgs = (visualEvent.msgs || []).filter(msg => !ownedMsgs.includes(msg));
+          if (rest.length) {
+            splitEvents.push(createStatEventsEvent({ statEvents: rest, msgs: restMsgs, turnStartStage: 'draw' }));
+          }
+          const ownedEvent = createStatEventsEvent({
+            statEvents: owned,
+            msgs: ownedMsgs.filter(msg => !(drawEvent.msgs || []).includes(msg)),
+            turnStartStage: 'draw',
+          });
+          if (ownedEvent) {
+            splitEvents.push(ownedEvent);
+            ownedIds.push(ownedEvent.id);
+          }
+        });
+        visualEvents = splitEvents;
+      }
+      const ownedInspectionSeqs = new Set((encounter.inspectionSeqs || []).filter(seq => seq != null));
+      visualEvents.forEach(visualEvent => {
+        if (visualEvent?.type === VISUAL_EVENT.INSPECTION
+          && ownedInspectionSeqs.has(visualEvent?.legacySeq) && visualEvent?.id) {
+          ownedIds.push(visualEvent.id);
+        }
+      });
+      if (encounter.discardedGod) {
+        const discardEvent = createGodGiftDiscardEvent({
+          card: drawEvent.card,
+          drawerIdx: drawEvent.playerIdx ?? nextState.currentTurn ?? 0,
+          drawerName: drawEvent.playerName,
+          beforePlayers: drawEvent.playersBefore || null,
+          afterDiscard: nextState.discard,
+        });
+        if (discardEvent) {
+          visualEvents = [...visualEvents, discardEvent];
+          ownedIds.push(discardEvent.id);
+        }
+      }
+      const keepEvent = visualEvents.find(visualEvent => (
+        visualEvent?.type === VISUAL_EVENT.GOD_GIFT_KEEP
+        && visualEvent?.id
+        && (visualEvent.drawEventId === drawEvent.id || (
+          !visualEvent.drawEventId
+          && visualEvent.drawerIdx === drawEvent.playerIdx
+          && sameDrawnCard(visualEvent.card, drawEvent.card)
+        ))
+      ));
+      if (keepEvent) {
+        visualEvents = visualEvents.map(visualEvent => (
+          visualEvent?.id === keepEvent.id
+            ? { ...visualEvent, drawEventId: drawEvent.id }
+            : visualEvent
+        ));
+        ownedIds.push(keepEvent.id);
+      }
+      ownedIdsByDraw.set(drawEvent.id, ownedIds);
+    });
+    visualEvents = visualEvents.map(event => (
+      ownedIdsByDraw.has(event?.id)
+        ? { ...event, godEncounter: { ...event.godEncounter, visualEventIds: ownedIdsByDraw.get(event.id) } }
+        : event
+    ));
+  }
+  visualEvents = bindTurnFlowEvents(nextState, markTerminalVisualEventBoundary(visualEvents, nextState));
+  const finalizedState = {
+    ...nextState,
+    _carryGodPowerBlockedEvents: null,
+    _carryTsgSlimeGrantEvents: null,
+  };
+  return visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
 }

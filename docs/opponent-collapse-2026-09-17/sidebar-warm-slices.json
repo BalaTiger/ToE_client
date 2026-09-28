@@ -1,0 +1,36 @@
+{
+  "source": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-5b1bf8b0-f97a-4e6e-9cbb-e7c582358805.png",
+  "width": 625,
+  "height": 1819,
+  "rect": {
+    "left": 107,
+    "top": 20,
+    "width": 625,
+    "height": 910
+  },
+  "alpha": {
+    "center": [
+      1,
+      0.2
+    ],
+    "radius": [
+      1,
+      0.7
+    ],
+    "stops": [
+      [
+        0,
+        1
+      ],
+      [
+        0.38,
+        0.7333333333333333
+      ],
+      [
+        0.85,
+        0
+      ]
+    ]
+  },
+  "output": "self-sidebar-warm-light.webp"
+}

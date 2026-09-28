@@ -1,0 +1,848 @@
+import './battle.css';
+import { useUiAppearance } from '../../ui/UiAppearance';
+import { getBattleBackgroundImage, getBattleCamera } from '../../constants/theme';
+import { buildPublicUrl } from '../../utils/url';
+import { OpponentRoster } from './OpponentRoster';
+import { CoastalBattleLayout, CoastalOpponents } from './CoastalBattleLayout';
+import { CoastalBoardEffects } from './CoastalBoardEffects';
+import { getCoastalViewport } from './coastalViewport';
+import { COASTAL_CORNER } from './coastalGeometry';
+import { useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { GameLayerPortal } from '../../ui/GameLayerPortal';
+import { getGameLayerTarget } from '../../ui/gameLayers';
+import {
+  RINFO,
+  ROLE_TREASURE,
+  ROLE_HUNTER,
+  ROLE_CULTIST,
+  isValidEtherealizeRedirectTarget,
+} from '../../game';
+import { SOFT_GUIDE_DEFS } from '../../game/softGuides';
+import { DESIGN_WIDTH } from '../../utils/scale';
+import { PlayerPanel, PileDisplay } from '../board';
+import { BattleLogPanel } from '../log/BattleLogPanel';
+import { BattlePhaseBar } from '../phase/BattlePhaseBar';
+import { TargetSelectOverlay } from '../ui/TargetSelectOverlay';
+import { GammaSlider } from '../ui/GammaSlider';
+import { EMOJI_LIST } from '../ui/emojiData';
+import { DamageLinkOverlay } from '../anim/DamageLinkOverlay';
+import { RoleRevealAnim, TreasureMapAnim } from '../anim/WinAnims';
+import { ThemeEdgeRelief } from '../theme/ThemeOrnaments';
+import InGameTutorialOverlay from '../tutorial/InGameTutorialOverlay';
+import SoftGuideOverlay from '../tutorial/SoftGuideOverlay';
+import { HandArea } from './HandArea';
+import { SelfPlayerPanel } from './SelfPlayerPanel';
+import { BattleSceneContent } from './BattleSceneContent';
+import { SwapBlindDrawOverlay } from './SwapBlindDrawOverlay';
+import { BattleDecisionModals } from './BattleDecisionModals';
+
+function getPhaseActionButtonStyle({
+  isMobile,
+  isMobileLandscape,
+  mobileCssPx,
+  interactionFontSizes,
+  enabled = true,
+  marginLeft,
+}) {
+  return {
+    marginLeft,
+    padding: isMobile || isMobileLandscape ? `${mobileCssPx(5)}px ${mobileCssPx(10)}px` : '6px 18px',
+    fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+    fontWeight: 700,
+    fontSize: interactionFontSizes.body,
+    cursor: enabled ? 'pointer' : 'not-allowed',
+    letterSpacing: isMobile ? 0.5 : 1,
+    opacity: enabled ? 1 : 0.42,
+    position: 'relative',
+    zIndex: 200,
+  };
+}
+
+export function BattleScreen(props) {
+  const {
+    vw,
+    isMobile,
+    isMobileLandscape,
+    scaleRatio,
+    baseFontSizes,
+    fontSizes,
+    interactionFontSizes,
+    globalShiftX,
+    middleRowHeight,
+    mobileHandUsesCompact,
+    selfHandCardScale,
+    mobileCssPx,
+    boardCssPx,
+    gs,
+    me,
+    visualMe,
+    visualPlayers,
+    visualDiscard,
+    visualCurrentTurn,
+    currentTurnPlayer,
+    displayStats,
+    visibleLog,
+    ri,
+    phase,
+    myTurn,
+    isVisualPlayerTurn,
+    decisionContext,
+    isActionControlsHidden,
+    cancelable,
+    showCancelBtn,
+    canShowEndTurnButton,
+    isDiscardPhaseResolving,
+    isDiscardPhasePromptActive,
+    isBlocked,
+    isSpectating,
+    isMultiplayer,
+    displayPhaseLabel,
+    cardHintText,
+    isPhaseWarningText,
+    isLocalHuntRevealPrompt,
+    promptWarningTextColor,
+    promptActiveTextColor,
+    mpCthSec,
+    mpTurnSec,
+    mpDiscardSec,
+    mpHuntSec,
+    mpDecisionSec,
+    isMpCthDecisionPhase,
+    isLocalMpDecisionActive,
+    houndsTimerVisible,
+    houndsSecLeft,
+    anim,
+    animExiting,
+    hitIndices,
+    sanHitIndices,
+    hpHealIndices,
+    sanHealIndices,
+    guillotinedPids,
+    blackGoatPulsePid,
+    godHighlightPanelBursts,
+    damageLinkGhosts,
+    damageLinkEstablishAnims,
+    sceneShake,
+    selectingOther,
+    canLocalTargetSelect,
+    effectiveHandLimit,
+    mobileArmedGodCardIdx,
+    mobileArmedGodCard,
+    mobileArmedGodTooltipRect,
+    mobileGodCardRefs,
+    isLocalSeatIndex,
+    isLocalNyaBorrowPhase,
+    isLocalTortoiseSelectPhase,
+    hasHuntRevealableCard,
+    isLocalCurrentTurn,
+    pendingZhuDrawCard,
+    pendingZhuGodCard,
+    pendingZhuSphinxCard,
+    pendingZhuAiDrawCard,
+    pendingZhuAnyCard,
+    decisionError,
+    canShowTurnDecisionModal,
+    pendingZhuDrawAnyCard,
+    pendingZhuGodAnyCard,
+    pendingZhuSphinxAnyCard,
+    isLocalGodChoice,
+    isLocalDrawDecision,
+    isLocalTreasureDodgePhase,
+    isLocalTreasureAoEDodgePhase,
+    isLocalFirstComePicker,
+    isLocalSameAbyssTargetPhase,
+    isLocalSphinxGuessPhase,
+    showTutorial,
+    tutorialStep,
+    isTutorialActionAllowed,
+    isTutorialDrawKeepStep,
+    isScriptedTutorial,
+    pendingSoftGuideId,
+    tutorialOverlayHidden,
+    tutorialDiceResultPending,
+    battleBackgroundStyle,
+    drawBackgroundCameraActive,
+    globalStyles,
+    selfPanelRef,
+    roleTextRef,
+    handAreaRef,
+    emojiButtonRef,
+    aiPanelAreaRef,
+    deckAreaRef,
+    discardPileRef,
+    logRef,
+    skillButtonRef,
+    restButtonRef,
+    drawRevealKeepButtonRef,
+    godKeepHandButtonRef,
+    dodgeRollButtonRef,
+    swapBlindHandRef,
+    animQueueRef,
+    pendingGsRef,
+    pendingRoleSelection,
+    isDisconnected,
+    exitMatchConfirm,
+    privatePeek,
+    showEmojiPicker,
+    zhuHiddenCardId,
+    promptCautionTextColor,
+    promptSafeTextColor,
+    promptMutedTextColor,
+    softGuideSpotlights,
+    panelRect,
+    roleTextRect,
+    handAreaRect,
+    tutorialHandCardRect,
+    handCardsRect,
+    aiPanelAreaRect,
+    opponentSanBarRect,
+    opponentHpBarRect,
+    singleOpponentRect,
+    opponentGodStatusRect,
+    drawRevealKeepButtonRect,
+    godKeepHandButtonRect,
+    deckAreaRect,
+    dodgeRollButtonRect,
+    skillButtonRect,
+    swapBlindHandRect,
+    isArtifact,
+    isH5Package,
+    smallBtnStyle,
+    handleUiSfxCapture,
+    returnToMainMenu,
+    requestExitMatch,
+    confirmExitMatch,
+    setExitMatchConfirm,
+    leaveMultiplayerMatchToStart,
+    handleAIClick,
+    handleMyCardClick,
+    useAbility,
+    doRest,
+    endTurn,
+    cancelAction,
+    huntConfirm,
+    confirmDiscard,
+    confirmBuryAliveSelection,
+    confirmIgniteTorchDiscard,
+    handleZhuHideDrawnCard,
+    handleZhuHideGodCard,
+    handleZhuHideTopCardDuringSphinx,
+    handleZhuHideAiDrawCard,
+    handleDrawKeepFromModal,
+    handleDrawDiscardFromModal,
+    runDecision,
+    handleTreasureDodgeRoll,
+    handleTreasureDodgeSkip,
+    handleTreasureAOEDodgeRoll,
+    handleTreasureAOEDodgeSkip,
+    resolveTsathogguaSlimeBalance,
+    resolveEtherealizeRedirect,
+    firstComePickSelectCard,
+    graveDigSelectGod,
+    sameAbyssSelect,
+    sphinxGuess,
+    tortoiseOracleSelect,
+    decipherStoneCarvingConfirm,
+    swapSelectTargetCard,
+    huntSelectCardFromPublic,
+    handleSwapBlindDrawSelect,
+    confirmRoleSelection,
+    resetDisconnectedToStart,
+    setPrivatePeek,
+    setEmojiButtonPos,
+    setShowEmojiPicker,
+    handleEmojiClick,
+    godResolvePlayer,
+    nyaBorrow,
+    nyaSkip,
+    setGs,
+    setAnim,
+    setPreparingSoftGuideId,
+    setPendingSoftGuideId,
+    setSoftGuideSpotlights,
+    advanceTutorialStep,
+    completeTutorial,
+    _onRoleRevealDone,
+    handleGamma,
+    handleMusicVolume,
+    handleSfxVolume,
+    handleTutorialTreasureMapConfirm,
+    markLocalTreasureMapShown,
+    roleRevealAnim,
+    swapBlindDraw,
+    swapBlindCardLayout,
+    zhuLitCardsForView,
+    canPlayerRespondWithAnyHandCard,
+    canPlayerRespondWithFireHandCard,
+    cardsHuntMatch,
+    isMyCardClickable,
+    skillLimited,
+    skillRi,
+    effectiveSkillName,
+    isSelfDeadPanelDimmed,
+    huntAbandoned,
+    gamma,
+    musicVolume,
+    sfxVolume,
+    isLocalTestMode,
+    localDebugMode,
+    setLocalDebugMode,
+    serverAnnouncement,
+    emojiButtonPos,
+    isSoloPaused,
+    setIsSoloPaused,
+  } = props;
+
+  const { appearance } = useUiAppearance();
+  const coastalViewport = getCoastalViewport(vw, props.vh);
+  const coastalScale = coastalViewport.scale ?? 1;
+  const boardZoom = coastalScale;
+  const compositionFonts = { ...fontSizes, body: 12, small: 11, tiny: 10 };
+  const coastalBoardHeight = coastalViewport.boardHeight;
+  const battleCamera = getBattleCamera(gs.expansionKey, {
+    width: coastalViewport.width ?? vw,
+    height: coastalViewport.height ?? props.vh,
+  });
+  const sceneBackgroundStyle = {
+    ...battleBackgroundStyle,
+    '--toe-coastal-scene-scale': coastalScale,
+    backgroundImage: `linear-gradient(rgba(0, 4, 7, .13), rgba(0, 3, 5, .3)), url('${buildPublicUrl(getBattleBackgroundImage(gs.expansionKey))}')`,
+    '--toe-coastal-viewport-left': `${coastalViewport.left}px`,
+    '--toe-coastal-viewport-top': `${coastalViewport.top}px`,
+    '--toe-coastal-viewport-width': `${coastalViewport.width}px`,
+    '--toe-coastal-viewport-height': `${coastalViewport.height}px`,
+  };
+  useLayoutEffect(() => {
+    const host = getGameLayerTarget('overlay');
+    if (!host || host === document.body) return undefined;
+    const variables = Object.entries(battleBackgroundStyle || {}).filter(([key]) => key.startsWith('--'));
+    variables.forEach(([key, value]) => host.style.setProperty(key, value));
+    return () => variables.forEach(([key]) => host.style.removeProperty(key));
+  }, [battleBackgroundStyle]);
+  const collapseOpponents = visualPlayers.length - 1 >= 5;
+  const OpponentLayout = collapseOpponents ? OpponentRoster : CoastalOpponents;
+  const BoardLayout = appearance.BattleLayout || CoastalBattleLayout;
+  const centralHeight = middleRowHeight;
+
+  const getButtonStyle = (opts) =>
+    getPhaseActionButtonStyle({ isMobile, isMobileLandscape, mobileCssPx, interactionFontSizes, ...opts });
+
+  const opponentPanels = (<OpponentLayout ref={aiPanelAreaRef} currentTurn={visualCurrentTurn} compact={false}>
+          {visualPlayers.slice(1).map((p,i)=>{
+            const pi=i+1;
+            const isTutorialTargetAllowed=!isScriptedTutorial||isTutorialActionAllowed({type:'selectTarget',pid:pi});
+            const isEtherealizeTargetAllowed=phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
+            const isSel=selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
+            // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
+            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
+            // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
+            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
+            const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
+            const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
+              return(
+                <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={1} viewportWidth={DESIGN_WIDTH} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
+                </div>
+              );
+            })}
+        </OpponentLayout>);
+  const middlePanel = (<div data-battle-middle-row style={{display:'flex',gap:isMobile?boardCssPx(6):isMobileLandscape?boardCssPx(6):10,flexWrap:'wrap',alignItems:'stretch',width:'100%',justifyContent:'flex-start'}}>
+          <SelfPlayerPanel
+            selfPanelRef={selfPanelRef}
+            roleTextRef={roleTextRef}
+            emojiButtonRef={emojiButtonRef}
+            player={visualMe}
+            displayStats={displayStats}
+            ri={ri}
+            phase={phase}
+            isBlocked={isBlocked}
+            canLocalTargetSelect={canLocalTargetSelect}
+            isMobile={false}
+            isMobileLandscape={false}
+            boardCssPx={boardCssPx}
+            middleRowHeight={centralHeight}
+            fontSizes={compositionFonts}
+            boardScaleRatio={1}
+            vw={DESIGN_WIDTH}
+            expansionKey={gs.expansionKey}
+            hitIndices={hitIndices}
+            sanHitIndices={sanHitIndices}
+            hpHealIndices={hpHealIndices}
+            sanHealIndices={sanHealIndices}
+            guillotinedPids={guillotinedPids}
+            godHighlightPanelBursts={godHighlightPanelBursts}
+            isSelfDeadPanelDimmed={isSelfDeadPanelDimmed}
+            isMultiplayer={isMultiplayer}
+            showEmojiPicker={showEmojiPicker}
+            setShowEmojiPicker={setShowEmojiPicker}
+            setEmojiButtonPos={setEmojiButtonPos}
+            handleAIClick={handleAIClick}
+          />
+          {/* Center: deck/discard piles */}
+        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={false} baseHeight={170} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={1} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId}/>
+          {/* Log — narrow, right-aligned */}
+          <BattleLogPanel
+            logRef={logRef}
+            visibleLog={visibleLog}
+            players={gs.players}
+            isMultiplayer={!!gs._isMP}
+            expansionKey={gs.expansionKey}
+            isMobile={false}
+            middleRowHeight={centralHeight}
+            fontSizes={compositionFonts}
+            scaleRatio={1}
+          />
+        </div>);
+  const phasePrompt = (<div data-prompt-panel>
+          <BattlePhaseBar
+            myTurn={myTurn}
+            phase={phase}
+            isMobile={false}
+            baseFontSizes={{ ...interactionFontSizes, body: 12, small: 11 }}
+            scaleRatio={1}
+            displayPhaseLabel={phase === 'ACTION' && myTurn ? '你的回合 · 请选择行动' : typeof displayPhaseLabel === 'string' ? displayPhaseLabel.replace(/(手牌超限)\s*[（(]\d+\/\d+[)）]/, '$1') : displayPhaseLabel}
+            cardHintText={phase === 'ACTION' ? '' : cardHintText === '鼠标悬停查看卡牌详情（移动端请点击卡牌）' ? '点击手牌选择行动' : cardHintText}
+            isPhaseWarningText={isPhaseWarningText}
+            isSpectating={isSpectating}
+            isMultiplayer={isMultiplayer}
+            isMpCthDecisionPhase={isMpCthDecisionPhase}
+            isLocalMpDecisionActive={isLocalMpDecisionActive}
+            isDiscardPhaseResolving={isDiscardPhaseResolving}
+            isBlocked={isBlocked}
+            mpCthSec={mpCthSec}
+            mpTurnSec={mpTurnSec}
+            mpDiscardSec={mpDiscardSec}
+            mpHuntSec={mpHuntSec}
+            mpDecisionSec={mpDecisionSec}
+            colors={{
+              warning: promptWarningTextColor,
+              active: promptActiveTextColor,
+              caution: promptCautionTextColor,
+              safe: promptSafeTextColor,
+              muted: promptMutedTextColor,
+            }}
+          />
+        </div>);
+  const handPanel = (<HandArea
+          handAreaRef={handAreaRef}
+          skillButtonRef={skillButtonRef}
+          restButtonRef={restButtonRef}
+          gs={gs}
+          me={me}
+          visualMe={visualMe}
+          ri={ri}
+          phase={phase}
+          myTurn={myTurn}
+          decisionContext={decisionContext}
+          isSpectating={isSpectating}
+          isVisualPlayerTurn={isVisualPlayerTurn}
+          isActionControlsHidden={isActionControlsHidden}
+          cancelable={cancelable}
+          showCancelBtn={showCancelBtn}
+          canShowEndTurnButton={canShowEndTurnButton}
+          isDiscardPhaseResolving={isDiscardPhaseResolving}
+          isDiscardPhasePromptActive={isDiscardPhasePromptActive}
+          isLocalHuntRevealPrompt={isLocalHuntRevealPrompt}
+          isLocalCurrentTurn={isLocalCurrentTurn}
+          currentTurnPlayer={currentTurnPlayer}
+          isBlocked={isBlocked}
+          isScriptedTutorial={isScriptedTutorial}
+          isTutorialActionAllowed={isTutorialActionAllowed}
+          tutorialStep={tutorialStep}
+          effectiveHandLimit={effectiveHandLimit}
+          skillLimited={skillLimited}
+          skillRi={skillRi}
+          effectiveSkillName={effectiveSkillName}
+          isMyCardClickable={isMyCardClickable}
+          canPlayerRespondWithAnyHandCard={canPlayerRespondWithAnyHandCard}
+          canPlayerRespondWithFireHandCard={canPlayerRespondWithFireHandCard}
+          cardsHuntMatch={cardsHuntMatch}
+          mobileArmedGodCardIdx={mobileArmedGodCardIdx}
+          mobileArmedGodCard={mobileArmedGodCard}
+          mobileArmedGodTooltipRect={mobileArmedGodTooltipRect}
+          mobileGodCardRefs={mobileGodCardRefs}
+          blackGoatPulsePid={blackGoatPulsePid}
+          promptWarningTextColor={promptWarningTextColor}
+          promptActiveTextColor={promptActiveTextColor}
+          isMobile={false}
+          isMobileLandscape={false}
+          mobileCssPx={mobileCssPx}
+          interactionFontSizes={compositionFonts}
+          mobileHandUsesCompact={mobileHandUsesCompact}
+          selfHandCardScale={selfHandCardScale}
+          scaleRatio={boardZoom}
+          handleMyCardClick={handleMyCardClick}
+          useAbility={useAbility}
+          doRest={doRest}
+          endTurn={endTurn}
+          cancelAction={cancelAction}
+          huntConfirm={huntConfirm}
+          confirmDiscard={confirmDiscard}
+          confirmBuryAliveSelection={confirmBuryAliveSelection}
+          confirmIgniteTorchDiscard={confirmIgniteTorchDiscard}
+          setGs={setGs}
+          getButtonStyle={getButtonStyle}
+          anim={anim}
+        />);
+
+  return (
+    <>
+    <div className="toe-coastal-matte" aria-hidden="true" />
+    <div data-exploration-motion={battleCamera.animation} className={`toe-battle-root${drawBackgroundCameraActive?' toe-draw-camera-active':''}`} onClickCapture={handleUiSfxCapture} style={{minHeight:isMobileLandscape?'100dvh':'100vh',height:isMobileLandscape?'100dvh':undefined,width:globalShiftX?`calc(100% - ${globalShiftX}px)`:'100%',boxSizing:'border-box',...sceneBackgroundStyle,color:'var(--toe-text,#c8a96e)',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',gap:isMobile?5:isMobileLandscape?4:7,padding:isMobile?'6px 8px':isMobileLandscape?'4px 6px':'8px 10px',position:'relative',isolation:'isolate',left:globalShiftX||undefined,overflowX:'hidden',overflowY:isMobileLandscape?'hidden':'auto',scrollbarGutter:isMobileLandscape?undefined:'stable',
+      '--toe-draw-camera-animation':battleCamera.animation,
+      '--toe-draw-camera-origin':battleCamera.origin,
+      '--toe-draw-camera-inset':battleCamera.inset,
+      '--toe-draw-camera-attachment':battleCamera.attachment,
+    }}>
+      {isSoloPaused&&<style>{`.toe-battle-root *, .toe-battle-root *::before, .toe-battle-root *::after { animation-play-state: paused !important; }`}</style>}
+      <div className="toe-battle-background" aria-hidden="true" />
+      {/* Global vignette */}
+      <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
+      <GameLayerPortal>
+      {pendingRoleSelection&&(
+        <div style={{position:'fixed',inset:0,zIndex:9998,background:'#080503',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
+            <h2 className="toe-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
+            <p className="toe-subtitle" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'normal'}}>命运尚未落笔，由你决定扮演何人</p>
+            <div className="toe-role-options">
+              {[
+                {key:ROLE_TREASURE,...RINFO[ROLE_TREASURE]},
+                {key:ROLE_HUNTER,...RINFO[ROLE_HUNTER]},
+                {key:ROLE_CULTIST,...RINFO[ROLE_CULTIST]},
+                {key:'random',icon:'?',col:'#a07838',dim:'#5a4020',goal:'听凭命运安排',skillName:'随机身份'},
+              ].map(role=>(
+                <button
+                  className="toe-option toe-battle-role-choice"
+                  key={role.key}
+                  type="button"
+                  onClick={()=>confirmRoleSelection(role.key)}
+                  style={{
+                    '--toe-role-accent':role.col,
+                    padding:'18px 12px',cursor:'pointer',
+                    fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',alignItems:'center',gap:6,
+                    transition:'all 0.15s ease',
+                  }}
+                >
+                  <span style={{fontSize:30,color:role.col,filter:`drop-shadow(0 0 8px ${role.col}66)`}}>{role.icon}</span>
+                  <span style={{fontSize:14,letterSpacing:1,fontWeight:700}}>{role.key==='random'?'随机身份':role.key}</span>
+                  <small style={{fontSize:12,lineHeight:1.6,letterSpacing:0.5}}>{role.goal}</small>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {/* ── 断线遮罩（游戏内）── */}
+      {isDisconnected&&(
+        <div
+          style={{position:'fixed',inset:0,background:'#000000dd',zIndex:9999,
+            display:'flex',alignItems:'center',justifyContent:'center'}}>
+          <div className="toe-dialog" style={{textAlign:'center',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+            padding:'36px 48px',
+            animation:'animPop 0.25s ease-out'}}>
+            <div style={{fontSize:48,marginBottom:16,filter:'drop-shadow(0 0 20px #a080d0)'}}>📡</div>
+            <div style={{fontSize:16,letterSpacing:2,marginBottom:8}}>正在恢复连接</div>
+            <div style={{fontSize:12,color:'#8060a0',letterSpacing:1,fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontStyle:'normal'}}>
+              正在尝试返回当前对局，请稍候…
+            </div>
+            <button className="toe-button" onClick={resetDisconnectedToStart} style={{marginTop:20,padding:'8px 16px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:11,letterSpacing:1,cursor:'pointer'}}>放弃重连并返回主界面</button>
+          </div>
+        </div>
+      )}
+      {exitMatchConfirm&&(
+        <div role="dialog" aria-modal="true" aria-label="退出对局确认" style={{position:'fixed',inset:0,zIndex:10040,background:'rgba(0,0,0,0.78)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div className="toe-dialog" style={{width:'min(420px,92vw)',padding:'22px 24px',textAlign:'center'}}>
+            <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:15,color:'#c8a96e',letterSpacing:2,marginBottom:14}}>退出对局</div>
+            <div style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:14,color:'#b89858',lineHeight:1.6,marginBottom:20}}>
+              {exitMatchConfirm.message}
+            </div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button className="toe-button toe-button-danger" onClick={confirmExitMatch || leaveMultiplayerMatchToStart} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>确认退出</button>
+              <button className="toe-button" autoFocus onClick={()=>setExitMatchConfirm(null)} style={{padding:'8px 20px',fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontWeight:700,fontSize:12,cursor:'pointer',letterSpacing:1}}>取消</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {isSoloPaused&&(
+        <div role="dialog" aria-modal="true" aria-labelledby="solo-pause-title"
+          style={{position:'fixed',inset:0,zIndex:10030,background:'rgba(0,0,0,0.86)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div className="toe-dialog" style={{width:'min(420px,92vw)',padding:'28px 24px',textAlign:'center'}}>
+            <div className="toe-title" id="solo-pause-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:22,color:'#e8c87a',letterSpacing:3,marginBottom:8}}>游戏已暂停</div>
+            <div style={{fontSize:13,color:'#9c7b43',marginBottom:24}}>对局进程已冻结</div>
+            <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
+              <button className="toe-button toe-button-primary" type="button" autoFocus onClick={()=>setIsSoloPaused(false)} style={{padding:'9px 24px',fontWeight:700,fontSize:13,cursor:'pointer'}}>继续游戏</button>
+              <button className="toe-button toe-button-danger" type="button" onClick={returnToMainMenu} style={{padding:'9px 24px',fontWeight:700,fontSize:13,cursor:'pointer'}}>返回主界面</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Animations rendered outside the zoom container, see Fragment below */}
+      {/* Target selection mask + floating prompt */}
+      <TargetSelectOverlay drawReveal={gs.drawReveal} phase={canLocalTargetSelect?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
+
+      <BattleDecisionModals
+        gs={gs}
+        me={me}
+        phase={phase}
+        decisionContext={decisionContext}
+        canShowTurnDecisionModal={canShowTurnDecisionModal}
+        decisionError={decisionError}
+        runDecision={runDecision}
+        isLocalGodChoice={isLocalGodChoice}
+        isLocalDrawDecision={isLocalDrawDecision}
+        isLocalNyaBorrowPhase={isLocalNyaBorrowPhase}
+        isLocalTortoiseSelectPhase={isLocalTortoiseSelectPhase}
+        isLocalTreasureDodgePhase={isLocalTreasureDodgePhase}
+        isLocalTreasureAoEDodgePhase={isLocalTreasureAoEDodgePhase}
+        isLocalSeatIndex={isLocalSeatIndex}
+        isLocalFirstComePicker={isLocalFirstComePicker}
+        isLocalSameAbyssTargetPhase={isLocalSameAbyssTargetPhase}
+        isLocalSphinxGuessPhase={isLocalSphinxGuessPhase}
+        isMobile={isMobile}
+        visualMe={visualMe}
+        showTutorial={showTutorial}
+        tutorialStep={tutorialStep}
+        isTutorialActionAllowed={isTutorialActionAllowed}
+        isTutorialDrawKeepStep={isTutorialDrawKeepStep}
+        isScriptedTutorial={isScriptedTutorial}
+        pendingZhuDrawCard={pendingZhuDrawCard}
+        pendingZhuGodCard={pendingZhuGodCard}
+        pendingZhuSphinxCard={pendingZhuSphinxCard}
+        pendingZhuAiDrawCard={pendingZhuAiDrawCard}
+        pendingZhuAnyCard={pendingZhuAnyCard}
+        pendingZhuDrawAnyCard={pendingZhuDrawAnyCard}
+        pendingZhuGodAnyCard={pendingZhuGodAnyCard}
+        pendingZhuSphinxAnyCard={pendingZhuSphinxAnyCard}
+        privatePeek={privatePeek}
+        scaleRatio={scaleRatio}
+        drawRevealKeepButtonRef={drawRevealKeepButtonRef}
+        godKeepHandButtonRef={godKeepHandButtonRef}
+        dodgeRollButtonRef={dodgeRollButtonRef}
+        godResolvePlayer={godResolvePlayer}
+        nyaBorrow={nyaBorrow}
+        nyaSkip={nyaSkip}
+        handleZhuHideDrawnCard={handleZhuHideDrawnCard}
+        handleZhuHideGodCard={handleZhuHideGodCard}
+        handleZhuHideTopCardDuringSphinx={handleZhuHideTopCardDuringSphinx}
+        handleZhuHideAiDrawCard={handleZhuHideAiDrawCard}
+        handleDrawKeepFromModal={handleDrawKeepFromModal}
+        handleDrawDiscardFromModal={handleDrawDiscardFromModal}
+        handleTreasureDodgeRoll={handleTreasureDodgeRoll}
+        handleTreasureDodgeSkip={handleTreasureDodgeSkip}
+        handleTreasureAOEDodgeRoll={handleTreasureAOEDodgeRoll}
+        handleTreasureAOEDodgeSkip={handleTreasureAOEDodgeSkip}
+        resolveTsathogguaSlimeBalance={resolveTsathogguaSlimeBalance}
+        resolveEtherealizeRedirect={resolveEtherealizeRedirect}
+        tortoiseOracleSelect={tortoiseOracleSelect}
+        setPrivatePeek={setPrivatePeek}
+        firstComePickSelectCard={firstComePickSelectCard}
+        graveDigSelectGod={graveDigSelectGod}
+        sameAbyssSelect={sameAbyssSelect}
+        sphinxGuess={sphinxGuess}
+        decipherStoneCarvingConfirm={decipherStoneCarvingConfirm}
+      />
+
+      </GameLayerPortal>
+      {/* Shake only the board content: transforming the root reanchors and clips its fixed backgrounds/overlays. */}
+      <BattleSceneContent shake={sceneShake} paused={isSoloPaused} style={{position:'relative',zIndex:2,width:'100%',maxWidth:DESIGN_WIDTH*scaleRatio,alignSelf:'center',display:'flex',flexDirection:'column',gap:isMobileLandscape?mobileCssPx(4):7}}>
+        {/* Scaled player areas wrapper */}
+        <div style={{overflow:'visible',width:'100%',display:'flex',justifyContent:'center'}}>
+          <div data-zoom-container data-board-zoom={boardZoom} style={{
+            zoom:boardZoom!==1?boardZoom:'normal',
+            width:DESIGN_WIDTH,
+            flexShrink:0,
+            transformOrigin:'top center',
+            '--toe-coastal-height': `${coastalBoardHeight}px`,
+          }}>
+            <div style={{width:'100%',boxSizing:'border-box',padding:0}}>
+
+        <BoardLayout opponents={opponentPanels} middle={middlePanel} prompt={phasePrompt} hand={handPanel} paused={isSoloPaused} sceneShake={sceneShake}
+          sailingEnabled={gs.expansionKey === '群星呼唤'} sailingActive={drawBackgroundCameraActive && gs.expansionKey === '群星呼唤'}
+          effects={<CoastalBoardEffects formula={gs.petrifyingFormula}
+            night={!showTutorial && anim?.type !== 'APOPHIS_ECLIPSE' ? (anim && Object.prototype.hasOwnProperty.call(anim, '_apophisNight') ? anim._apophisNight : gs.apophisNight) : null}
+            houndsActive={!showTutorial && houndsTimerVisible} secondsLeft={houndsSecLeft} />}
+          turn={gs.turn} turnLabel={visualCurrentTurn === 0 ? '你的回合' : `${visualPlayers[visualCurrentTurn]?.name || '其他角色'}的回合`}
+          counts={{ inspection: gs.inspectionDeck.length, deck: gs.deck.length, discard: visualDiscard.length }}
+          compact={false} width={DESIGN_WIDTH} height={coastalBoardHeight} />
+        <DamageLinkOverlay
+          visualPlayers={visualPlayers}
+          damageLinkGhosts={damageLinkGhosts}
+          damageLinkEstablishAnims={damageLinkEstablishAnims}
+        />
+
+            </div>
+          </div>
+        </div>
+      </BattleSceneContent>
+      {/* ── Overlays ── */}
+      {createPortal(
+        <>
+          <GameLayerPortal>
+          {!showTutorial&&pendingSoftGuideId&&<SoftGuideOverlay
+            guide={SOFT_GUIDE_DEFS[pendingSoftGuideId]}
+            spotlights={softGuideSpotlights}
+            onClose={()=>{
+              setPreparingSoftGuideId(null);
+              setPendingSoftGuideId(null);
+              setSoftGuideSpotlights([]);
+            }}
+          />}
+          {!tutorialOverlayHidden&&!tutorialDiceResultPending&&!anim&&!animExiting&&<InGameTutorialOverlay
+            showTutorial={showTutorial}
+            tutorialStep={tutorialStep}
+            vw={vw}
+            panelRect={panelRect}
+            roleTextRect={roleTextRect}
+            handAreaRect={handAreaRect}
+            tutorialHandCardRect={tutorialHandCardRect}
+            handCardsRect={handCardsRect}
+            aiPanelAreaRect={aiPanelAreaRect}
+            opponentSanBarRect={opponentSanBarRect}
+            opponentHpBarRect={opponentHpBarRect}
+            singleOpponentRect={singleOpponentRect}
+            opponentGodStatusRect={opponentGodStatusRect}
+            drawRevealKeepButtonRect={drawRevealKeepButtonRect}
+            godKeepHandButtonRect={godKeepHandButtonRect}
+            deckAreaRect={deckAreaRect}
+            dodgeRollButtonRect={dodgeRollButtonRect}
+            skillButtonRect={skillButtonRect}
+            swapBlindHandRect={swapBlindHandRect}
+            isArtifact={isArtifact}
+            isH5Package={isH5Package}
+            scaleRatio={scaleRatio}
+            baseBodyFontSize={baseFontSizes.body}
+            advanceTutorialStep={advanceTutorialStep}
+            completeTutorial={completeTutorial}
+          />}
+          </GameLayerPortal>
+        </>,getGameLayerTarget('scene'))}
+      <GameLayerPortal>
+      {roleRevealAnim&&<RoleRevealAnim role={roleRevealAnim.role} onDone={()=>_onRoleRevealDone(roleRevealAnim.pendingGs)}/>}
+
+      {/* ── Swap Blind-Draw Overlay ── */}
+      <SwapBlindDrawOverlay
+        swapBlindDraw={swapBlindDraw}
+        swapBlindCardLayout={swapBlindCardLayout}
+        targetName={gs.players[swapBlindDraw?.targetPi]?.name}
+        expansionKey={gs.expansionKey}
+        swapBlindHandRef={swapBlindHandRef}
+        handleSwapBlindDrawSelect={handleSwapBlindDrawSelect}
+      />
+
+      {phase==='MP_PLAYER_WIN_WAIT'&&(()=>{
+        // 远端玩家集齐宝藏：本地同步播放藏宝图动画，但按钮替换为等待提示，
+        // 待远端点击「宣布胜利」（或其 3 秒倒计时自动点击）后由 gameOver 同步切入结算。
+        const winIdx=gs?.abilityData?.winnerIdx??null;
+        const winnerPlayer=winIdx!=null?gs?.players?.[winIdx]:null;
+        return (
+          <TreasureMapAnim
+            sourcePlayerIndex={winIdx}
+            hand={winnerPlayer?.hand||[]}
+            subtitle={`${winnerPlayer?.name||'其他玩家'} 集齐了全部编号！`}
+            waitingLabel={`正在等待 ${winnerPlayer?.name||'获胜者'} ……`}
+          />
+        );
+      })()}
+      {phase==='PLAYER_WIN_PENDING'&&(
+        <TreasureMapAnim hand={me.hand} confirmCountdownSec={gs?._isMP?3:null} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
+          markLocalTreasureMapShown?.();
+          animQueueRef.current=[];
+          pendingGsRef.current=null;
+          setAnim(null);
+          setGs({...gs,
+            players:gs.players.map((p,i)=>i===0?{...p,roleRevealed:true,revealHand:true}:p),
+            gameOver:{winner:'寻宝者',reason:gs.abilityData?.winReason||'你集齐了全部编号并获胜！',winnerIdx:0}});
+        }}/>
+      )}
+      </GameLayerPortal>
+      <style>{globalStyles}</style>
+    {/* Keep controls below this root's masks. The root itself must stay untransformed;
+        background camera and shake transforms belong to its visual children. */}
+    {!pendingRoleSelection && !roleRevealAnim && <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}
+      battleControls={{ onPause: () => setIsSoloPaused(true), onExit: requestExitMatch || returnToMainMenu, isMultiplayer, showTutorial,
+        shake: sceneShake, paused: isSoloPaused,
+        style: { top: coastalViewport.top + (COASTAL_CORNER.top + COASTAL_CORNER.controlsTop) * coastalScale,
+          right: coastalViewport.left + (COASTAL_CORNER.right + COASTAL_CORNER.controlsRight) * coastalScale,
+          '--toe-coastal-settings-top': `${coastalViewport.top + (COASTAL_CORNER.top + COASTAL_CORNER.controlsTop) * coastalScale}px`,
+          '--toe-coastal-system-scale': coastalScale } }} />}
+    </div>
+    {/* Emoji picker and combat overlays use viewport portals. */}
+    {isLocalTestMode&&(
+      <button
+        type="button"
+        onClick={()=>setLocalDebugMode(v=>!v)}
+        className="toe-battle-debug-toggle"
+        style={{
+          ...smallBtnStyle,
+          position:'fixed',
+          top:(coastalViewport.top || 0) + 14,
+          left:(coastalViewport.left || 0) + 14,
+          zIndex:120,
+          fontSize:11,
+          padding:'6px 10px',
+          background:localDebugMode?'#2a1608':'#140e08',
+          color:localDebugMode?'#f0cb7a':'#9b7641',
+          borderColor:localDebugMode?'#7a5324':'#3a2510',
+          boxShadow:'none',
+        }}
+      >
+        {localDebugMode?'Debug: 开':'Debug: 关'}
+      </button>
+    )}
+    {isMultiplayer&&showEmojiPicker&&createPortal(
+      <>
+        <div onClick={()=>setShowEmojiPicker(false)} style={{position:'fixed',inset:0,zIndex:49}}/>
+        <div className="toe-emoji-picker" style={{
+          position:'fixed',
+          top:emojiButtonPos.top,
+          right:emojiButtonPos.right,
+          backgroundColor:'#0a1111',border:'1.5px solid #6a5f46',borderRadius:4,
+          padding:6,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:3,
+          boxShadow:'0 4px 20px #00000088',zIndex:50,
+        }}>
+          {EMOJI_LIST.map(e=>(
+            <button key={e} onClick={ev=>{ev.stopPropagation();handleEmojiClick(e);}} style={{
+              background:'none',border:'none',fontSize:20,cursor:'pointer',
+              padding:'3px 2px',borderRadius:3,lineHeight:1,
+              transition:'background 0.1s',
+            }}
+            onMouseEnter={ev=>ev.currentTarget.style.background='#3a2010'}
+            onMouseLeave={ev=>ev.currentTarget.style.background='none'}
+            >{e}</button>
+          ))}
+        </div>
+      </>,
+      getGameLayerTarget('scene')
+    )}
+    {/* 停服更新公告 */}
+    {serverAnnouncement&&(
+      <div style={{
+        position: 'fixed',
+        top: '10%',
+        left: 0,
+        right: 0,
+        zIndex: 2000,
+        textAlign: 'center',
+        pointerEvents: 'none'
+      }}>
+        <div style={{
+          display: 'inline-block',
+          background: 'rgba(0, 0, 0, 0.8)',
+          color: '#ff8000',
+          padding: '8px 20px',
+          borderRadius: '4px',
+          fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
+          fontSize: '14px',
+          whiteSpace: 'nowrap',
+          animation: 'scrollLeft 30s linear infinite'
+        }}>
+          {serverAnnouncement}
+        </div>
+      </div>
+    )}
+</>
+  );
+}
+

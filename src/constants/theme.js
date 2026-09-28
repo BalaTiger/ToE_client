@@ -26,7 +26,7 @@ export const BOARD_THEME_BY_EXPANSION = {
 export const BATTLE_BACKGROUND_BY_EXPANSION = {
   '地神的潜影': '/img/bg/battle/earth_shadow.webp',
   '先贤的馈赠': '/img/bg/battle/sage_gift.webp',
-  '群星呼唤': '/img/bg/battle/stars_call.webp',
+  '群星呼唤': '/img/bg/battle/stars_call_sea_ruins.webp',
   '析骨为柴': '/img/bg/battle/bone_fuel.webp',
 };
 
@@ -40,10 +40,21 @@ export const BATTLE_THEME_BY_EXPANSION = {
   },
   '群星呼唤': {
     ...BOARD_THEME_BY_EXPANSION['群星呼唤'],
-    tintTop: 'rgba(1,6,15,0.66)',
-    tintBottom: 'rgba(0,10,20,0.84)',
+    tintTop: 'rgba(1,6,15,0.58)',
+    tintBottom: 'rgba(0,10,20,0.68)',
     bg: '#020911',
     accent: '#78e2ff',
+  },
+};
+
+// Exploration camera follows the environment theme, independently of the UI layout.
+export const BATTLE_CAMERA_BY_EXPANSION = {
+  '地神的潜影': { animation: 'toeDrawBackgroundWalk', origin: '50% 48%' },
+  '群星呼唤': {
+    animation: 'toeDrawBackgroundSea', origin: '50% 32%',
+    // Match the actual sea artwork, before centered background-cover cropping.
+    horizon: { imageWidth: 1597, imageHeight: 985, y: 0.32 },
+    inset: '0px', attachment: 'scroll',
   },
 };
 
@@ -76,6 +87,31 @@ export const ANIMATED_CARD_BACK_BY_EXPANSION = {
 export const BATTLE_BGM_BY_EXPANSION = {
   '地神的潜影': 'battleEarth',
   '群星呼唤': 'battleStars',
+};
+
+// Keep predecode and rendering on identical, content-versioned URLs.
+// Revision comes from scripts/prepare-sailing-wet-artwork.mjs.
+const wetArtworkRevision = '22b0bada46ca032b';
+export const SAILING_WET_ARTWORK = {
+  torch: `/img/effects/sailing/torch-hand-wet.webp?v=${wetArtworkRevision}`,
+  top: `/img/effects/sailing/panel-wet-top.webp?v=${wetArtworkRevision}`,
+  rail: `/img/effects/sailing/panel-wet-rail.webp?v=${wetArtworkRevision}`,
+  bottom: `/img/effects/sailing/panel-wet-bottom.webp?v=${wetArtworkRevision}`,
+};
+// Generated alpha footprints remain local even after the directional front ends.
+// Revision comes from scripts/generate-sailing-wet-coverage.mjs.
+const wetCoverageRevision = 'b387385a4ddfe441';
+export const SAILING_WET_COVERAGE = {
+  panel: Array.from({ length: 6 }, (_, index) => `/img/effects/sailing/panel-wet-coverage${index ? `-${index}` : ''}.webp?v=${wetCoverageRevision}`),
+  torch: Array.from({ length: 6 }, (_, index) => `/img/effects/sailing/torch-wet-coverage${index ? `-${index}` : ''}.webp?v=${wetCoverageRevision}`),
+};
+
+export const BATTLE_PREDECODE_IMAGES_BY_EXPANSION = {
+  '群星呼唤': [
+    'img/effects/Rlyeh_dream_512.webp',
+    ...Object.values(SAILING_WET_ARTWORK),
+    ...Object.values(SAILING_WET_COVERAGE).flat(),
+  ],
 };
 
 export const BGM_AUDIO_BY_KEY = {
@@ -119,6 +155,15 @@ export function getBattleBackgroundImage(expansionKey = DEFAULT_EXPANSION_THEME)
   return BATTLE_BACKGROUND_BY_EXPANSION[expansionKey] || BATTLE_BACKGROUND_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
 }
 
+export function getBattleCamera(expansionKey = DEFAULT_EXPANSION_THEME, { width, height } = {}) {
+  const camera = BATTLE_CAMERA_BY_EXPANSION[expansionKey] || BATTLE_CAMERA_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
+  if (!camera.horizon || !(width > 0 && height > 0)) return camera;
+  const { imageWidth, imageHeight, y } = camera.horizon;
+  const coveredHeight = Math.max(height, width * imageHeight / imageWidth);
+  const horizonY = height / 2 + (y - 0.5) * coveredHeight;
+  return { ...camera, origin: `50% ${Number((horizonY / height * 100).toFixed(4))}%` };
+}
+
 export function getReliefDisplayConfig(expansionKey = DEFAULT_EXPANSION_THEME) {
   return RELIEF_DISPLAY_BY_EXPANSION[expansionKey] || RELIEF_DISPLAY_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
 }
@@ -133,4 +178,8 @@ export function getAnimatedCardBack(expansionKey = DEFAULT_EXPANSION_THEME) {
 
 export function getBattleBgmKey(expansionKey = DEFAULT_EXPANSION_THEME) {
   return BATTLE_BGM_BY_EXPANSION[expansionKey] || BATTLE_BGM_BY_EXPANSION[DEFAULT_EXPANSION_THEME];
+}
+
+export function getBattlePredecodeImages(expansionKey = DEFAULT_EXPANSION_THEME) {
+  return BATTLE_PREDECODE_IMAGES_BY_EXPANSION[expansionKey] || [];
 }

@@ -1,0 +1,7 @@
+{
+  "tool": "built-in image_gen",
+  "source": "E:/Codex/codex-home/generated_images/01a094e6-b663-7ab2-ac74-ac53e4bb49c0/exec-c3523ee7-84cf-46a2-86b9-aa656eca0ada.png",
+  "asset": "public/img/ui/coastal/die-resin.webp",
+  "processing": { "tool": "sharp", "width": 512, "height": 512, "format": "webp", "quality": 94, "alpha": "preserved" },
+  "prompt": "Production game UI asset: ONE blank six-sided tabletop roleplaying die, square front face looking directly straight at camera, orthographic near-front view with only a very narrow top bevel and narrow right side revealing physical depth. Premium dark petrol-green / smoky charcoal resin with subtle translucent cloudy gray veins, weathered satin finish, beveled softly worn cube edges, tiny scratches, restrained realistic highlights, ivory dust in crevices. Somber archaeological cosmic-horror tabletop game art direction, realistic photographed object, NOT cartoon, NOT a UI button, NOT a metal panel. The broad front face must be flat, blank, dark and even enough to add clean ivory pips in code. Absolutely NO pips, numbers, letters, symbols, runes or carvings anywhere. Square canvas, single die centered, die occupies 88% of canvas width and height, front face itself occupies central 70% with edges approximately x=15% to85%, y=15% to85%. Transparent background with real alpha, no ground plane, no surroundings, no cast shadow outside the die. Clear silhouette, game-ready isolated sprite."
+}

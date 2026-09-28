@@ -1,0 +1,331 @@
+{
+  "runStarted": "2026-09-13T07:13:37.053Z",
+  "frames": [
+    {
+      "at": "2026-09-13T07:13:37.680Z",
+      "animation": "DICE_ROLL",
+      "barWidth": "60%",
+      "displayHp": "6",
+      "panelHp": "HP6",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:40.836Z",
+      "animation": "SKILL_HUNT",
+      "barWidth": "60%",
+      "displayHp": "6",
+      "panelHp": "HP6",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": "2"
+    },
+    {
+      "at": "2026-09-13T07:13:42.905Z",
+      "animation": "HUNT_REVEAL_CARD",
+      "barWidth": "60%",
+      "displayHp": "6",
+      "panelHp": "HP6",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:44.431Z",
+      "animation": "DISCARD",
+      "barWidth": "60%",
+      "displayHp": "6",
+      "panelHp": "HP6",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:46.233Z",
+      "animation": "HP_DAMAGE",
+      "barWidth": "60%",
+      "displayHp": "6",
+      "panelHp": "HP6",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:46.581Z",
+      "animation": "HP_DAMAGE",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:47.462Z",
+      "animation": "DICE_ROLL",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:50.865Z",
+      "animation": "SKILL_HUNT",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": "2"
+    },
+    {
+      "at": "2026-09-13T07:13:52.936Z",
+      "animation": "HUNT_REVEAL_CARD",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:54.464Z",
+      "animation": "DISCARD",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:56.252Z",
+      "animation": "HP_DAMAGE",
+      "barWidth": "30%",
+      "displayHp": "3",
+      "panelHp": "HP3",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:56.630Z",
+      "animation": "HP_DAMAGE",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:57.509Z",
+      "animation": "GUILLOTINE",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:57.843Z",
+      "animation": "GUILLOTINE",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "1",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:58.020Z",
+      "animation": "GUILLOTINE",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [
+        {
+          "animation": "slideUp",
+          "images": [
+            {
+              "complete": true,
+              "height": 292,
+              "png": true,
+              "width": 432
+            }
+          ],
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        },
+        {
+          "animation": "slideDown",
+          "images": [
+            {
+              "complete": true,
+              "height": 292,
+              "png": true,
+              "width": 432
+            }
+          ],
+          "transform": "matrix(1, 0, 0, 1, 0, 0)"
+        }
+      ],
+      "snapshotCount": "1",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:59.371Z",
+      "animation": "DEATH",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [
+        {
+          "animation": "slideUp",
+          "images": [
+            {
+              "complete": true,
+              "height": 292,
+              "png": true,
+              "width": 432
+            }
+          ],
+          "transform": "matrix(0.927184, -0.374607, 0.374607, 0.927184, -11.2382, -27.8155)"
+        },
+        {
+          "animation": "slideDown",
+          "images": [
+            {
+              "complete": true,
+              "height": 292,
+              "png": true,
+              "width": 432
+            }
+          ],
+          "transform": "matrix(0.927184, 0.374607, -0.374607, 0.927184, -11.2382, 27.8155)"
+        }
+      ],
+      "snapshotCount": "1",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:13:59.402Z",
+      "animation": "DEATH",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:14:00.616Z",
+      "animation": "CARD_TRANSFER",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:14:02.000Z",
+      "animation": "DICE_ROLL",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:14:05.432Z",
+      "animation": "SAN_DAMAGE",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:14:06.919Z",
+      "animation": "SKILL_HUNT",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "AI_TURN",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": "0"
+    },
+    {
+      "at": "2026-09-13T07:14:08.974Z",
+      "animation": "idle",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "PLAYER_REVEAL_FOR_HUNT",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "playing",
+      "target": ""
+    },
+    {
+      "at": "2026-09-13T07:14:08.997Z",
+      "animation": "idle",
+      "barWidth": "0%",
+      "displayHp": "0",
+      "panelHp": "HP0",
+      "phase": "PLAYER_REVEAL_FOR_HUNT",
+      "slices": [],
+      "snapshotCount": "0",
+      "status": "complete",
+      "target": ""
+    }
+  ]
+}

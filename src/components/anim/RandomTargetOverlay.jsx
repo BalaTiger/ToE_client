@@ -36,7 +36,7 @@ export function RandomTargetOverlay({ anim, exiting }) {
 
   if (!geometry) return null;
   const { center, targetAngle, sourceAngle } = geometry;
-  const spinTurns = 3;
+  const spinTurns = 4;
   const finalRotation = 360 * spinTurns + targetAngle;
   const sourceName = anim.players?.[anim.sourceIdx]?.name || '角色';
   const targetName = anim.players?.[anim.targetIdx]?.name || '目标';
@@ -55,10 +55,27 @@ export function RandomTargetOverlay({ anim, exiting }) {
     }}>
       <style>{`
         @keyframes randomTargetNeedleSpin {
-          0% { transform: rotate(${sourceAngle}deg); }
-          58% { transform: rotate(${finalRotation - 22}deg); }
-          70% { transform: rotate(${finalRotation + 8}deg); }
-          82%, 100% { transform: rotate(${finalRotation}deg); }
+          0% {
+            transform: rotate(${sourceAngle}deg);
+            animation-timing-function: linear;
+          }
+          60% {
+            transform: rotate(${finalRotation - 210}deg);
+            animation-timing-function: cubic-bezier(.18,.62,.18,1);
+          }
+          80% {
+            transform: rotate(${finalRotation - 48}deg);
+            animation-timing-function: cubic-bezier(.14,.76,.14,1);
+          }
+          92% {
+            transform: rotate(${finalRotation + 8}deg);
+            animation-timing-function: ease-out;
+          }
+          97% {
+            transform: rotate(${finalRotation - 3}deg);
+            animation-timing-function: ease-out;
+          }
+          100% { transform: rotate(${finalRotation}deg); }
         }
         @keyframes randomTargetPulse {
           0%, 100% { transform: translate(-50%, -50%) scale(1); }
@@ -78,8 +95,9 @@ export function RandomTargetOverlay({ anim, exiting }) {
           position: 'absolute',
           inset: 0,
           borderRadius: '50%',
-          background: 'radial-gradient(circle at 35% 30%,#8a5a2a 0%,#5a3215 42%,#2b1407 100%)',
-          border: '5px solid #9b6a32',
+          backgroundColor: '#111915',
+          backgroundImage: 'radial-gradient(circle at 35% 30%,#55513c55 0%,#15201c88 42%,#080d0be8 100%), var(--toe-ui-surface-image, none)',
+          border: '2px solid #8b7858',
           boxShadow: '0 16px 38px rgba(0,0,0,0.65), inset 0 0 18px #f0c07044',
         }} />
         {[0, 45, 90, 135, 180, 225, 270, 315].map(deg => (
@@ -89,11 +107,11 @@ export function RandomTargetOverlay({ anim, exiting }) {
             top: '50%',
             width: 4,
             height: 18,
-            background: '#1b0c04',
+            background: '#c0ae83',
             borderRadius: 2,
             transform: `translate(-50%, -50%) rotate(${deg}deg) translateY(-76px)`,
             transformOrigin: '50% 50%',
-            opacity: 0.62,
+            opacity: 0.55,
           }} />
         ))}
         <div style={{
@@ -103,7 +121,7 @@ export function RandomTargetOverlay({ anim, exiting }) {
           width: 78,
           height: 12,
           transformOrigin: '0 50%',
-          animation: 'randomTargetNeedleSpin 2.05s cubic-bezier(.15,.78,.18,1) forwards',
+          animation: 'randomTargetNeedleSpin 2.24s linear forwards',
         }}>
           <div style={{
             position: 'absolute',
@@ -112,8 +130,8 @@ export function RandomTargetOverlay({ anim, exiting }) {
             width: 88,
             height: 12,
             clipPath: 'polygon(0 20%, 78% 20%, 100% 50%, 78% 80%, 0 80%)',
-            background: 'linear-gradient(90deg,#2a0d08,#c02919 74%,#f0c05a)',
-            boxShadow: '0 0 14px #f0503066',
+            background: 'linear-gradient(90deg,#342b24,#a65e4b 74%,#d1bf95)',
+            boxShadow: '0 2px 6px #0008',
           }} />
         </div>
         <div style={{
@@ -124,32 +142,29 @@ export function RandomTargetOverlay({ anim, exiting }) {
           height: 28,
           transform: 'translate(-50%, -50%)',
           borderRadius: '50%',
-          background: 'radial-gradient(circle,#e1b970,#6a3918)',
+          background: 'radial-gradient(circle,#bbae88,#4c503d)',
           border: '2px solid #2a1106',
           boxShadow: '0 0 12px #0008',
         }} />
       </div>
-      <div style={{
+      <div className="toe-dialog" style={{
         position: 'absolute',
         left: center.x,
         top: center.y + 120,
         transform: 'translateX(-50%)',
         minWidth: 260,
-        padding: '10px 18px',
-        background: 'rgba(12,7,3,0.82)',
-        border: '1px solid #9b6a32',
-        borderRadius: 4,
+        padding: '16px 22px',
         textAlign: 'center',
         boxShadow: '0 0 28px #000a',
       }}>
-        <div style={{ fontFamily: "'Cinzel',serif", color: '#e8c87a', fontSize: 13, letterSpacing: 2 }}>
+        <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", color: '#e8c87a', fontSize: 13, letterSpacing: 2 }}>
           {anim.label || '随机目标'}
         </div>
-        <div style={{ fontFamily: "'IM Fell English','Georgia',serif", color: '#c8a96e', fontStyle: 'italic', fontSize: 13, marginTop: 5 }}>
+        <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", color: '#c8a96e', fontStyle: 'normal', fontSize: 13, marginTop: 5 }}>
           {sourceName} 指向 {targetName}
         </div>
         {detail && (
-          <div style={{ fontFamily: "'IM Fell English','Georgia',serif", color: '#b89858', fontSize: 12, marginTop: 4 }}>
+          <div style={{ fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Songti SC', 'SimSun', serif)", color: '#b89858', fontSize: 12, marginTop: 4 }}>
             {detail}
           </div>
         )}

@@ -1,0 +1,127 @@
+[
+  {
+    "scene": "battle-coastal",
+    "board": {
+      "bottom": 1316.453125,
+      "height": 1316.453125,
+      "left": -4.984375,
+      "right": 2543,
+      "top": 0,
+      "width": 2547.984375
+    },
+    "brokenImages": [],
+    "cardCount": 5,
+    "handActionsGap": 37.418212890625,
+    "handMaxBottom": 1278.24462890625,
+    "handMinTop": 793.3743286132812,
+    "handPileClearance": 104.95245361328124,
+    "hoverOrFocus": 0,
+    "logControlsGap": 25.140625,
+    "pileMaxBottom": 688.421875,
+    "selected": 0,
+    "viewport": [
+      2548,
+      1303
+    ]
+  },
+  {
+    "scene": "battle-coastal-small",
+    "board": {
+      "bottom": 900,
+      "height": 900,
+      "left": 0,
+      "right": 1600,
+      "top": 0,
+      "width": 1600
+    },
+    "brokenImages": [],
+    "cardCount": 2,
+    "handActionsGap": 21.638916015625,
+    "handMaxBottom": 876.0123291015625,
+    "handMinTop": 523.1456298828125,
+    "handPileClearance": 66.2706298828125,
+    "hoverOrFocus": 0,
+    "logControlsGap": 84.859375,
+    "pileMaxBottom": 456.875,
+    "selected": 0,
+    "viewport": [
+      1600,
+      900
+    ]
+  },
+  {
+    "scene": "battle-coastal-many",
+    "board": {
+      "bottom": 720,
+      "height": 720,
+      "left": 0,
+      "right": 1280,
+      "top": 0,
+      "width": 1280
+    },
+    "brokenImages": [],
+    "cardCount": 8,
+    "handActionsGap": 18.28631591796875,
+    "handMaxBottom": 700.815673828125,
+    "handMinTop": 480.3069152832031,
+    "handPileClearance": 66.38504028320312,
+    "hoverOrFocus": 0,
+    "logControlsGap": 12.703125,
+    "pileMaxBottom": 413.921875,
+    "selected": 0,
+    "viewport": [
+      1280,
+      720
+    ]
+  },
+  {
+    "scene": "battle-coastal",
+    "board": {
+      "bottom": 992,
+      "height": 992,
+      "left": -5,
+      "right": 1915,
+      "top": 0,
+      "width": 1920
+    },
+    "brokenImages": [],
+    "cardCount": 5,
+    "handActionsGap": 28.193115234375,
+    "handMaxBottom": 963.2051391601562,
+    "handMinTop": 597.8081665039062,
+    "handPileClearance": 79.32379150390625,
+    "hoverOrFocus": 0,
+    "logControlsGap": 19.03125,
+    "pileMaxBottom": 518.484375,
+    "selected": 0,
+    "viewport": [
+      1920,
+      800
+    ]
+  },
+  {
+    "scene": "ignite-torch-selected-focus",
+    "board": {
+      "bottom": 720,
+      "height": 720,
+      "left": 0,
+      "right": 1280,
+      "top": 0,
+      "width": 1280
+    },
+    "brokenImages": [],
+    "cardCount": 5,
+    "handActionsGap": 19.5960693359375,
+    "handMaxBottom": 700.82666015625,
+    "handMinTop": 391.6802062988281,
+    "handPileClearance": 26.805206298828125,
+    "hoverOrFocus": 1,
+    "logControlsGap": 201.875,
+    "pileMaxBottom": 364.875,
+    "selected": 1,
+    "viewport": [
+      1280,
+      720
+    ]
+  }
+]

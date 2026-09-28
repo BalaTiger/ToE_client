@@ -1,0 +1,38 @@
+
+> toe@0.0.0 prebuild
+> node scripts/check-animation-transactions.mjs && node scripts/generate-resource-manifest.mjs
+
+[animation-transaction-gate] passed; legacy-merge baseline=0; migration debt=0, no growth
+resource-manifest a78d12e8ffae4e3c
+asset: 0.00 MB
+audio: 16.17 MB
+font: 0.80 MB
+image: 45.79 MB
+script: 0.05 MB
+style: 0.00 MB
+video: 1.19 MB
+
+> toe@0.0.0 build
+> vite build
+
+vite v8.0.0-beta.16 building client environment for production...
+[2K
+transforming...✓ 211 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/index.html                               1.71 kB │ gzip:   0.74 kB
+dist/assets/index-BOegLuTY.css                2.07 kB │ gzip:   0.96 kB
+dist/assets/components-DES6PgG4.css           4.02 kB │ gzip:   1.41 kB
+dist/assets/rolldown-runtime-Dw2cE7zH.js      0.68 kB │ gzip:   0.41 kB
+dist/assets/game-logic-B8GDMUAn.js            9.27 kB │ gzip:   4.23 kB
+dist/assets/react-dom-vendor-pXkElry9.js    178.32 kB │ gzip:  56.33 kB
+dist/assets/vendor-CI_KxU-a.js              199.58 kB │ gzip:  46.79 kB
+dist/assets/index-DHVSJ09h.js               333.14 kB │ gzip:  98.54 kB
+dist/assets/components-DOq_kq7i.js        1,220.14 kB │ gzip: 429.90 kB
+
+✓ built in 417ms
+[plugin builtin:vite-reporter] 
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rolldownOptions.output.codeSplitting to improve chunking: https://rolldown.rs/reference/OutputOptions.codeSplitting
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
