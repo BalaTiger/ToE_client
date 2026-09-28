@@ -36,6 +36,23 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('image hand cards', () => {
   it.each([
+    [zone, 'collapse.webp', 1086, 98, '/'],
+    [god, 'cth.webp', 1448, 392, '/'],
+    [{ name: '暂时的平静', effect: 'calm' }, 'uneasy%20calm.webp', 1024, 196, './'],
+  ])('offers responsive illustration sources on first render for $name', (card, file, sourceWidth, width, base) => {
+    window.__PUBLIC_BASE__ = base;
+    const face = CardFaceImage({ card, width });
+    expect(face.props.style).toMatchObject({ width, height: width * CARD_FACE_RATIO });
+    const markup = renderToStaticMarkup(face);
+    const illustration = markup.match(/<img\b[^>]*srcSet="[^>]+>/g);
+    expect(illustration).toHaveLength(1);
+    expect(illustration[0]).toContain(`srcSet="${base}img/card/illustration/display-256/${file} 256w, ${base}img/card/illustration/display-512/${file} 512w, ${base}img/card/illustration/${file} ${sourceWidth}w"`);
+    expect(illustration[0]).toContain(`sizes="${330 * (width / 392)}px"`);
+    expect(illustration[0]).toContain('decoding="async"');
+    expect(illustration[0]).toContain('object-fit:cover');
+  });
+
+  it.each([
     ['zone', zone],
     ['god', god],
     ['blank zone', { ...zone, type: 'blankZone', name: '空白区域牌' }],

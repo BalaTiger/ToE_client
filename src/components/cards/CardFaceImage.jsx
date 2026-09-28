@@ -8,29 +8,7 @@ import {
   CARD_FACE_RATIO,
   CARD_FACE_WIDTH,
   getCardFaceMeta,
-  isCardIllustrationReady,
-  loadCardIllustration,
 } from './CardFaceAssets';
-
-function useIllustrationReady(path) {
-  const [ready, setReady] = React.useState(() => {
-    return isCardIllustrationReady(path);
-  });
-
-  React.useEffect(() => {
-    let cancelled = false;
-    setReady(isCardIllustrationReady(path));
-    if (!path) return undefined;
-    loadCardIllustration(path).then(ok => {
-      if (!cancelled) setReady(ok);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [path]);
-
-  return ready;
-}
 
 function getCardFaceKind(card) {
   if (card?.isGod) return 'god';
@@ -303,16 +281,15 @@ function FlavorTextBlock({ text, isGod, box }) {
 
 function CardIllustration({ card, kind, scale }) {
   const meta = getCardFaceMeta(card);
-  const ready = useIllustrationReady(meta?.illustration);
   const layout = ILLUSTRATION_LAYOUT[kind];
-  if (!meta?.illustration || !ready || !layout) return null;
+  if (!meta?.illustration || !layout) return null;
   const file = meta.illustration.split('/').pop();
   const sourceWidth = illustrationWidths[file];
   // Low-pass resized sources avoid sparkling fine detail on small, rotated cards.
   // Native srcset selection retains the full source for larger / high-DPI views.
   const srcSet = sourceWidth ? [
-    ...[256, 512].map(width => `${buildPublicUrl(`/img/card/illustration/display-${width}/${file}`)} ${width}w`),
-    `${buildPublicUrl(meta.illustration)} ${sourceWidth}w`,
+    ...[256, 512].map(width => `${encodeURI(buildPublicUrl(`/img/card/illustration/display-${width}/${file}`))} ${width}w`),
+    `${encodeURI(buildPublicUrl(meta.illustration))} ${sourceWidth}w`,
   ].join(', ') : undefined;
   return (
     <div
@@ -331,6 +308,7 @@ function CardIllustration({ card, kind, scale }) {
         src={buildPublicUrl(meta.illustration)}
         srcSet={srcSet}
         sizes={`${layout.width * scale}px`}
+        decoding="async"
         alt=""
         draggable={false}
         style={{

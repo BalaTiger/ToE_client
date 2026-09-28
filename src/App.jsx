@@ -542,10 +542,9 @@ export default function Game(){
   const[modal,setModal]=useState(null); // 'about' | 'roadmap' | null
   const[privatePeek,setPrivatePeek]=useState(null); // {card,targetName}
   const [firstBattleStarted,setFirstBattleStarted]=useState(()=>safeLS.get(FIRST_BATTLE_DONE_KEY)==='1');
-  const [onlineResourcesUnlocked,setOnlineResourcesUnlocked]=useState(false);
   // ── Audio / Video / Main UI Resource Preloading ──────────────
   const { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize } = useResourcePreload({
-    loadAllThemes: firstBattleStarted || onlineResourcesUnlocked,
+    loadBattleResources: !!gs,
     activeExpansionKey: gs?.expansionKey || '地神的潜影',
   });
   
@@ -1516,7 +1515,6 @@ export default function Game(){
       setLobbyRooms,
       copyRoomIdToClipboard,
       setFirstBattleStarted,
-      setOnlineResourcesUnlocked,
       setMyPlayerIndex,
       myPlayerIndexRef,
       setIsMultiplayer,
@@ -1549,7 +1547,6 @@ export default function Game(){
 
   // 点击"联机对战"→ 连接后端，打开联机选项界面
   function handleMultiplayer(){
-    setOnlineResourcesUnlocked(true);
     connectSocket(socket=>{
       socket.emit('openOnlineOptions',{uuid:playerUUID,identityToken});
       setOnlineOptionsModal(true);
@@ -1562,7 +1559,6 @@ export default function Game(){
     roomModalRef,
     multiLoading,
     socketRef,
-    setOnlineResourcesUnlocked,
     connectSocket,
     playerUUIDRef,
     playerUUID,
@@ -3631,7 +3627,7 @@ export default function Game(){
             <div style={{display:'flex',alignItems:'center',marginBottom:20}}>
               <LoadingPentagramSpinner style={{marginRight:10}} />
               <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:12,fontStyle:'italic',color:'#a07838',lineHeight:1.5}}>
-                第一次前往遗迹的路会很长，请稍等<Ellipsis/>
+                正在准备遗迹入口，请稍等<Ellipsis/>
               </div>
             </div>
             
@@ -3640,7 +3636,7 @@ export default function Game(){
             )}
             
             <div style={{fontFamily:"'IM Fell English','Georgia',serif",fontSize:11,marginBottom:16,color:'#8a6a38'}}>
-              下载进度: {formatFileSize(loadedSize)} / {formatFileSize(totalSize)}
+              加载进度: {formatFileSize(loadedSize)} / {formatFileSize(totalSize)}
             </div>
             
             <div style={{width:'100%',height:8,background:'#140f08',border:'1px solid #3a2510',borderRadius:4,overflow:'hidden'}}>

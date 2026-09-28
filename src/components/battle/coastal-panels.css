@@ -68,7 +68,7 @@
 [data-ui-layout='coastal'] [data-stat-label='SAN'] .toe-stat-fill { background-color: #3e9195 !important; }
 
 [data-ui-layout='coastal'] .toe-self-player-panel { width: 100% !important; min-width: 0 !important; flex-basis: auto !important; min-height: 0 !important; padding: 0 !important; box-shadow: none; }
-[data-ui-layout='coastal'] .toe-self-content { display: grid; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 51px 43px auto; gap: 3px 8px; position: relative; }
+[data-ui-layout='coastal'] .toe-self-content { display: grid; grid-template-columns: 76px minmax(0, 1fr); grid-template-rows: 51px auto 43px auto; gap: 3px 8px; position: relative; }
 [data-ui-layout='coastal'] .toe-self-content::before { content: ''; position: absolute; top: -5px; left: -8px; width: calc(100% + 16px); height: auto; aspect-ratio: 806 / 364; background: var(--toe-coastal-self-frame) center / contain no-repeat; pointer-events: none; z-index: -1; }
 /* Share the frame's native canvas; its lower metal rail is at y=256/364. */
 [data-ui-layout='coastal'] .toe-self-skull-anchor { position: absolute; top: -5px; left: -8px; width: calc(100% + 16px); aspect-ratio: 806 / 364; pointer-events: none; z-index: 3; }
@@ -78,15 +78,28 @@
 .toe-board-composition-coastal:not([data-compact='true']) .toe-self-content:has(.toe-self-skull-anchor) .toe-self-faith { margin-top: calc(8px + max(0, var(--toe-encounter-skull-rows) - 1) * 20px); }
 [data-ui-layout='coastal'] .toe-self-content > .toe-coastal-portrait { grid-column: 1; grid-row: 1 / span 2; width: 54px; height: 54px; margin: 27px 0 15px 16px; border-radius: 50%; }
 [data-ui-layout='coastal'] .toe-self-details { display: contents; }
-[data-ui-layout='coastal'] .toe-self-title { grid-column: 2; grid-row: 1; display: flex !important; align-items: center; gap: 8px; min-width: 0; margin-right: 15px; padding: 22px 0 6px; border-bottom: 1px solid #9b865b88; }
+[data-ui-layout='coastal'] .toe-self-title { grid-column: 2; grid-row: 1; display: flex !important; align-items: center; gap: 8px; min-width: 0; margin-right: 15px; padding: 22px 0 0; }
 [data-ui-layout='coastal'] .toe-self-name { flex: 1; min-width: 0; font-size: 13px !important; color: var(--toe-coastal-ink-strong) !important; letter-spacing: .6px !important; line-height: 1.2; margin-bottom: 0 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 [data-ui-layout='coastal'] .toe-self-role { flex-shrink: 0; white-space: nowrap; font-size: 10px !important; color: var(--toe-role-color) !important; line-height: 1.25; letter-spacing: .5px !important; }
-[data-ui-layout='coastal'] .toe-self-goal { display: none; }
-[data-ui-layout='coastal'] .toe-self-stats { grid-column: 2; grid-row: 2; border: 0 !important; padding: 0 14px 7px 0 !important; }
+[data-ui-layout='coastal'] .toe-self-goal {
+  cursor: help;
+  grid-column: 2;
+  grid-row: 2;
+  font-family: var(--toe-coastal-panel-font) !important;
+  font-size: max(10px, calc(11px / var(--toe-coastal-scene-scale, 1) / var(--toe-mobile-screen-scale, 1))) !important;
+  color: var(--toe-coastal-ink-muted) !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  line-height: 1.45 !important;
+  margin: 0 0 2px !important;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #9b865b88;
+}
+[data-ui-layout='coastal'] .toe-self-stats { grid-column: 2; grid-row: 3; border: 0 !important; padding: 0 14px 7px 0 !important; }
 [data-ui-layout='coastal'] .toe-self-stats [data-stat-label] { grid-template-columns: 26px minmax(0, 1fr) 16px !important; column-gap: 5px !important; }
 [data-ui-layout='coastal'] .toe-self-stats .toe-stat-value { font-size: 11px !important; }
 [data-ui-layout='coastal'] .toe-self-stats .toe-stat-track { height: 8px !important; }
-[data-ui-layout='coastal'] .toe-self-faith { display: flex; flex-direction: column; gap: 6px; grid-column: 1 / -1; grid-row: 3; margin: 20px 4px 0; padding: 30px 34px 60px; min-height: 276px; box-sizing: border-box; position: relative; background: var(--toe-coastal-faith-banner) center / 100% 100% no-repeat; }
+[data-ui-layout='coastal'] .toe-self-faith { display: flex; flex-direction: column; gap: 6px; grid-column: 1 / -1; grid-row: 4; margin: 20px 4px 0; padding: 30px 34px 60px; min-height: 276px; box-sizing: border-box; position: relative; background: var(--toe-coastal-faith-banner) center / 100% 100% no-repeat; }
 [data-ui-layout='coastal'] .toe-self-content .toe-self-faith { padding: 27px 33px 56px; min-width: 0; }
 [data-ui-layout='coastal'] .toe-self-faith > *,
 [data-ui-layout='coastal'] .toe-self-faith [data-god-power-badge] { min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; white-space: normal; }

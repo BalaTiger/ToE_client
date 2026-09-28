@@ -40,7 +40,6 @@ export function useMultiplayerSessionReconnect({
   roomModalRef,
   multiLoading,
   socketRef,
-  setOnlineResourcesUnlocked,
   connectSocket,
   playerUUIDRef,
   playerUUID,
@@ -76,7 +75,6 @@ export function useMultiplayerSessionReconnect({
         return;
       }
       lastReconnectAttemptRef.current = Date.now();
-      setOnlineResourcesUnlocked(true);
       connectSocket(socket => {
         emitOpenOnlineOptions(
           socket,
@@ -111,7 +109,6 @@ export function useMultiplayerSessionReconnect({
     playerUUIDRef,
     roomModalRef,
     socketRef,
-    setOnlineResourcesUnlocked,
     retryMs,
   ]);
 }

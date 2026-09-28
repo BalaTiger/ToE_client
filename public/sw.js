@@ -1,7 +1,8 @@
 const MANIFEST_URL = '/resource-manifest.json';
 const STATIC_CACHE_PREFIX = 'toe-static-';
 const RUNTIME_CACHE_PREFIX = 'toe-runtime-';
-const RUNTIME_CACHE = `${RUNTIME_CACHE_PREFIX}v2`;
+// Bump when same-URL assets change so cache-first responses cannot stay stale.
+const RUNTIME_CACHE = `${RUNTIME_CACHE_PREFIX}v3`;
 
 function isValidAssetResponse(request, response) {
   if (!response?.ok) return false;
@@ -32,22 +33,11 @@ async function fetchManifest() {
 
 async function putIfOk(cache, request) {
   try {
-    const response = await fetch(request, { cache: 'reload' });
+    const response = await fetch(request);
     if (isValidAssetResponse(request, response)) await cache.put(request, response);
   } catch {
     // Precache is best-effort; runtime fetch still works.
   }
-}
-
-function isAnimatedCardBackResource(resource) {
-  return resource.path.startsWith('/img/card/animated/') && resource.path.includes('/frame_');
-}
-
-function isCoreResource(resource) {
-  if (resource.type === 'font' || resource.type === 'style') return true;
-  if (resource.type !== 'image') return false;
-  if (isAnimatedCardBackResource(resource)) return false;
-  return true;
 }
 
 self.addEventListener('install', event => {
@@ -60,11 +50,8 @@ self.addEventListener('install', event => {
       '/favicon.png',
       '/socket.io.min.js',
       '/fonts/fonts.css',
-      ...manifest.resources
-        .filter(isCoreResource)
-        .map(resource => resource.path),
     ];
-    await Promise.allSettled([...new Set(corePaths)].map(path => putIfOk(cache, path)));
+    await Promise.allSettled(corePaths.map(path => putIfOk(cache, path)));
     self.skipWaiting();
   })());
 });
@@ -115,7 +102,7 @@ self.addEventListener('fetch', event => {
     const response = await fetch(request);
     if (isValidAssetResponse(request, response)) {
       const cache = await caches.open(RUNTIME_CACHE);
-      cache.put(request, response.clone());
+      event.waitUntil(cache.put(request, response.clone()));
     }
     return response;
   })());
