@@ -28,7 +28,6 @@ export function registerMultiplayerSocketHandlers({
   addToast,
   copyRoomIdToClipboard,
   setFirstBattleStarted,
-  setOnlineResourcesUnlocked,
   setMyPlayerIndex,
   myPlayerIndexRef,
   setIsMultiplayer,
@@ -153,7 +152,6 @@ export function registerMultiplayerSocketHandlers({
   socket.on('gameStart', ({ roomId, players, expansionPlan }) => {
     setFirstBattleStarted(true);
     safeLS.set(FIRST_BATTLE_DONE_KEY, '1');
-    setOnlineResourcesUnlocked(true);
     const myIdx = players.findIndex(p => p.uuid === playerUUIDRef.current);
     const safeIdx = myIdx < 0 ? 0 : myIdx;
     myPlayerIndexRef.current = safeIdx;
@@ -218,7 +216,6 @@ export function registerMultiplayerSocketHandlers({
     const safeIdx = Number.isInteger(playerIndex) && playerIndex >= 0 ? playerIndex : 0;
     setFirstBattleStarted(true);
     safeLS.set(FIRST_BATTLE_DONE_KEY, '1');
-    setOnlineResourcesUnlocked(true);
     setRoomModal({
       roomId,
       owner,

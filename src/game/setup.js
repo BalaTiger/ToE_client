@@ -215,9 +215,13 @@ export function mkRoles(N = 5, isSinglePlayer = false, forcedPlayerRole = null, 
 
 const AI_NAMES = ['艾伦','贝拉','卡洛斯','黛安娜'];
 const RINFO = {
-  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true},
-  '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false},
-  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'复活邪神',skillName:'蛊惑',skillLimited:true},
+  '寻宝者':{icon:'✦',col:'#7ecfd4',dim:'#2a6068',goal:'集齐宝藏',skillName:'掉包',skillLimited:true,
+    // Summary of the treasure and skill lessons in tutorialScenario.js.
+    goalDetails: '集齐标准：手牌中的区域牌同时覆盖 A、B、C、D 四个字母和 1、2、3、4 四个数字即可获胜，不必集齐全部16种组合。例如 A1、B2、C3、D4 就已集齐。空白区域牌可补缺失编号，邪神牌不计入。\n\n运用掉包：每回合可用一次，暗抽其他角色一张手牌，再选择一张手牌交还。保留补齐缺失编号的牌，把重复或暂时无用的牌换出去；即使离胜利还远，也能借此推进宝藏进度。'},
+  '追猎者':{icon:'☩',col:'#cc4444',dim:'#6a1a1a',goal:'消灭所有非追猎者',skillName:'追捕',skillLimited:false,
+    goalDetails: '获胜条件：消灭所有非追猎者角色，追猎者之间可以合作。\n\n运用追捕：发动技能并选择目标，对手亮出一张区域牌后，弃掉一张字母或数字与之匹配的区域牌，通常造成3点 HP 伤害。例如对手亮出 A1，你可以弃掉带 A 或 1 的区域牌。\n\n成功造成伤害后，本回合可以继续追捕；击杀后可随机夺取最多3张手牌。若亮牌后放弃追捕，连续进攻就会中断，因此要留意手牌编号并选择合适的目标。'},
+  '邪祀者':{icon:'☽',col:'#9060cc',dim:'#3a1060',goal:'复活邪神',skillName:'蛊惑',skillLimited:true,
+    goalDetails: '获胜条件：让一名仍存活的角色 SAN 归零，使邪神复活。\n\n运用蛊惑：每回合可用一次，把区域牌送给其他角色，迫使其重新触发卡牌效果。优先利用降低 SAN 的牌，腐化 SAN 已较低的目标。\n\n邪祀者还可以把遭遇的邪神牌收入手牌，再通过蛊惑强迫目标信仰；结合目标的骷髅数、现有信仰与改信代价，寻找使其 SAN 归零的机会。'},
 };
 
 export { AI_NAMES, RINFO };

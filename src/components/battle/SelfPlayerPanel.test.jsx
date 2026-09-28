@@ -2,12 +2,13 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it, vi } from 'vitest';
 import { SelfPlayerPanel } from './SelfPlayerPanel';
+import { RINFO } from '../../game/setup';
 
 describe('SelfPlayerPanel presentation player', () => {
-  it.each([113, 180])('keeps presentation stats and god power at %ipx panel height', middleRowHeight => {
+  it.each(Object.entries(RINFO).flatMap(([role, ri]) => [113, 180].map(height => [role, ri, height])))('keeps %s goal help and presentation stats (%j, %ipx)', (role, ri, middleRowHeight) => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const player = {
-      role: '邪祀者',
+      role,
       hp: 10,
       san: 8,
       isDead: false,
@@ -22,7 +23,7 @@ describe('SelfPlayerPanel presentation player', () => {
       <SelfPlayerPanel
         player={player}
         displayStats={[{ hp: 7, san: 5 }]}
-        ri={{ icon: '⛧', col: '#fff', goal: '测试目标' }}
+        ri={ri}
         phase="ACTION"
         isBlocked={false}
         canLocalTargetSelect={false}
@@ -50,6 +51,12 @@ describe('SelfPlayerPanel presentation player', () => {
       />,
     );
 
+    const goalMarkup = markup.slice(markup.indexOf('class="toe-self-goal"'), markup.indexOf('class="toe-self-faith"'));
+    expect(goalMarkup).toContain(`游戏目标：${ri.goal}`);
+    expect(goalMarkup).toContain(`title="${ri.goalDetails}"`);
+    expect(goalMarkup).toContain('tabindex="0"');
+    expect(goalMarkup).toContain(`aria-label="游戏目标：${ri.goal}。${ri.goalDetails}"`);
+    expect(ri.goalDetails).toContain(ri.skillName);
     expect(markup).toContain('梦访拉莱耶 Lv.2');
     expect(markup).toContain('摸2张牌');
     expect(markup).not.toContain('梦访拉莱耶 Lv.1');

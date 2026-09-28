@@ -242,6 +242,9 @@ export function SelfPlayerPanel({
           </div>
           <div
             className="toe-self-goal"
+            title={ri.goalDetails}
+            tabIndex={0}
+            aria-label={`游戏目标：${ri.goal}。${ri.goalDetails || ''}`}
             style={{
               fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
               fontStyle: 'normal',
@@ -252,7 +255,7 @@ export function SelfPlayerPanel({
               whiteSpace: 'nowrap',
             }}
           >
-            {ri.goal}
+            游戏目标：{ri.goal}
           </div>
           <div className="toe-self-faith">
             <FaithScrollRegion enabled resetKey={`${player.godName}:${player.godLevel}`}>

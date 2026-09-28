@@ -1,361 +1,207 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { scheduleCardIllustrationIdleDownload } from "../components/cards/CardFaceAssets";
-import { isLocalTestHost } from "../utils/runtime";
-import { buildPublicUrl } from "../utils/url";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { getAnimatedCardBack, getBattleBackgroundImage, getCardBackImage } from '../constants/theme';
+import { isLocalTestHost } from '../utils/runtime';
+import { buildPublicUrl } from '../utils/url';
 
-const RESOURCE_MANIFEST_PATH = '/resource-manifest.json';
-const CACHE_VERSION_KEY = 'toe_resources_cached_version';
 const RESOURCE_LOAD_TIMEOUT_MS = 8000;
-const BOOTSTRAP_IMAGE_CONCURRENCY = 5;
-const DEFERRED_IMAGE_CONCURRENCY = 2;
-
-// These are heard before the first battle has had time to finish idle loading.
-// Keep this set deliberately small: expansion-specific effects stay deferred.
-const BOOTSTRAP_AUDIO_PATHS = new Set([
-  '/sounds/BGM/mainTheme.mp3',
-  '/sounds/SE/common/ui/open.mp3',
-  '/sounds/SE/common/ui/close.mp3',
-  '/sounds/SE/common/turn/turn-start.mp3',
-  '/sounds/SE/common/card/one_card_shift1.mp3',
-  '/sounds/SE/common/encounter/god_highlight.mp3',
-  '/sounds/SE/common/encounter/positive-card-flip.mp3',
-  '/sounds/SE/common/encounter/neutral-card-flip.mp3',
-  '/sounds/SE/common/encounter/negative-card-flip.mp3',
+const BOOTSTRAP_IMAGE_PATHS = new Set([
+  '/bg.webp', '/favicon.png', '/img/bg/bg_main.webp', '/img/loading.webp',
+  '/img/title/texture_toehp.webp', '/img/line/line_split-no-bg.webp',
+  '/img/line/line_titleguard-no-bg.webp', '/img/deco/deco_cth-no-bg.webp',
+  '/img/logo/logo_tr-no-bg.webp', '/img/logo/logo_hu-no-bg.webp', '/img/logo/logo_cu-no-bg.webp',
+  '/img/btn/btn_author.webp', '/img/btn/btn_roadmap.webp',
+  '/img/ui/interface/panel-surface.webp', '/img/ui/interface/panel-frame.webp',
 ]);
-
+const LOBBY_AUDIO_PATHS = new Set([
+  '/sounds/SE/common/ui/open.mp3', '/sounds/SE/common/ui/close.mp3',
+]);
 const EXPANSION_SOUND_DIRECTORY_BY_KEY = {
   '地神的潜影': '/sounds/SE/earthShadow/',
   '群星呼唤': '/sounds/SE/starsCall/',
 };
-
-const LOAD_ERROR_LABELS = {
-  audio: '音频加载失败',
-  video: '视频加载失败',
-  image: '图片加载失败',
-  font: '字体加载失败',
-  script: '脚本加载失败',
-  style: '样式加载失败',
-};
-
 const FALLBACK_MANIFEST = {
-  version: 'fallback-webp-assets',
   resources: [
     { path: '/bg.webp', type: 'image', size: 179356 },
     { path: '/img/bg/bg_main.webp', type: 'image', size: 199160 },
     { path: '/img/loading.webp', type: 'image', size: 10968 },
-    { path: '/img/card/cardbg_zone.webp', type: 'image', size: 145436 },
-    { path: '/img/card/cardbg_god.webp', type: 'image', size: 133576 },
   ],
 };
 
 export function formatFileSize(bytes) {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(2)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
+}
+
+export function selectBootstrapResources(manifest, pixelRatio = 1) {
+  const density = pixelRatio > 1 ? '2x' : '1x';
+  return manifest.resources.filter(resource => resource.type === 'image' && (
+    BOOTSTRAP_IMAGE_PATHS.has(resource.path)
+    || /^\/img\/ui\/start\/frame-(?:tl|tr|bl|br|top|bottom|left|right)\.webp$/.test(resource.path)
+    || (/^\/img\/ui\/start\/(?:role-(?:treasure|hunter|cultist)|rules-table|action-(?:solo|online))-v3-/.test(resource.path)
+      && resource.path.endsWith('-' + density + '.webp'))
+  ));
+}
+
+export function selectDeferredResources(manifest, loadBattleResources, activeExpansionKey) {
+  const background = getBattleBackgroundImage(activeExpansionKey);
+  const cardBack = getCardBackImage(activeExpansionKey);
+  const frameDir = getAnimatedCardBack(activeExpansionKey)?.frameDir;
+  const soundDirectory = EXPANSION_SOUND_DIRECTORY_BY_KEY[activeExpansionKey]
+    || EXPANSION_SOUND_DIRECTORY_BY_KEY['地神的潜影'];
+  return manifest.resources.filter(resource => {
+    const path = resource.path;
+    if (LOBBY_AUDIO_PATHS.has(path)) return true;
+    if (!loadBattleResources) return false;
+    if (resource.type === 'audio') {
+      // Long BGM tracks stream through the active audio player instead of downloading twice.
+      return path.startsWith('/sounds/SE/common/') || path.startsWith(soundDirectory);
+    }
+    if (resource.type !== 'image') return false;
+    // Card illustrations and rare effects are requested by their actual consumers.
+    return path === background || path === cardBack
+      || (frameDir && path.startsWith(frameDir + '/frame_'))
+      || path.startsWith('/img/ui/coastal/') || path.startsWith('/img/ui/theme_relief/')
+      || path.startsWith('/img/card/cardbg_') || path.startsWith('/img/card/highlight/')
+      || path === '/img/card/cardback_sancheck.png' || path === '/img/card/cardback_token.png';
+  }).sort((a, b) => Number(a.type === 'audio') - Number(b.type === 'audio'));
 }
 
 function getConnectionProfile() {
-  if (typeof navigator === 'undefined') {
-    return { saveData: false, effectiveType: 'unknown', deferMedia: false, mediaConcurrency: 2 };
-  }
-  const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-  const saveData = !!connection?.saveData;
-  const effectiveType = connection?.effectiveType || 'unknown';
-  const slow = saveData || effectiveType === 'slow-2g' || effectiveType === '2g';
-  const moderate = effectiveType === '3g';
+  const connection = typeof navigator === 'undefined' ? null
+    : navigator.connection || navigator.mozConnection || navigator.webkitConnection;
   return {
-    saveData,
-    effectiveType,
-    deferMedia: slow,
-    mediaConcurrency: slow ? 1 : moderate ? 1 : 2,
+    deferMedia: !!connection?.saveData || ['slow-2g', '2g'].includes(connection?.effectiveType),
+    concurrency: connection?.effectiveType === '3g' ? 1 : 2,
   };
 }
 
-async function loadManifest() {
+async function loadManifest(signal) {
   try {
-    const response = await fetch(buildPublicUrl(RESOURCE_MANIFEST_PATH), { cache: 'no-cache' });
-    if (!response.ok) throw new Error(`manifest ${response.status}`);
+    const response = await fetch(buildPublicUrl('/resource-manifest.json'), { cache: 'no-cache', signal });
+    if (!response.ok) throw new Error('manifest ' + response.status);
     const manifest = await response.json();
     if (!Array.isArray(manifest.resources)) throw new Error('manifest resources missing');
     return manifest;
   } catch (error) {
+    if (signal.aborted) return null;
     console.warn('Resource manifest unavailable, using fallback.', error);
     return FALLBACK_MANIFEST;
   }
 }
 
-function loadResource(resource, timeoutMs = RESOURCE_LOAD_TIMEOUT_MS) {
-  const url = buildPublicUrl(resource.path);
-  let timeoutId = null;
-
-  const withTimeout = (start) => new Promise((resolve, reject) => {
+function loadResource(resource, signal) {
+  return new Promise((resolve, reject) => {
     let settled = false;
-    const finish = (callback, value) => {
+    let img;
+    const controller = new AbortController();
+    const finish = error => {
       if (settled) return;
       settled = true;
-      if (timeoutId) clearTimeout(timeoutId);
-      callback(value);
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', abort);
+      if (img) {
+        img.onload = img.onerror = null;
+        if (error) img.removeAttribute('src');
+      }
+      if (error) {
+        controller.abort();
+        reject(error);
+      } else resolve();
     };
-    timeoutId = setTimeout(() => {
-      finish(reject, new Error(resource.path));
-    }, timeoutMs);
-    start(
-      value => finish(resolve, value),
-      error => finish(reject, error),
-    );
-  });
-
-  if (resource.type === 'audio') {
-    const audio = new Audio(url);
-    audio.crossOrigin = 'anonymous';
-    audio.preload = 'metadata';
-    return withTimeout((resolve, reject) => {
-      const cleanup = () => {
-        audio.removeEventListener('canplaythrough', handleReady);
-        audio.removeEventListener('canplay', handleReady);
-        audio.removeEventListener('loadeddata', handleReady);
-        audio.removeEventListener('loadedmetadata', handleReady);
-        audio.removeEventListener('error', handleError);
-      };
-      const handleReady = () => {
-        cleanup();
-        resolve();
-      };
-      const handleError = () => {
-        cleanup();
-        reject(new Error(resource.path));
-      };
-      audio.addEventListener('canplaythrough', handleReady, { once: true });
-      audio.addEventListener('canplay', handleReady, { once: true });
-      audio.addEventListener('loadeddata', handleReady, { once: true });
-      audio.addEventListener('loadedmetadata', handleReady, { once: true });
-      audio.addEventListener('error', handleError, { once: true });
-      audio.load();
-    });
-  }
-
-  if (resource.type === 'video') {
-    const video = document.createElement('video');
-    video.src = url;
-    video.preload = 'metadata';
-    video.crossOrigin = 'anonymous';
-    return withTimeout((resolve, reject) => {
-      video.addEventListener('loadeddata', resolve, { once: true });
-      video.addEventListener('loadedmetadata', resolve, { once: true });
-      video.addEventListener('error', reject, { once: true });
-      video.load();
-    });
-  }
-
-  if (resource.type === 'font' && typeof document !== 'undefined' && document.fonts) {
-    return withTimeout((resolve) => {
-      fetch(url).finally(resolve);
-    });
-  }
-
-  const img = new Image();
-  img.crossOrigin = 'anonymous';
-  return withTimeout((resolve, reject) => {
-    img.onload = resolve;
-    img.onerror = reject;
-    img.src = url;
+    const abort = () => finish(new DOMException('Resource preload cancelled', 'AbortError'));
+    const timeout = setTimeout(() => finish(new Error(resource.path)), resource.type === 'audio' ? 60000 : RESOURCE_LOAD_TIMEOUT_MS);
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener('abort', abort, { once: true });
+    const url = buildPublicUrl(resource.path);
+    if (resource.type === 'image') {
+      img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => finish();
+      img.onerror = () => finish(new Error(resource.path));
+      img.src = url;
+    } else {
+      // Consume the whole response to warm the HTTP cache, not just audio metadata.
+      fetch(url, { signal: controller.signal }).then(async response => {
+        if (!response.ok) throw new Error(resource.path + ': ' + response.status);
+        await response.arrayBuffer();
+      }).then(() => finish(), finish);
+    }
   });
 }
 
-async function loadConcurrent(resources, concurrency, onSettled) {
+export async function loadConcurrent(resources, concurrency, signal, onSettled) {
   let cursor = 0;
   async function worker() {
-    while (cursor < resources.length) {
+    while (!signal.aborted && cursor < resources.length) {
       const resource = resources[cursor++];
+      let error = null;
       try {
-        await loadResource(resource);
-      } catch (error) {
-        console.warn(`Resource failed: ${resource.path}`, error);
-        onSettled?.(resource, error);
-        continue;
+        await loadResource(resource, signal);
+      } catch (cause) {
+        error = cause;
       }
-      onSettled?.(resource, null);
+      if (!signal.aborted) onSettled?.(resource, error);
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, concurrency) }, worker));
 }
 
-function scheduleDeferredPreload(resources, concurrency) {
-  const run = async () => {
-    await loadConcurrent(resources, concurrency, resource => {
-      // Deferred failures are non-blocking; log at low volume.
-      if (!resource) return;
-    });
-  };
-
-  if (typeof window !== 'undefined' && typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(run, { timeout: 3000 });
-  } else {
-    setTimeout(run, 0);
-  }
-}
-
-function isAnimatedCardBackResource(resource) {
-  return resource.path.startsWith('/img/card/animated/') && resource.path.includes('/frame_');
-}
-
-function isCardIllustrationResource(resource) {
-  return resource.path.startsWith('/img/card/illustration/');
-}
-
-function isEffectImageResource(resource) {
-  return resource.type === 'image' && resource.path.startsWith('/img/effects/');
-}
-
-function isBootstrapImageResource(resource) {
-  if (resource.type !== 'image') return false;
-  if (isAnimatedCardBackResource(resource)) return false;
-  if (isCardIllustrationResource(resource)) return false;
-  if (isEffectImageResource(resource)) return false;
-  return true;
-}
-
-function isBootstrapAudioResource(resource) {
-  return resource.type === 'audio' && BOOTSTRAP_AUDIO_PATHS.has(resource.path);
-}
-
-function getDeferredConcurrency(networkProfile) {
-  return Math.max(DEFERRED_IMAGE_CONCURRENCY, networkProfile.mediaConcurrency);
-}
-
-function getDeferredStage(loadAllThemes, activeExpansionKey) {
-  return loadAllThemes ? 'all' : `base:${activeExpansionKey}`;
-}
-
-function selectBootstrapResources(manifest) {
-  return manifest.resources
-    .filter(resource => isBootstrapImageResource(resource) || isBootstrapAudioResource(resource))
-    .sort((a, b) => a.path.localeCompare(b.path));
-}
-
-function selectDeferredResources(manifest, loadAllThemes, activeExpansionKey) {
-  const deferredImages = manifest.resources.filter(isAnimatedCardBackResource);
-  const effectImages = manifest.resources.filter(isEffectImageResource);
-  const media = manifest.resources.filter(resource =>
-    (resource.type === 'audio' || resource.type === 'video') && !isBootstrapAudioResource(resource)
-  );
-  if (loadAllThemes) return [...effectImages, ...deferredImages, ...media];
-
-  const expansionDirectory = EXPANSION_SOUND_DIRECTORY_BY_KEY[activeExpansionKey]
-    || EXPANSION_SOUND_DIRECTORY_BY_KEY['地神的潜影'];
-  const baseMedia = media.filter(resource => {
-    if (resource.type === 'video') return false;
-    if (resource.path.startsWith('/sounds/SE/common/')) return true;
-    if (resource.path.startsWith(expansionDirectory)) return true;
-    if (expansionDirectory.includes('earthShadow') && resource.path.includes('battle_earth_shadow')) return true;
-    if (expansionDirectory.includes('starsCall') && resource.path.includes('battle_stars_call')) return true;
-    return false;
-  });
-  return [...effectImages, ...deferredImages, ...baseMedia];
-}
-
-export function useResourcePreload({ loadAllThemes = false, activeExpansionKey = '地神的潜影' } = {}) {
-  const isLocalPreview = useMemo(() => isLocalTestHost(), []);
+export function useResourcePreload({ loadBattleResources = false, activeExpansionKey = '地神的潜影' } = {}) {
   const [isLoading, setIsLoading] = useState(() => !isLocalTestHost());
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingError, setLoadingError] = useState(null);
   const [currentFile, setCurrentFile] = useState('');
   const [totalSize, setTotalSize] = useState(0);
   const [loadedSize, setLoadedSize] = useState(0);
-  const manifestRef = useRef(null);
-  const deferredStageRef = useRef('none');
+  const [manifest, setManifest] = useState(null);
+  const completedPaths = useRef(new Set());
   const networkProfile = useMemo(() => getConnectionProfile(), []);
 
   useEffect(() => {
-    let cancelled = false;
-    const setIfMounted = setter => value => {
-      if (!cancelled) setter(value);
-    };
-    const setSafeIsLoading = setIfMounted(setIsLoading);
-    const setSafeLoadingProgress = setIfMounted(setLoadingProgress);
-    const setSafeLoadingError = setIfMounted(setLoadingError);
-    const setSafeCurrentFile = setIfMounted(setCurrentFile);
-    const setSafeTotalSize = setIfMounted(setTotalSize);
-    const setSafeLoadedSize = setIfMounted(setLoadedSize);
-
-    const preloadResources = async () => {
-      const manifest = await loadManifest();
-      manifestRef.current = manifest;
-      const bootstrapResources = selectBootstrapResources(manifest);
-      const deferredResources = selectDeferredResources(manifest, loadAllThemes, activeExpansionKey);
-
-      try {
-        const cachedVersion = localStorage.getItem(CACHE_VERSION_KEY);
-        if (isLocalPreview || cachedVersion === manifest.version) {
-          setSafeIsLoading(false);
-          deferredStageRef.current = getDeferredStage(loadAllThemes, activeExpansionKey);
-          if (!networkProfile.deferMedia) {
-            scheduleDeferredPreload(
-              isLocalPreview ? [...bootstrapResources, ...deferredResources] : deferredResources,
-              getDeferredConcurrency(networkProfile),
-            );
-            scheduleCardIllustrationIdleDownload();
-          }
-          return;
-        }
-      } catch {
-        // localStorage error, proceed with preloading.
-      }
-
-      let loadedBytes = 0;
-      const totalBytes = bootstrapResources.reduce((sum, resource) => sum + (resource.size || 0), 0);
-      setSafeTotalSize(totalBytes);
-
-      await loadConcurrent(bootstrapResources, BOOTSTRAP_IMAGE_CONCURRENCY, (resource, error) => {
-        if (cancelled) return;
-        if (error) {
-          const errorLabel = LOAD_ERROR_LABELS[resource.type] || '资源加载失败';
-          setSafeLoadingError(prev => prev || `${errorLabel}: ${resource.path}`);
-        }
-        setSafeCurrentFile(resource.path.split('/').pop());
-        loadedBytes += resource.size || 0;
-        setSafeLoadedSize(loadedBytes);
-        setSafeLoadingProgress(totalBytes > 0
-          ? Math.min(100, (loadedBytes / totalBytes) * 100)
-          : 100);
+    const controller = new AbortController();
+    const { signal } = controller;
+    const run = async () => {
+      const nextManifest = await loadManifest(signal);
+      if (!nextManifest || signal.aborted) return;
+      const resources = selectBootstrapResources(nextManifest, window.devicePixelRatio || 1);
+      const totalBytes = resources.reduce((sum, resource) => sum + (resource.size || 0), 0);
+      let settledBytes = 0;
+      setTotalSize(totalBytes);
+      // HTTP / service-worker caches handle repeat visits, even after browser eviction.
+      await loadConcurrent(resources, 5, signal, (resource, error) => {
+        if (error) setLoadingError(prev => prev || '图片加载失败: ' + resource.path);
+        else completedPaths.current.add(resource.path);
+        settledBytes += resource.size || 0;
+        setCurrentFile(resource.path.split('/').pop());
+        setLoadedSize(settledBytes);
+        setLoadingProgress(totalBytes ? Math.min(100, settledBytes / totalBytes * 100) : 100);
       });
-
-      try {
-        localStorage.setItem(CACHE_VERSION_KEY, manifest.version);
-      } catch {
-        // localStorage error, ignore.
-      }
-
-      setSafeIsLoading(false);
-      deferredStageRef.current = getDeferredStage(loadAllThemes, activeExpansionKey);
-      if (!networkProfile.deferMedia) {
-        scheduleDeferredPreload(deferredResources, getDeferredConcurrency(networkProfile));
-        scheduleCardIllustrationIdleDownload();
-      }
+      if (signal.aborted) return;
+      setManifest(nextManifest);
+      setIsLoading(false);
     };
-
-    preloadResources();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeExpansionKey, isLocalPreview, loadAllThemes, networkProfile]);
+    run();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
-    if (isLoading || !manifestRef.current) return;
-    const nextStage = getDeferredStage(loadAllThemes, activeExpansionKey);
-    if (deferredStageRef.current === nextStage) return;
-    if (deferredStageRef.current === 'all') return;
-    deferredStageRef.current = nextStage;
-    if (networkProfile.deferMedia) return;
-    scheduleDeferredPreload(selectDeferredResources(manifestRef.current, loadAllThemes, activeExpansionKey), getDeferredConcurrency(networkProfile));
-  }, [activeExpansionKey, isLoading, loadAllThemes, networkProfile]);
+    if (!manifest || networkProfile.deferMedia) return;
+    const controller = new AbortController();
+    const resources = selectDeferredResources(manifest, loadBattleResources, activeExpansionKey)
+      .filter(resource => !completedPaths.current.has(resource.path));
+    const run = () => loadConcurrent(resources, networkProfile.concurrency, controller.signal, (resource, error) => {
+      if (!error) completedPaths.current.add(resource.path);
+      else console.warn('Deferred resource failed: ' + resource.path, error);
+    });
+    const idle = typeof window.requestIdleCallback === 'function';
+    const timer = idle ? window.requestIdleCallback(run, { timeout: 3000 }) : setTimeout(run, 0);
+    return () => {
+      controller.abort();
+      if (idle) window.cancelIdleCallback(timer);
+      else clearTimeout(timer);
+    };
+  }, [activeExpansionKey, loadBattleResources, manifest, networkProfile]);
 
-  return {
-    isLoading,
-    loadingProgress,
-    loadingError,
-    currentFile,
-    totalSize,
-    loadedSize,
-  };
+  return { isLoading, loadingProgress, loadingError, currentFile, totalSize, loadedSize };
 }

@@ -1,6 +1,6 @@
 {
-  "version": "202038486de60b1e",
-  "generatedAt": "2026-09-23T07:13:35.528Z",
+  "version": "c26bfcf7923fe604",
+  "generatedAt": "2026-09-28T12:54:05.774Z",
   "resources": [
     {
       "path": "/bg.webp",
@@ -175,12 +175,6 @@
       "type": "image",
       "size": 7898,
       "revision": "1271e3afd5281068"
-    },
-    {
-      "path": "/img/card/5afc1b34-a45d-496d-a9fb-e4774617bc7c.png",
-      "type": "image",
-      "size": 2391478,
-      "revision": "d8c90b1e465e7348"
     },
     {
       "path": "/img/card/animated/earth_shadow/frame_00.webp",
@@ -535,12 +529,6 @@
       "type": "image",
       "size": 145436,
       "revision": "fe4aeb634d22e6f5"
-    },
-    {
-      "path": "/img/card/cba5d3a3-b11d-4853-b01d-51451c7b3d92.png",
-      "type": "image",
-      "size": 2284650,
-      "revision": "37c7103ea0a88139"
     },
     {
       "path": "/img/card/highlight/apo.webp",

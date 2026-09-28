@@ -59,7 +59,6 @@ function makeDeps(overrides = {}) {
       addToast: vi.fn(),
       copyRoomIdToClipboard: vi.fn(),
       setFirstBattleStarted: vi.fn(),
-      setOnlineResourcesUnlocked: vi.fn(),
       setMyPlayerIndex: vi.fn((idx) => { state.myPlayerIndex = idx; }),
       myPlayerIndexRef: { current: 0 },
       setIsMultiplayer: vi.fn((value) => { state.isMultiplayer = value; }),
@@ -281,7 +280,6 @@ describe('registerMultiplayerSocketHandlers', () => {
     });
 
     expect(deps.setFirstBattleStarted).toHaveBeenCalledWith(true);
-    expect(deps.setOnlineResourcesUnlocked).toHaveBeenCalledWith(true);
     expect(state.myPlayerIndex).toBe(1);
     expect(deps.myPlayerIndexRef.current).toBe(1);
     expect(state.isMultiplayer).toBe(true);

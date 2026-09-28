@@ -1,4 +1,3 @@
-import { buildPublicUrl } from '../../utils/url';
 import { getCardFlavorText } from '../../constants/cardFlavorText';
 
 // Canonical card-face box used by card backs, flip animation, and hit-testing.
@@ -141,26 +140,6 @@ const CARD_FACE_META_BY_ID = {
   },
 };
 
-export const CARD_FACE_ILLUSTRATION_FILES = [
-  ...Object.values(CARD_FACE_META_BY_ID.zone).map(meta => meta.illustration),
-  ...Object.values(CARD_FACE_META_BY_ID.god).map(meta => meta.illustration),
-  ...Object.values(CARD_FACE_META_BY_ID.inspection).map(meta => meta.illustration),
-  ...Object.values(CARD_FACE_META_BY_ID.token).map(meta => meta.illustration),
-].filter(Boolean);
-
-const decodedIllustrations = new Set();
-const pendingIllustrations = new Map();
-let idleDownloadScheduled = false;
-
-function runWhenIdle(task) {
-  if (typeof window === 'undefined') return;
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(task, { timeout: 3000 });
-    return;
-  }
-  window.setTimeout(task, 0);
-}
-
 export function getCardFaceMeta(card) {
   const flavor = getCardFlavorText(card);
   if (card?.isBlackGoatYoung) return { ...CARD_FACE_META_BY_ID.token.blackGoatYoung, flavor };
@@ -178,45 +157,4 @@ export function getCardFaceMeta(card) {
   const meta = Object.values(CARD_FACE_META_BY_ID.zone).find(item => item.match(card)) || null;
   if (!meta && !flavor) return null;
   return { ...(meta || {}), flavor };
-}
-
-export function isCardIllustrationReady(path) {
-  return !!path && typeof window !== 'undefined' && decodedIllustrations.has(buildPublicUrl(path));
-}
-
-export function loadCardIllustration(path) {
-  if (!path || typeof window === 'undefined') return Promise.resolve(false);
-  const url = buildPublicUrl(path);
-  if (decodedIllustrations.has(url)) return Promise.resolve(true);
-  if (pendingIllustrations.has(url)) return pendingIllustrations.get(url);
-  const promise = new Promise(resolve => {
-    const img = new Image();
-    img.onload = async () => {
-      try {
-        if (img.decode) await img.decode();
-      } catch {
-        // The image can still be painted if decode rejects after load.
-      }
-      decodedIllustrations.add(url);
-      pendingIllustrations.delete(url);
-      resolve(true);
-    };
-    img.onerror = () => {
-      pendingIllustrations.delete(url);
-      resolve(false);
-    };
-    img.src = url;
-  });
-  pendingIllustrations.set(url, promise);
-  return promise;
-}
-
-export function scheduleCardIllustrationIdleDownload(paths = CARD_FACE_ILLUSTRATION_FILES) {
-  if (idleDownloadScheduled || typeof window === 'undefined') return;
-  idleDownloadScheduled = true;
-  runWhenIdle(async () => {
-    for (const path of paths) {
-      await loadCardIllustration(path);
-    }
-  });
 }

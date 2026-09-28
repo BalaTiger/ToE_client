@@ -179,6 +179,15 @@ Important extracted layers:
 - battle screen JSX shell and primary sections -> `src/components/battle/BattleScreen.jsx`, `SelfPlayerPanel.jsx`, `HandArea.jsx`, `BattleDecisionModals.jsx`, `SwapBlindDrawOverlay.jsx`
 - UI appearance preference and asset/layout registry -> `ui/UiAppearance.jsx`, `ui/appearances.js` (usage in `ui/README.md`). 遗迹航路 (`coastal`) is the only shipped layout; removed or unknown IDs fall back to it. The provider, selector, preference storage, asset variables and optional `appearance.BattleLayout` component override remain available for new compositions. `CoastalBattleLayout.jsx` composes the live regions; `CoastalOpponents` and `OpponentRoster` arrange full/compact opponent panels. These components never own HP/SAN or turn state; `logRef` stays on the scrolling log content. Expansion backgrounds, card backs, colors and exploration cameras remain selected by `expansionKey` in `constants/theme.js`, independently of layout.
 
+## Resource loading stages
+
+- `hooks/useResourcePreload.js` blocks entry only on lobby artwork, selecting one 1x/2x start-screen variant. Repeat visits use the HTTP / service-worker cache rather than trusting a localStorage completion flag.
+- After entry, only open/close UI sounds are warmed. Once `gs` exists, shared battle artwork, the current expansion's background/card-back frames and its sound effects are warmed with bounded concurrency. Leaving a match or switching expansion cancels the old queue; completed paths are reused. Data-saving/2G connections skip background warming.
+- `useGameAudio.js` sets `preload="none"` before assigning audio URLs. The active BGM streams through its player; sound effects load on playback or through the current-stage warmer. Audio warming consumes the complete response with a longer timeout than images.
+- `CardFaceImage.jsx` lets native `srcSet`/`sizes` select and asynchronously decode the displayed illustration. Do not restore a prerequisite original-image download or an idle download of every illustration. Rare effects retain their consumer-owned loading and existing scene-specific predecode.
+- `public/sw.js` installs only the small app shell, then caches requested images/fonts/scripts on demand. Do not independently precache the whole resource manifest. Bump its runtime cache version when replacing same-URL assets.
+- Card layout mockups live in `asset_sources/card_layout_samples/`, outside the published `public/` tree.
+
 ## Remaining High-Value Refactor Targets
 
 ### 1. Battle Actions / Turn Flow
