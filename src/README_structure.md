@@ -186,6 +186,7 @@ Important extracted layers:
 - `useGameAudio.js` sets `preload="none"` before assigning audio URLs. The active BGM streams through its player; sound effects load on playback or through the current-stage warmer. Audio warming consumes the complete response with a longer timeout than images.
 - `CardFaceImage.jsx` lets native `srcSet`/`sizes` select and asynchronously decode the displayed illustration. Do not restore a prerequisite original-image download or an idle download of every illustration. Rare effects retain their consumer-owned loading and existing scene-specific predecode.
 - `public/sw.js` installs only the small app shell, then caches requested images/fonts/scripts on demand. Do not independently precache the whole resource manifest. Bump its runtime cache version when replacing same-URL assets.
+- Invalid asset MIME responses get one cache-busting retry. `index.html` can update the worker and reload once if the entry module fails before React starts. `public/404.html` disables Cloudflare Pages' implicit SPA fallback so missing asset URLs cannot become successful HTML responses.
 - Card layout mockups live in `asset_sources/card_layout_samples/`, outside the published `public/` tree.
 
 ## Remaining High-Value Refactor Targets
