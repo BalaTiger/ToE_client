@@ -84,6 +84,33 @@
 }
 [data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque:disabled .toe-turn-label { color: #979382 !important; }
 [data-ui-layout="coastal"] .toe-hand-area[data-hand-composition="coastal"] .toe-turn-plaque:hover:not(:disabled) .toe-turn-label { color: #e5d8bc !important; }
+.toe-action-reason {
+  display: block;
+  position: relative;
+  min-width: 0;
+}
+.toe-action-reason > button:disabled { pointer-events: none; }
+.toe-action-reason:focus-visible { outline: 2px solid #e6d6b6; outline-offset: 2px; }
+.toe-action-reason-tooltip {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  width: max-content;
+  max-width: min(260px, 80vw);
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border: 1px solid #846d49;
+  border-radius: 3px;
+  background: #140e08;
+  color: #e6d6b6;
+  font-family: var(--toe-ui-font, 'Noto Serif SC', serif);
+  line-height: 1.5;
+  white-space: normal;
+  pointer-events: none;
+}
+.toe-action-reason:is(:hover, :focus-within) .toe-action-reason-tooltip { display: block; }
 .toe-hand-area[data-hand-composition="coastal"] > [data-self-hand-strip] {
   grid-column: 2;
   grid-row: 1;

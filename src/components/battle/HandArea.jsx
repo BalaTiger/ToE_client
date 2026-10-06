@@ -8,6 +8,22 @@ import { buildPublicUrl } from '../../utils/url';
 import { ActionIcon } from './ActionIcon';
 import './coastal-hand.css';
 
+const SWAP_REST_HINT = '掉包与休息每回合只能选择一项';
+
+function renderActionHint(button, reason, label, scaleRatio) {
+  if (!reason) return button;
+  return (
+    <span className="toe-action-reason" role="group" tabIndex={0}
+      aria-label={`${label}：本回合不可用。${reason}`}>
+      {button}
+      <span className="toe-action-reason-tooltip" role="tooltip"
+        style={{ fontSize: `calc(${Math.max(12, 12 / scaleRatio)}px / var(--toe-mobile-screen-scale, 1))` }}>
+        {reason}
+      </span>
+    </span>
+  );
+}
+
 export function HandArea({
   handAreaRef,
   skillButtonRef,
@@ -171,6 +187,10 @@ export function HandArea({
                 const restLimited = !!restBlockReason;
                 const skillRestLimited =
                   skillDisabled || (isHunter ? gs.restUsed || gs.multiplyUsed : skillLimited || gs.restUsed || gs.skillUsed || gs.multiplyUsed);
+                const isSwapSkill = effectiveSkillName === '掉包';
+                // Rest consumes both flags; restUsed identifies the action that actually ran.
+                const swapUnavailableByRest = isSwapSkill && gs.restUsed && !skillDisabled && !isBlocked && myTurn && !gs.multiplyUsed;
+                const restUnavailableBySwap = isSwapSkill && restBlockReason === 'skillUsed' && !me.disableRest && myTurn && !gs.multiplyUsed;
                 const hasBgy = me.hand.some(isBlackGoatYoung);
                 const multiplyLimited = gs.skillUsed || gs.restUsed || gs.multiplyUsed;
                 const showTutorialSkillButton = !isScriptedTutorial || isTutorialActionAllowed({ type: 'useSkill' });
@@ -179,7 +199,7 @@ export function HandArea({
                 return (
                   <>
                     <div className="toe-main-actions" role="group" aria-label="回合行动">
-                      {showTutorialSkillButton && (
+                      {showTutorialSkillButton && renderActionHint(
                         <button className="toe-button toe-turn-plaque toe-turn-skill"
                           ref={skillButtonRef}
                           onClick={useAbility}
@@ -188,12 +208,13 @@ export function HandArea({
                           <ActionIcon kind={skillIcon === '☩' ? 'hunt' : skillIcon === '☽' ? 'cult' : 'treasure'} />
                           <span className="toe-turn-label">{effectiveSkillName}
                             {skillRestLimited && (
-                              <small>{skillDisabled ? '技能受限' : gs.restUsed ? '已休息' : '已用'}</small>
+                              <small>{swapUnavailableByRest ? '本回合不可用' : skillDisabled ? '技能受限' : gs.restUsed ? '已休息' : '已用'}</small>
                             )}
                           </span>
-                        </button>
+                        </button>,
+                        swapUnavailableByRest ? SWAP_REST_HINT : null, effectiveSkillName, scaleRatio
                       )}
-                      {showTutorialRestButton && (
+                      {showTutorialRestButton && renderActionHint(
                         <button className="toe-button toe-turn-plaque toe-turn-rest"
                           ref={restButtonRef}
                           onClick={doRest}
@@ -202,10 +223,11 @@ export function HandArea({
                           <ActionIcon kind="rest" />
                           <span className="toe-turn-label">休息
                             {restLimited && (
-                              <small>{restBlockReason === 'disableRest' ? '失眠' : '已用'}</small>
+                              <small>{restUnavailableBySwap ? '本回合不可用' : restBlockReason === 'disableRest' ? '失眠' : '已用'}</small>
                             )}
                           </span>
-                        </button>
+                        </button>,
+                        restUnavailableBySwap ? SWAP_REST_HINT : null, '休息', scaleRatio
                       )}
                       {hasBgy && showTutorialMultiplyButton && (
                         <button className="toe-button toe-turn-plaque toe-turn-multiply"
