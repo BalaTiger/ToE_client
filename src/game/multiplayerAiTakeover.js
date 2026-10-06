@@ -11,6 +11,7 @@ import {
 } from './turnEngine';
 import {
   createHuntRevealEvent,
+  createLogOnlyVisualEvent,
   createTimedOutDrawDiscardEvent,
 } from './visualEvents';
 import { getBestCaveDuelCardIndex } from './caveDuel';
@@ -54,9 +55,27 @@ const CURRENT_TURN_PHASES = new Set([
   'DECIPHER_STONE_CARVING',
 ]);
 
+// Room membership and authority come from the server, independently of the
+// game snapshot. Re-evaluate after every committed decision, including restore.
+export function getMpAiProgressCandidate({ gs, room, playerUUID, myPlayerIndex = 0, blocked = false }) {
+  if (blocked || !gs?._isMP || gs.gameOver || gs.phase === 'GOD_RESURRECTION'
+    || !playerUUID || room?.aiAuthorityUuid !== playerUUID) return null;
+  const count = gs.players?.length || 0;
+  if (!count || room.players?.length !== count) return null;
+  for (let rawIdx = 0; rawIdx < count; rawIdx++) {
+    const seatIdx = (rawIdx - myPlayerIndex + count) % count;
+    if (room.players[rawIdx].isAI && isMpAiTakeoverRelevant(gs, seatIdx)) return seatIdx;
+  }
+  return null;
+}
+
 export function isMpAiTakeoverRelevant(state, takeoverIdx) {
   if (!state || takeoverIdx < 0 || state.gameOver) return false;
   const phase = state.phase;
+  if (phase === 'BURY_ALIVE_SELECT' && Array.isArray(state.abilityData?.buryAliveChoices)
+    && state.abilityData.targets?.every(idx => state.abilityData.buryAliveChoices[idx])) {
+    return state.currentTurn === takeoverIdx;
+  }
   if (state.abilityData?.pendingZoneIncome || ['BURY_ALIVE_SELECT', 'IGNITE_TORCH_DISCARD'].includes(phase)) {
     return getDecisionOwnerSeats(state).includes(takeoverIdx)
       || (['ACTION', 'AI_TURN'].includes(phase) && state.currentTurn === takeoverIdx);
@@ -76,11 +95,11 @@ export function isMpAiTakeoverRelevant(state, takeoverIdx) {
       && (state.abilityData.drawerIdx ?? state.currentTurn) === takeoverIdx;
   }
   if (phase === 'HUNT_WAIT_REVEAL') {
-    return state.currentTurn === takeoverIdx
-      || state.abilityData?.huntTi === takeoverIdx;
+    return state.abilityData?.huntTi === takeoverIdx;
   }
   if (
-    phase === 'ETHEREALIZE_DECISION'
+    phase === 'TSG_SLIME_BALANCE'
+    || phase === 'ETHEREALIZE_DECISION'
     || phase === 'ETHEREALIZE_SELECT_TARGET'
   ) {
     return state.abilityData?.targetIdx === takeoverIdx;
@@ -89,9 +108,7 @@ export function isMpAiTakeoverRelevant(state, takeoverIdx) {
     return state.currentTurn === takeoverIdx;
   }
   if (phase === 'CAVE_DUEL_SELECT_CARD' || phase === 'CAVE_DUEL_WAIT_REVEAL') {
-    const abilityData = state.abilityData || {};
-    return abilityData.caveDuelSource === takeoverIdx
-      || abilityData.caveDuelTarget === takeoverIdx;
+    return getDecisionOwnerSeats(state).includes(takeoverIdx);
   }
   return CURRENT_TURN_PHASES.has(phase)
     && state.currentTurn === takeoverIdx;
@@ -293,7 +310,7 @@ function resolveTakeoverBury(state, takeoverIdx) {
   if (simultaneous) {
     ad.buryAliveChoices = [...ad.buryAliveChoices];
     const card = next.players[takeoverIdx]?.hand?.[0];
-    ad.buryAliveChoices[takeoverIdx] = { cardId: card?.id, cardIndex: 0 };
+    if (!ad.buryAliveChoices[takeoverIdx]) ad.buryAliveChoices[takeoverIdx] = { cardId: card?.id, cardIndex: 0 };
     if (targets.some(index => !ad.buryAliveChoices[index] && next.players[index]?.hand?.length)) return next;
   }
   const resolving = simultaneous ? targets : [targets[ad.targetIndex || 0]];
@@ -419,22 +436,19 @@ function resolveMpAiTakeoverDecision(
       const revealedCard = hand.find(canRevealForHunt);
       if (!revealedCard) {
         const hunterIdx = sourceState.currentTurn ?? 0;
+        const message = `(AI接管) ${actorName} 没有可亮出的暗牌，追捕失败`;
         const skipped = {
           ...sourceState,
           log: [
             ...(sourceState.log || []),
-            `(AI接管) ${actorName} 没有可亮出的暗牌，追捕失败`,
+            message,
           ],
           phase: 'ACTION',
           abilityData: {},
           currentTurn: hunterIdx,
+          _visualEvents: [...(sourceState._visualEvents || []), createLogOnlyVisualEvent({ msgs: [message] })],
         };
-        return finishMpAiTakeoverTurn(
-          skipped,
-          sourceState,
-          hunterIdx,
-          getHandLimitForPlayer
-        );
+        return skipped;
       }
       const message = `(AI接管) ${actorName} 亮出 ${cardLogText(
         revealedCard,

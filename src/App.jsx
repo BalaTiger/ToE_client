@@ -161,6 +161,7 @@ import {
   requestZhuReveal,
   resolveMpTimeoutToAction,
   resolveMpAiTakeoverState,
+  getMpAiProgressCandidate,
   buildStatEvents,
   createPlayerDefeatedStatEvent,
   statEventsToAnimQueue,
@@ -910,20 +911,21 @@ export default function Game(){
 
   function handleMpAiTakeover(payload){
     if(!payload||payload.authorityUuid!==playerUUIDRef.current)return;
+    if(roomModalRef.current?.aiAuthorityUuid!==playerUUIDRef.current)return;
     if(!isMultiplayerRef.current)return;
     const latest=latestGsRef.current;
     if(latest?.gameOver||latest?.phase==='GOD_RESURRECTION')return;
-    if(isMpReplayBusy()){
+    if(isMpReplayBusy()||pendingMpRawQueueRef.current.length>0||pendingMpLatestStateRawRef.current){
       pendingMpAiTakeoverRef.current=payload;
       return;
     }
-    const sourceGs=payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):latestGsRef.current;
+    const sourceGs=latest||(payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):null);
     const takeoverIdx=rotateRawSeatIndex(payload.playerIndex,sourceGs);
     const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx,{
       getHandLimitForPlayer,
       resolveCaveDuelState,
     });
-    if(!nextGs)return;
+    if(!nextGs||nextGs===sourceGs)return;
     const roomId=payload.roomId||roomModalRef.current?.roomId;
     const rawNextGs=derotateGs(nextGs,myPlayerIndexRef.current);
     if(socketRef.current?.connected&&roomId){
@@ -1424,11 +1426,24 @@ export default function Game(){
   useEffect(()=>{
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
     const pendingTakeover=pendingMpAiTakeoverRef.current;
-    if(!pendingTakeover)return;
-    pendingMpAiTakeoverRef.current=null;
-    handleMpAiTakeover(pendingTakeover);
+    if(pendingTakeover){
+      pendingMpAiTakeoverRef.current=null;
+      handleMpAiTakeover(pendingTakeover);
+      return;
+    }
+    const takeoverIdx=getMpAiProgressCandidate({
+      gs,room:roomModal,playerUUID,myPlayerIndex:myPlayerIndexRef.current,
+      blocked:gameOverPresentationFrozenRef.current||!isMultiplayerRef.current
+        ||pendingMpRawQueueRef.current.length>0||!!pendingMpLatestStateRawRef.current,
+    });
+    if(takeoverIdx==null)return;
+    const N=gs.players.length;
+    handleMpAiTakeover({
+      roomId:roomModal.roomId,authorityUuid:playerUUID,
+      playerIndex:(takeoverIdx+myPlayerIndexRef.current)%N,
+    });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
+  },[roleRevealAnim,anim,animExiting,gs,roomModal,playerUUID]);
 
   const latestHoundsInspectionSeq=useMemo(()=>{
     const events=(gs?._visualEvents||[]).filter(event=>event?.type===VISUAL_EVENT.INSPECTION);
@@ -5875,7 +5890,6 @@ export default function Game(){
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.pendingInspectionContinuation?.targets?.length){
       const pendingContinuation=nextGs.abilityData.pendingInspectionContinuation;
-      const beforeContinuationPlayers=copyPlayers(nextGs.players||[]);
       const beforeContinuationLog=[...(Array.isArray(nextGs.log)?nextGs.log:[])];
       const oldInspectionSeq=nextGs._inspectionSeq??gs._inspectionSeq??0;
       const continuationMeta=makeInspectionMeta(nextGs);
@@ -5892,11 +5906,10 @@ export default function Game(){
       // 续播的检定已在 continuationQueue 中播放，标记为已见，避免自动检定 useEffect 再重播一次
       if(freshInspectionEvents.length)markInspectionEventsSeen(freshInspectionEvents);
       const continuationQueue=freshInspectionEvents.length
-        ? buildInspectionEventFlow(
-          {players:beforeContinuationPlayers,log:beforeContinuationLog},
-          freshInspectionEvents,
-          {compileFreshVisualEventQueue,copyPlayers}
-        ).queue
+        ? compileFreshVisualEventQueue(nextGs,{
+          ...nextGs,...processed.inspectionMeta,
+          players:processed.P,deck:processed.D,discard:processed.Disc,log:processed.log,
+        })
         : [];
       const {pendingInspectionContinuation: _pendingInspectionContinuation, ...restAbilityData}=nextGs.abilityData||{};
       const nextAbilityData=processed.inspectionMeta.abilityData?.type
@@ -6222,7 +6235,7 @@ export default function Game(){
       }]:[]),
       statePatchStep({players:preInspectionGs.players})
     ]:[];
-    let finalNextGs={...nextGs,abilityData:buildTargetContinuationAbilityData({...abilityData,pendingSanInspection:null}),...(win?{gameOver:win}:{})};
+    let finalNextGs={...nextGs,...(win?{gameOver:win}:{})};
     if(!win&&(abilityData._pendingTurnStartPoison||abilityData._pendingTurnStartLinkHeals)){
       finalNextGs=continueTurnStartAfterDamageReaction(finalNextGs);
       if(finalNextGs.phase==='TSG_SLIME_BALANCE'){

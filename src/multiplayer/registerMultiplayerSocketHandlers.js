@@ -115,13 +115,13 @@ export function registerMultiplayerSocketHandlers({
     setRoomModal({ roomId, owner, isPrivate, players, count: count || 1, max: max || 12, countdown: countdown || null });
   });
 
-  socket.on('roomUpdated', ({ roomId, owner, isPrivate, players, count, max, countdown }) => {
+  socket.on('roomUpdated', ({ roomId, owner, isPrivate, aiAuthorityUuid, players, count, max, countdown }) => {
     if (leavingRoomRef.current) return;
     setMultiLoading(false);
     setOnlineOptionsModal(false);
     setRoomModal(prev => prev
-      ? { ...prev, roomId, owner, isPrivate, players, count: count ?? prev.count, max: max ?? prev.max, countdown: countdown !== undefined ? countdown : prev.countdown }
-      : { roomId, owner, isPrivate, players, count: count || players.length, max: max || 12, countdown: countdown || null });
+      ? { ...prev, roomId, owner, isPrivate, aiAuthorityUuid, players, count: count ?? prev.count, max: max ?? prev.max, countdown: countdown !== undefined ? countdown : prev.countdown }
+      : { roomId, owner, isPrivate, aiAuthorityUuid, players, count: count || players.length, max: max || 12, countdown: countdown || null });
   });
 
   socket.on('joinError', ({ msg }) => {
@@ -205,6 +205,7 @@ export function registerMultiplayerSocketHandlers({
     roomId,
     owner,
     isPrivate,
+    aiAuthorityUuid,
     players,
     count,
     max,
@@ -220,6 +221,7 @@ export function registerMultiplayerSocketHandlers({
       roomId,
       owner,
       isPrivate: !!isPrivate,
+      aiAuthorityUuid,
       players: safePlayers,
       count: count ?? safePlayers.length,
       max: max || 12,
