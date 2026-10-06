@@ -108,6 +108,7 @@ import {
   ROLE_HUNTER,
   ROLE_CULTIST,
   compileFreshVisualEventQueue,
+  compileVisualEventToAnimSteps,
   buildFullHandSwapTransferQueueFromLogs,
   withClearedTurnAnimFields,
   withClearedReplayAnimFields,
@@ -774,6 +775,7 @@ export default function Game(){
   const mpOpeningRoleRevealPendingRef=useRef(false); // 开局角色揭示期间忽略重复首帧同步，避免抢跑首回合动画
   const pendingMpRawQueueRef=useRef([]); // 动画播放中收到的公共动画同步包，按顺序落地
   const pendingMpLatestStateRawRef=useRef(null); // 动画播放中收到的普通状态同步包，只保留最新
+  const recentMpAnimatedRawSignaturesRef=useRef([]); // 同一局最近已接收的完整动画包，覆盖排队、播放和消费后的重复入站
   const mpTurnExpiredRef=useRef(false); // 回合倒计时归零后保持到自动结束真正执行，避免动作动画期间丢失
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const endTurnSeqRef=useRef(null); // Phase C：当前回合结束事件序列 {events,cursor}。回合结束严格串行，故全局唯一；存于 ref 而非 state，跨决策重建不丢、不入联机广播。
@@ -819,6 +821,7 @@ export default function Game(){
     consumedVisualEventIdsRef.current=new Set();
     pendingMpRawQueueRef.current=[];
     pendingMpLatestStateRawRef.current=null;
+    recentMpAnimatedRawSignaturesRef.current=[];
     setGs(null);
   }
   function leaveMultiplayerMatchToStart(){
@@ -837,6 +840,7 @@ export default function Game(){
     consumedVisualEventIdsRef.current=new Set();
     pendingMpRawQueueRef.current=[];
     pendingMpLatestStateRawRef.current=null;
+    recentMpAnimatedRawSignaturesRef.current=[];
     gameEndSentRef.current=false;
     closeRoomModal();
     setGs(null);
@@ -892,6 +896,7 @@ export default function Game(){
         consumedVisualEventIdsRef,
         pendingMpRawQueueRef,
         pendingMpLatestStateRawRef,
+        recentMpAnimatedRawSignaturesRef,
         receivedGsRef,
         animQueueRef,
         pendingGsRef,
@@ -1420,6 +1425,7 @@ export default function Game(){
     if(gameOverPresentationFrozenRef.current||!isMultiplayerRef.current){
       pendingMpRawQueueRef.current=[];
       pendingMpLatestStateRawRef.current=null;
+      recentMpAnimatedRawSignaturesRef.current=[];
       return;
     }
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
@@ -1553,6 +1559,7 @@ export default function Game(){
       pendingGsRef,
       pendingMpRawQueueRef,
       pendingMpLatestStateRawRef,
+      recentMpAnimatedRawSignaturesRef,
       setAnimExiting,
       clearDamageAnimations,
       setAnim,
@@ -1603,6 +1610,7 @@ export default function Game(){
     clearBattleAnimationState();
     pendingMpRawQueueRef.current=[];
     pendingMpLatestStateRawRef.current=null;
+    recentMpAnimatedRawSignaturesRef.current=[];
     pendingMpAiTakeoverRef.current=null;
     mpOpeningRoleRevealPendingRef.current=false;
     setRoleRevealAnim(null);
@@ -4490,6 +4498,14 @@ export default function Game(){
     triggerAnimQueue(playQueue,state,callback,{...AUTHORITATIVE_QUEUE_META,preserveQueueOrder:true});
   }
 
+  function broadcastEndTurnReplayPresentation(state,queue){
+    const pendingGs=broadcastEndTurnReplaySyncDelta(state);
+    const existingIds=new Set((state?._visualEvents||[]).map(event=>event.id));
+    const replayEvent=(pendingGs?._visualEvents||[]).find(event=>event.type===VISUAL_EVENT.ENDLESS_CORRIDOR_REPLAY&&!existingIds.has(event.id));
+    // 用同一包装事件为尚无归属的步骤补上 ID；已登记的检定和伤害事件保留自己的 ID。
+    return {pendingGs,queue:replayEvent?compileVisualEventToAnimSteps(replayEvent,pendingGs):queue};
+  }
+
   function beginEndTurnReplay(baseGs,P,D,Disc,L,preQueue=[]){
     // 回合结束事件排序：黄液(蟾蜍之神)属神牌事件，应先于"无尽通道"(其他卡牌)结算。
     // 故在无尽通道重播前先发放黄液并把其动画排到队首；并打标记让 startNextTurn 不再重复发放。
@@ -4512,8 +4528,8 @@ export default function Game(){
     const queue=[...slimePreQueue,...preQueue,endlessCorridorTunnelStep()];
     appendEndTurnReplaySyncQueue(queue,nextState.log?.slice((baseGs.log||[]).length)||[]);
     // 提前广播初始无尽通道动画，让远端同步开始播放
-    if(nextState._isMP)broadcastEndTurnReplaySyncDelta(nextState);
-    triggerAnimQueue(queue,nextState,()=>continueEndTurnReplay(nextState),authoritativeEndTurnReplayQueueMeta(nextState,queue,consumedVisualEventIdsRef.current));
+    const presentation=broadcastEndTurnReplayPresentation(nextState,queue);
+    triggerAnimQueue(presentation.queue,presentation.pendingGs,()=>continueEndTurnReplay(presentation.pendingGs),authoritativeEndTurnReplayQueueMeta(presentation.pendingGs,presentation.queue,consumedVisualEventIdsRef.current));
     return true;
   }
 
@@ -4521,7 +4537,6 @@ export default function Game(){
     if(!stateLike?._endTurnReplay)return false;
     const replay=stateLike._endTurnReplay;
     let P=copyPlayers(stateLike.players||[]);
-    const broadcastEndTurnReplayDecisionState=decisionState=>broadcastEndTurnReplaySyncDelta(decisionState);
     const currentReplay=getCurrentEndTurnReplayCard({...stateLike,players:P});
     if(currentReplay){
       const {actorIndex,index,card}=currentReplay;
@@ -4553,8 +4568,8 @@ export default function Game(){
         const statQ=bindAnimLogChunks(compileFreshVisualEventQueue(stateLike,newGs),{statLogs:split.stat});
         const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
-        const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
-        triggerAnimQueue(queue,pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,queue,consumedVisualEventIdsRef.current));
+        const presentation=broadcastEndTurnReplayPresentation(newGs,queue);
+        triggerAnimQueue(presentation.queue,presentation.pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(presentation.pendingGs,presentation.queue,consumedVisualEventIdsRef.current));
         return true;
       }
       const zoneDraw=buildEndTurnReplayZoneDraw({stateLike,players:P,replay,actorIndex,index,card,actorName:P[actorIndex]?.name||'你'});
@@ -4590,13 +4605,13 @@ export default function Game(){
         const effectQueue=bindAnimLogChunks(compileFreshVisualEventQueue(zoneDraw.state,newGs),splitAnimBoundLogs(L.slice((stateLike.log||[]).length)));
         const queue=[zoneDraw.drawStep,...effectQueue,statePatchStep({players:P,deck:D,discard:Disc,log:L,phase:newGs.phase,drawReveal:newGs.drawReveal,abilityData:newGs.abilityData})];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
-        const pendingGs=broadcastEndTurnReplayDecisionState(newGs,queue,L.slice((stateLike.log||[]).length));
-        triggerAnimQueue(queue,pendingGs,()=>{if(pendingGs.phase==='ACTION'&&!pendingGs.gameOver)continueEndTurnReplay(pendingGs);},authoritativeEndTurnReplayQueueMeta(pendingGs,queue,consumedVisualEventIdsRef.current));
+        const presentation=broadcastEndTurnReplayPresentation(newGs,queue);
+        triggerAnimQueue(presentation.queue,presentation.pendingGs,()=>{if(presentation.pendingGs.phase==='ACTION'&&!presentation.pendingGs.gameOver)continueEndTurnReplay(presentation.pendingGs);},authoritativeEndTurnReplayQueueMeta(presentation.pendingGs,presentation.queue,consumedVisualEventIdsRef.current));
         return true;
       }
       appendEndTurnReplaySyncQueue([zoneDraw.drawStep],zoneDraw.drawStep.msgs);
-      const pendingGs=broadcastEndTurnReplayDecisionState(zoneDraw.state,[zoneDraw.drawStep],zoneDraw.drawStep.msgs);
-      triggerAnimQueue([zoneDraw.drawStep],pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(pendingGs,[zoneDraw.drawStep],consumedVisualEventIdsRef.current));
+      const presentation=broadcastEndTurnReplayPresentation(zoneDraw.state,[zoneDraw.drawStep]);
+      triggerAnimQueue(presentation.queue,presentation.pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(presentation.pendingGs,presentation.queue,consumedVisualEventIdsRef.current));
       return true;
     }
     const cleaned=buildEndTurnReplayFinishedState({stateLike,players:P});
@@ -5523,7 +5538,11 @@ export default function Game(){
     const discardQueueMeta=dr.fromEndTurnReplay
       ?authoritativeEndTurnReplayQueueMeta(newGs,queue,consumedVisualEventIdsRef.current)
       :strictActionQueueMeta(newGs,queue,consumedVisualEventIdsRef.current,'draw discard');
-    if(dr.fromEndTurnReplay)appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],nextLog.slice(gs.log.length));
+    if(dr.fromEndTurnReplay){
+      appendEndTurnReplaySyncQueue([...queue,statePatchStep({players:P,discard:nextDiscard})],nextLog.slice(gs.log.length));
+      // 此次弃牌已在本地播放；先发送它的增量，后续摸牌包装不能再次包含这段动画。
+      broadcastEndTurnReplaySyncDelta(newGs);
+    }
     else if(newGs._isMP)broadcastAnimTransaction(newGs,queue,{context:'drawDiscard',barrier:'continuation',msgs:[discardLog],beforePlayers:gs.players,beforeDiscard:gs.discard});
     // CTH fromRest: after discarding, process remaining draws then advance turn
     if(balanceDecision?.phase){
@@ -6905,6 +6924,7 @@ export default function Game(){
       setRoleRevealAnim(null);
       pendingMpRawQueueRef.current=[];
       pendingMpLatestStateRawRef.current=null;
+      recentMpAnimatedRawSignaturesRef.current=[];
       consumedVisualEventIdsRef.current=new Set();
       mpRoleRevealedRef.current=true;
       mpOpeningRoleRevealPendingRef.current=false;

@@ -171,6 +171,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
       queueLifecycleRef: { current: { phase: 'playing', previousPhase: null } },
       consumedVisualEventIdsRef: { current: new Set(['old-event']) },
       pendingMpRawQueueRef: { current: [pending] }, pendingMpLatestStateRawRef: { current: pending },
+      recentMpAnimatedRawSignaturesRef: { current: ['old'] },
       pendingMpAiTakeoverRef: { current: pending }, mpOpeningRoleRevealPendingRef: { current: true },
       endTurnSeqRef: { current: { events: ['old'] } }, latestGsRef: { current: pending },
       roseThornPrevRef: { current: {} },
@@ -193,6 +194,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
     context.returnToMainMenu();
     expect(context.setGs).toHaveBeenCalledWith(null);
     expect(context.pendingGsRef.current).toBeNull();
+    expect(context.recentMpAnimatedRawSignaturesRef.current).toEqual([]);
     expect(context.pendingVisualEventIdsRef.current).toEqual([]);
     expect(context.endTurnSeqRef.current).toBeNull();
     expect(context.latestGsRef.current).toBeNull();

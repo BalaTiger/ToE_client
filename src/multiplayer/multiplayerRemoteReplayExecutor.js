@@ -18,6 +18,37 @@ const ANIMATED_REPLAY_TYPES = new Set([
   MP_REMOTE_REPLAY.ANIM_QUEUE,
 ]);
 
+// Socket.IO preserves delivery order on this connection. A new animated full
+// snapshot supersedes the earlier plain snapshot, while subsequent plain
+// decisions must remain after the FIFO replay. Remember only exact animated
+// packets so a duplicate cannot retire that later decision. There is no wire
+// sequence number: phases and turn numbers cannot determine packet freshness.
+const RECENT_ANIMATED_RAW_LIMIT = 16;
+
+function getWireValueSignature(value) {
+  // Canonical JSON matches wire values even when object keys are reordered.
+  // Store bounded strings rather than mutable snapshots or lossy hashes.
+  return JSON.stringify(value, (_key, value) => (
+    value && typeof value === 'object' && !Array.isArray(value)
+      ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]]))
+      : value
+  ));
+}
+
+function getAnimatedRawSignature(rawState) {
+  return getVisualEventIdsFromState(rawState).length
+    ? getWireValueSignature(rawState)
+    : null;
+}
+
+function rememberAnimatedRawSignature(signature, context) {
+  if (!signature || !context.recentMpAnimatedRawSignaturesRef) return;
+  const recent = context.recentMpAnimatedRawSignaturesRef.current || [];
+  context.recentMpAnimatedRawSignaturesRef.current = [
+    ...recent.slice(-(RECENT_ANIMATED_RAW_LIMIT - 1)), signature,
+  ];
+}
+
 export function isMultiplayerReplayBusy({
   roleRevealAnim,
   anim,
@@ -84,6 +115,7 @@ export function getMultiplayerReplayStateSignature(state) {
 
 function enqueuePendingRawState(rawState, replayAction, context) {
   if (ANIMATED_REPLAY_TYPES.has(replayAction?.type)) {
+    context.pendingMpLatestStateRawRef.current = null;
     context.pendingMpRawQueueRef.current = [
       ...context.pendingMpRawQueueRef.current,
       rawState,
@@ -225,12 +257,27 @@ export function processIncomingMultiplayerStateSync({
       <= (previousState.log?.length || 0)
     && getMultiplayerReplayStateSignature(rotatedState)
       === getMultiplayerReplayStateSignature(previousState)
+    // Same phase/log length is insufficient for decision snapshots: a new
+    // prompt or revealed card can share already-consumed visual event IDs.
+    // Compare complete wire decision values; allow the planner to apply them
+    // without replaying those consumed events.
+    && getWireValueSignature(rotatedState.abilityData || {})
+      === getWireValueSignature(previousState.abilityData || {})
+    && getWireValueSignature(rotatedState.drawReveal || null)
+      === getWireValueSignature(previousState.drawReveal || null)
   ) {
     return 'ignored';
   }
   if (
     context.mpOpeningRoleRevealPendingRef.current
     && !rotatedState.gameOver
+  ) {
+    return 'ignored';
+  }
+  const incomingSignature = allowBuffer ? getAnimatedRawSignature(rawState) : null;
+  if (
+    incomingSignature
+    && context.recentMpAnimatedRawSignaturesRef?.current?.includes(incomingSignature)
   ) {
     return 'ignored';
   }
@@ -242,19 +289,26 @@ export function processIncomingMultiplayerStateSync({
     buildFullHandSwapTransferQueueFromLogs,
     consumedVisualEventIds: context.consumedVisualEventIdsRef.current,
   });
+  if (allowBuffer && ANIMATED_REPLAY_TYPES.has(replayAction?.type)) {
+    rememberAnimatedRawSignature(incomingSignature, context);
+  }
   if (
     allowBuffer
-    && isMultiplayerReplayBusy({
+    && (context.pendingMpRawQueueRef.current.length > 0 || isMultiplayerReplayBusy({
       roleRevealAnim,
       anim,
       animExiting,
       animQueueRef: context.animQueueRef,
       pendingGsRef: context.pendingGsRef,
-    })
+    }))
   ) {
     enqueuePendingRawState(rawState, replayAction, context);
     return 'buffered';
   }
+  // This is a newer direct delivery, not our own replay drain. Any earlier
+  // cached plain snapshot has been superseded. Draining must preserve the
+  // later plain decision which arrived after the queued animated packet.
+  if (allowBuffer) context.pendingMpLatestStateRawRef.current = null;
   context.receivedGsRef.current = true;
   context.animQueueRef.current = [];
   context.pendingGsRef.current = null;

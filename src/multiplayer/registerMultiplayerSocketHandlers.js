@@ -44,6 +44,7 @@ export function registerMultiplayerSocketHandlers({
   pendingGsRef,
   pendingMpRawQueueRef,
   pendingMpLatestStateRawRef,
+  recentMpAnimatedRawSignaturesRef,
   setAnimExiting,
   clearDamageAnimations,
   setAnim,
@@ -167,6 +168,9 @@ export function registerMultiplayerSocketHandlers({
     mpRoleRevealedRef.current = false;
     mpOpeningRoleRevealPendingRef.current = false;
     consumedVisualEventIdsRef.current = new Set();
+    if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];
+    if (pendingMpLatestStateRawRef) pendingMpLatestStateRawRef.current = null;
+    if (recentMpAnimatedRawSignaturesRef) recentMpAnimatedRawSignaturesRef.current = [];
     mpAiTakeoverSeqRef.current = 0;
     pendingMpAiTakeoverRef.current = null;
     gameEndSentRef.current = false;
@@ -245,6 +249,7 @@ export function registerMultiplayerSocketHandlers({
     pendingGsRef.current = null;
     if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];
     if (pendingMpLatestStateRawRef) pendingMpLatestStateRawRef.current = null;
+    if (recentMpAnimatedRawSignaturesRef) recentMpAnimatedRawSignaturesRef.current = [];
     setAnimExiting(false);
     clearDamageAnimations();
     setAnim(null);

@@ -120,6 +120,7 @@ describe('leaving a match during queued playback', () => {
         consumedVisualEventIdsRef: { current: new Set() },
         pendingMpRawQueueRef: { current: [nextGs] },
         pendingMpLatestStateRawRef: { current: nextGs },
+        recentMpAnimatedRawSignaturesRef: { current: ['old'] },
         pendingMpAiTakeoverRef: { current: nextGs },
         mpOpeningRoleRevealPendingRef: { current: true },
         isMultiplayerRef: { current: true },
@@ -182,6 +183,7 @@ describe('leaving a match during queued playback', () => {
       expect(canFireAnimationCue(playback.queueLifecycleRef.current, 'advance')).toBe(false);
       expect(context.pendingMpRawQueueRef.current).toEqual([]);
       expect(context.pendingMpLatestStateRawRef.current).toBeNull();
+      expect(context.recentMpAnimatedRawSignaturesRef.current).toEqual([]);
       expect(context.endTurnSeqRef.current).toBeNull();
       expect(context.setRoleRevealAnim).toHaveBeenCalledWith(null);
 
