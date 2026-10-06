@@ -125,6 +125,10 @@ function orderTurnStartVisualEvents(events = []) {
   };
   events.forEach(event => {
     if (event?.turnStartStage) {
+      if (stagedGroup.length && event.turnKey != null
+        && stagedGroup.at(-1).turnKey != null && event.turnKey !== stagedGroup.at(-1).turnKey) {
+        flushStagedGroup();
+      }
       stagedGroup.push(event);
       return;
     }
@@ -523,7 +527,9 @@ function compileVisualEventSteps(event, state, previousState = null, options = {
     case VISUAL_EVENT.GOD_GIFT_KEEP:
       return buildGodGiftKeepSteps(event);
     case VISUAL_EVENT.TURN_START:
-      return [buildTurnStartStepFromVisualEvents(isolated)].filter(Boolean);
+      return [buildTurnStartStepFromVisualEvents({
+        ...isolated, currentTurn: event.playerIdx ?? isolated?.currentTurn,
+      })].filter(Boolean);
     case VISUAL_EVENT.DECK_RESHUFFLE:
       return [buildDeckReshuffleStepFromVisualEvent(event)].filter(Boolean);
     case VISUAL_EVENT.DRAW_CARD:

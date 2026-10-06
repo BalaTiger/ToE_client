@@ -1551,6 +1551,8 @@ export default function Game(){
       gameOverPresentationFrozenRef,
       animQueueRef,
       pendingGsRef,
+      pendingMpRawQueueRef,
+      pendingMpLatestStateRawRef,
       setAnimExiting,
       clearDamageAnimations,
       setAnim,
@@ -5701,11 +5703,20 @@ export default function Game(){
     });
     if(slimeDecision)nextGs={...nextGs,phase:'TSG_SLIME_BALANCE',abilityData:slimeDecision};
     const win=slimeDecision?null:checkWin(players,gs._isMP);
-    if(win)nextGs={...nextGs,phase:'ACTION',abilityData:buildTargetContinuationAbilityData(abilityData),gameOver:win};
-    const queueWithStats=queue.length?queue:compileFreshVisualEventQueue(gs,{...gs,players,deck,discard,log,...extraPatch});
-    const queueWithPatch=queueWithStats.length
-      ?[...queueWithStats,statePatchStep({players,deck,discard,log,...extraPatch})]
+    if(win)nextGs={...nextGs,phase:'ACTION',gameOver:win};
+    const cancelledGod=abilityData.pendingGodChoice?.godCard;
+    const cancelledDrawer=abilityData.pendingGodChoice?.drawerIdx??abilityData.pendingGodChoice?.playerIndex??turnOwner;
+    const cancelledGodQueue=cancelledGod&&players[cancelledDrawer]?.isDead
+      ?compileFreshVisualEventQueue(gs,nextGs).filter(step=>step.type==='DISCARD'&&step.card?.id===cancelledGod.id)
+      :[];
+    const queueWithStats=queue.length?[...queue,...cancelledGodQueue]:compileFreshVisualEventQueue(gs,nextGs);
+    let queueWithPatch=queueWithStats.length
+      ?[...queueWithStats,statePatchStep({players:nextGs.players,deck:nextGs.deck,discard:nextGs.discard,
+        log:nextGs.log,...extraPatch,_visualEvents:nextGs._visualEvents,phase:nextGs.phase,abilityData:nextGs.abilityData})]
       :queueWithStats;
+    if(win&&cancelledGod&&players[cancelledDrawer]?.isDead&&queueWithPatch.length){
+      queueWithPatch=queueWithPatch.map((step,index)=>({...step,terminalBoundary:index===queueWithPatch.length-1}));
+    }
     finishTargetContinuation({
       queue:queueWithPatch,
       nextGs,
@@ -5794,6 +5805,16 @@ export default function Game(){
     const settleQueue=losses.length
       ?compileFreshVisualEventQueue(gs,{...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMetaFields})
       :[];
+    if(abilityData.pendingGodChoice?.godCard&&inspectionMeta.abilityData?.type==='etherealizeRedirect'){
+      // Encounter SAN can reveal an inspection with its own pending HP loss.
+      // Finish that registered reaction before restoring the god response.
+      const pendingDecision={...buildTargetContinuationAbilityData(abilityData),
+        ...inspectionMeta.abilityData,pendingGodChoice:abilityData.pendingGodChoice,_turnOwner:turnOwner};
+      const nextGs={...gs,players:P,deck:D,discard:Disc,log:L,...inspectionMetaFields,
+        phase:'ETHEREALIZE_DECISION',abilityData:pendingDecision};
+      finishTargetContinuation({queue:[...preQueue,...settleQueue],nextGs});
+      return;
+    }
     finishEtherealizeDecision({
       players:P,
       deck:D,
@@ -5993,6 +6014,12 @@ export default function Game(){
       context:'zoneEffectIncome',barrier:continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION?'decision':'continuation',
       msgs:nextGs.log.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
+    if(continuationRoute===TARGET_CONTINUATION_ROUTE.ADVANCE_DEAD_TURN){
+      const advance=()=>applyNextTurnGs(startNextTurn(nextGs));
+      if(queue.length)triggerAnimQueue(queue,null,advance,continuationMeta);
+      else advance();
+      return;
+    }
     if(continuationRoute===TARGET_CONTINUATION_ROUTE.REST_DRAW){
       // AI 座位（单机 AI 对手）在梦访拉莱耶摸牌途中触发决策（如穴居人战争）后，
       // 交还给 aiStep 续跑剩余摸牌，而不是用座位0的本地续跑逻辑。
@@ -6269,7 +6296,11 @@ export default function Game(){
     const finalDeathQueue=!inspected&&finalDeathEvents.length
       ?statEventsToAnimQueue(finalDeathEvents,beforeFinalDeathPlayers,L.slice(gs.log.length))
       :[];
-    const queue=[...slimeQueue,...inspectionReplay.queue,...finalDeathQueue];
+    let queue=[...slimeQueue,...inspectionReplay.queue,...finalDeathQueue];
+    if(win&&P[abilityData.pendingGodChoice?.drawerIdx??abilityData.pendingGodChoice?.playerIndex??targetIdx]?.isDead
+      &&abilityData.pendingGodChoice?.godCard&&queue.length){
+      queue=queue.map((step,index)=>({...step,terminalBoundary:index===queue.length-1}));
+    }
     if(!abilityData.pendingZoneIncome&&!broadcastSlimeTransaction(finalNextGs,queue,finalNextGs.log.slice(gs.log.length))&&finalNextGs._isMP)broadcastMpStateBeforeLocalReplay(finalNextGs);
     finishTargetContinuation({
       queue,
@@ -9261,6 +9292,17 @@ export default function Game(){
     try{ if((newGs?._visualEvents||[]).some(e=>e?.type==='earthquake')||newGs?.drawReveal?.card?.type==='allDiscard') console.log('[EQ-DEBUG] applyNextTurnGs: currentTurn=',newGs.currentTurn,'phase=',newGs.phase,'drawCard=',newGs?.drawReveal?.card?.name,'visualEvents=',(newGs._visualEvents||[]).map(e=>e?.type)); }catch{ /* noop */ }
     // Guard: never overwrite win/pending-win state
     if(newGs&&(newGs.phase==='PLAYER_WIN_PENDING'||newGs.phase==='TREASURE_WIN'))return setGs(p=>p?.gameOver||p?.phase==='PLAYER_WIN_PENDING'||p?.phase==='TREASURE_WIN'?p:newGs);
+    if(newGs?.gameOver&&newGs.players?.[newGs.currentTurn]?.isDead
+      &&(newGs._visualEvents||[]).some(event=>event.type===VISUAL_EVENT.GOD_GIFT_DISCARD)){
+      const replay=buildActorTurnStartReplay(newGs,{oldGs:gs,effectOldGs:gs});
+      if(replay?.queue?.length){
+        if(replay.visualLock)visualStateLocks.lock(replay.visualLock);
+        broadcastAnimTransaction(newGs,replay.queue,{context:'turnStartDraw',barrier:'terminal',
+          msgs:newGs.log.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard});
+        submitTurnStartPresentation(replay.queue,newGs,undefined,'fatal god encounter');
+        return;
+      }
+    }
     // Animate CTH rest-draw forced cards that accumulated during startNextTurn
     if(newGs?._cthRestDraws?.length>0){
       const preTurnQ=buildTsathogguaSlimeGrantQueue(newGs);

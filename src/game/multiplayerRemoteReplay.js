@@ -370,6 +370,9 @@ function prepareRemoteWorshipFromHandQueue(queue, rotated) {
 }
 
 function buildResolvedGodChoiceDiscardStep(rotated, previousGs) {
+  const oldIds = new Set(getVisualEvents(previousGs).map(event => event.id));
+  if (getVisualEvents(rotated).some(event => !oldIds.has(event.id)
+    && [VISUAL_EVENT.DRAW_CARD, VISUAL_EVENT.INSPECTION, VISUAL_EVENT.STAT_EVENTS].includes(event.type))) return null;
   return compileFreshVisualEventsToAnimSteps(
     rotated,
     previousGs,

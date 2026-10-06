@@ -14,7 +14,7 @@ describe('useMultiplayerStateBroadcast helpers', () => {
     expect(getMultiplayerWinnerRole({ winner: ROLE_TREASURE })).toBe(ROLE_TREASURE);
     expect(getMultiplayerWinnerRole({ winner: ROLE_HUNTER })).toBe(ROLE_HUNTER);
     expect(getMultiplayerWinnerRole({ winner: ROLE_CULTIST })).toBe(ROLE_CULTIST);
-    expect(getMultiplayerWinnerRole({ winner: 'LOSE_ALL' })).toBe(null);
+    expect(getMultiplayerWinnerRole({ winner: 'LOSE_ALL' })).toBe('LOSE_ALL');
     expect(getMultiplayerWinnerRole(null)).toBe(null);
   });
 

@@ -276,7 +276,9 @@ export function withTurnStartActorLabel(replay, state, { actorName = null, force
   const drawerPid = replay.drawerPid ?? getTurnStartDrawerIdx(state);
   const displayName = actorName || state?.players?.[drawerPid]?.name || replay.drawerName || '???';
   if (!forceActorName) return replay;
-  const labelTurnStartStep = step => step?.type === 'YOUR_TURN' ? { ...step, name: displayName } : step;
+  const hasMultipleBanners = (replay.queue || []).filter(step => step?.type === 'YOUR_TURN').length > 1;
+  const labelTurnStartStep = step => step?.type === 'YOUR_TURN' && !hasMultipleBanners
+    ? { ...step, name: displayName } : step;
   const labelDrawCardStep = step => step?.type === 'DRAW_CARD' && step === replay.drawCardStep
     ? { ...step, triggerName: displayName, targetPid: drawerPid }
     : step;

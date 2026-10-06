@@ -24,7 +24,7 @@ export function checkWin(players, isMP) {
   if (alivePlayers.length === 1) {
     const survivor = alivePlayers[0];
     if (survivor.role === ROLE_TREASURE) {
-      return { winner: ROLE_TREASURE, reason: `${survivor.name} 是唯一的幸存者，成功逃离！` };
+      return { winner: ROLE_TREASURE, winnerIdx: players.indexOf(survivor), reason: `${survivor.name} 是唯一的幸存者，成功逃离！` };
     }
     if (survivor.role === ROLE_CULTIST) {
       return { winner: ROLE_CULTIST, reason: `${survivor.name} 是唯一的幸存者，邪祀者阵营获胜！` };

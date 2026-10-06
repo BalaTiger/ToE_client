@@ -32,6 +32,9 @@ import {
 } from './zhuPower';
 import { deriveEffectDecisionState, hasEffectDecisionState } from './effectStatePatch';
 import { applyZoneCardIncome } from './zoneCardIncome';
+import { discardDeadDrawerGod } from './deadGodEncounter';
+import { buildTargetContinuationState } from './targetContinuation';
+import { isAiSeat } from './rotateState';
 import { buildApophisNightLog, getApophisNightForLevel } from './apophisNight';
 import { buildGodPowerBlockedLog, canGodPowerAffect, hasGodPowerImmunity } from './godPowerImmunity';
 import { clearExpiredProliferatingZ } from './proliferatingZ';
@@ -950,7 +953,11 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       }
       // 遭遇本身已经触发终局时，邪神馈赠不再继续结算。否则会留下
       // AI_GOD_CHOICE，结算界面仍会替 AI 选择并播放弃牌动画/音效。
-      if (checkWin(P, gs?._isMP)) {
+      if (P[ci].isDead || checkWin(P, gs?._isMP)) {
+        const cancelled = discardDeadDrawerGod({ players: P, discard: Disc, godCard: drawnCard,
+          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [] });
+        Disc = cancelled.discard;
+        inspectionMeta = { ...inspectionMeta, _visualEvents: cancelled.visualEvents };
         return {
           P,
           D,
@@ -1050,7 +1057,11 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       // SAN loss from the encounter resolves before the god-gift decision.
       // If it already ended the game, never expose the card as an available
       // worship/keep/discard choice (the AI branch has the same short-circuit).
-      if (!P[ci].isDead && P[ci].san <= 0) {
+      if (P[ci].isDead || P[ci].san <= 0) {
+        const cancelled = discardDeadDrawerGod({ players: P, discard: Disc, godCard: drawnCard,
+          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [] });
+        Disc = cancelled.discard;
+        inspectionMeta = { ...inspectionMeta, _visualEvents: cancelled.visualEvents };
         return {
           P, D, Disc, drawnCard,
           reshuffleLog,
@@ -2079,7 +2090,7 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced || (res.drawnCard.isGod && P[0].isDead))) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
@@ -2090,7 +2101,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         // Forced draws already resolved their effects. Author the reveal here
         // so its messages exclude those owned by the card-effect events.
-        msgs: res.kept ? res.effectMsgs : [msg],
+        msgs: res.drawnCard.isGod ? [msg] : res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
         statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
@@ -2335,7 +2346,7 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && (!res.kept || res.drawnCard.forced)) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced || (res.drawnCard.isGod && P[next].isDead))) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
@@ -2344,7 +2355,7 @@ function resolveNextTurnState(gs, opts = {}) {
         card: res.drawnCard,
           effectVisualEvents: res.statePatch?._visualEvents,
         sourcePile: res.sourcePile,
-        msgs: res.kept ? res.effectMsgs : [msg],
+        msgs: res.drawnCard.isGod ? [msg] : res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
         statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
@@ -2716,14 +2727,16 @@ function visualStatEventCrossesTerminalThreshold(statEvent = {}) {
   );
 }
 
-function markTerminalVisualEventBoundary(events = [], state = null) {
+export function markTerminalVisualEventBoundary(events = [], state = null) {
   const source = Array.isArray(events) ? events.filter(Boolean) : [];
   if (!state?.gameOver || !source.length || source.some(event => event?.terminalBoundary === true)) return source;
   const terminalStatIndex = source.findIndex(event => (
     Array.isArray(event?.statEvents) && event.statEvents.some(visualStatEventCrossesTerminalThreshold)
   ));
   const lastDrawIndex = source.findLastIndex(event => event?.type === VISUAL_EVENT.DRAW_CARD);
-  const boundaryIndex = terminalStatIndex >= 0
+  const deadGodDiscardIndex = source.findLastIndex(event => event?.type === VISUAL_EVENT.GOD_GIFT_DISCARD
+    && state.players?.[event.drawerIdx]?.isDead);
+  const boundaryIndex = deadGodDiscardIndex >= 0 ? deadGodDiscardIndex : terminalStatIndex >= 0
     ? terminalStatIndex
     : lastDrawIndex >= 0
       ? lastDrawIndex
@@ -2736,6 +2749,41 @@ function markTerminalVisualEventBoundary(events = [], state = null) {
 // Rule and presentation metadata are produced at the same boundary. Every
 // caller (local player, AI, multiplayer takeover, and setup) receives the same
 // one-shot visual events instead of reconstructing them later in React.
+// Reconnect can restore a snapshot authored before the death-response guard.
+// Callers retain multiplayer authority checks; this only settles the rules.
+export function recoverDeadGodChoiceState(gs) {
+  const pending = gs?.abilityData || {};
+  const drawerIdx = gs?.phase === 'AI_GOD_CHOICE'
+    ? pending.playerIndex ?? gs.currentTurn : pending.drawerIdx ?? gs?.currentTurn;
+  if (!gs || gs.gameOver || !['GOD_CHOICE', 'AI_GOD_CHOICE'].includes(gs.phase)
+    || !pending.godCard || !gs.players?.[drawerIdx]?.isDead) return gs;
+  const cancelled = discardDeadDrawerGod({ players: gs.players, discard: gs.discard,
+    godCard: pending.godCard, drawerIdx, visualEvents: gs._visualEvents || [] });
+  let continued = buildTargetContinuationState({
+    baseState: { ...gs, discard: cancelled.discard,
+      _visualEvents: bindTurnFlowEvents(gs, cancelled.visualEvents), abilityData: {} },
+    clearTurnAnim: false, canResumeAi: false,
+  });
+  // A queued GOD_CHOICE frame belongs to its drawer, which can differ from
+  // the dead turn owner used by the ordinary continuation adapter.
+  if (!gs._isMP && continued.abilityData?.godCard
+    && ['GOD_CHOICE', 'AI_GOD_CHOICE'].includes(continued.phase)) {
+    const liveDrawerIdx = continued.abilityData.drawerIdx ?? continued.abilityData.playerIndex;
+    const aiDrawer = isAiSeat(gs, liveDrawerIdx);
+    continued = { ...continued, phase: aiDrawer ? 'AI_GOD_CHOICE' : 'GOD_CHOICE',
+      abilityData: aiDrawer ? { ...continued.abilityData, playerIndex: liveDrawerIdx } : continued.abilityData };
+  }
+  const settled = { ...continued, drawReveal: null, selectedCard: null,
+    _pendingAiGodChoice: undefined, gameOver: checkWin(gs.players, gs._isMP) };
+  if (settled.gameOver) return { ...settled,
+    _visualEvents: markTerminalVisualEventBoundary(settled._visualEvents, settled) };
+  if (!['ACTION', 'AI_TURN'].includes(settled.phase)) return settled;
+  if (!settled.players?.[settled.currentTurn]?.isDead) return settled;
+  const livingTurn = startNextTurn(settled, { skipCurrentEndTurnStage: true });
+  return { ...livingTurn,
+    _visualEvents: mergeVisualEventLists(settled._visualEvents, livingTurn._visualEvents) };
+}
+
 export function startNextTurn(gs, opts = {}) {
   const previousStatSeq = maxKnownStatEventSeq(gs);
   const { _aiFinishingTurn: _finished, _aiPendingHandLimitThorns: _thorns, ...turnInput } = gs;
@@ -2880,5 +2928,17 @@ export function startNextTurn(gs, opts = {}) {
     _carryGodPowerBlockedEvents: null,
     _carryTsgSlimeGrantEvents: null,
   };
-  return visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
+  const presentedState = visualEvents.length ? { ...finalizedState, _visualEvents: visualEvents } : finalizedState;
+  if (!presentedState.players?.[presentedState.currentTurn]?.isDead
+    || hasEffectDecisionState(presentedState)) return presentedState;
+  // Single-player AI already advances its dead owner after the fatal replay.
+  if (!presentedState._isMP && !presentedState.gameOver) return presentedState;
+  const settledDeath = { ...presentedState, phase: 'ACTION', abilityData: {},
+    drawReveal: null, selectedCard: null, _pendingAiGodChoice: undefined,
+    _decisionContinuations: [] };
+  if (settledDeath.gameOver) return settledDeath;
+  // The dead human cannot end a turn while spectating. Advance at the rule
+  // boundary, retaining the fatal encounter transaction ahead of the new turn.
+  const livingTurn = startNextTurn(settledDeath, { ...opts, skipCurrentEndTurnStage: true });
+  return { ...livingTurn, _visualEvents: mergeVisualEventLists(visualEvents, livingTurn._visualEvents) };
 }

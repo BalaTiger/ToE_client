@@ -3,7 +3,7 @@ import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../game/coreUtils';
 import { derotateGs } from '../game/rotateState';
 import { pruneConsumedVisualEvents } from '../game/visualEvents';
 
-const WINNER_ROLES = new Set([ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST]);
+const WINNER_ROLES = new Set([ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, 'LOSE_ALL']);
 
 export function getMultiplayerWinnerRole(gameOver) {
   return WINNER_ROLES.has(gameOver?.winner) ? gameOver.winner : null;

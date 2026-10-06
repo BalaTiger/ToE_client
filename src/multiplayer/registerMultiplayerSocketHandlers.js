@@ -1,4 +1,4 @@
-import { EXPANSION_RANDOM_KEY, initGame } from '../game';
+import { EXPANSION_RANDOM_KEY, initGame, recoverDeadGodChoiceState } from '../game';
 import { isLocalSeatIndex, rotateGsForViewer } from '../game/rotateState';
 import { getMultiplayerIdentityStorage } from '../hooks/useMultiplayerLobby';
 import { _getZoomCompensatedRect } from '../utils/dom';
@@ -42,6 +42,8 @@ export function registerMultiplayerSocketHandlers({
   gameOverPresentationFrozenRef,
   animQueueRef,
   pendingGsRef,
+  pendingMpRawQueueRef,
+  pendingMpLatestStateRawRef,
   setAnimExiting,
   clearDamageAnimations,
   setAnim,
@@ -241,6 +243,8 @@ export function registerMultiplayerSocketHandlers({
     );
     animQueueRef.current = [];
     pendingGsRef.current = null;
+    if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];
+    if (pendingMpLatestStateRawRef) pendingMpLatestStateRawRef.current = null;
     setAnimExiting(false);
     clearDamageAnimations();
     setAnim(null);
@@ -248,7 +252,20 @@ export function registerMultiplayerSocketHandlers({
     if (gameOverPresentationFrozenRef) gameOverPresentationFrozenRef.current = false;
     if (rawGs) {
       receivedGsRef.current = true;
-      const restoredGs = rotateGsForViewer(rawGs, safeIdx);
+      let restoredGs = rotateGsForViewer(rawGs, safeIdx);
+      const pendingDrawer = rawGs.phase === 'AI_GOD_CHOICE'
+        ? rawGs.abilityData?.playerIndex ?? rawGs.currentTurn
+        : rawGs.abilityData?.drawerIdx ?? rawGs.currentTurn;
+      // Only the restored human decision owner may repair an old dead-owner
+      // snapshot. Observers must not race to advance or broadcast its rules.
+      const ownsHumanDecision = pendingDrawer === safeIdx && !safePlayers[safeIdx]?.isAI;
+      const ownsAiDecision = safePlayers[pendingDrawer]?.isAI === true
+        && aiAuthorityUuid === playerUUIDRef.current;
+      if (ownsHumanDecision || ownsAiDecision) {
+        const recovered = recoverDeadGodChoiceState(restoredGs);
+        if (recovered !== restoredGs) receivedGsRef.current = false;
+        restoredGs = recovered;
+      }
       restoreVisibleLog?.(restoredGs.log || [], restoredGs);
       setGs(restoredGs);
     }

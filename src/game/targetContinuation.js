@@ -1,7 +1,9 @@
 import { isAiSeat } from './rotateState';
 import { withClearedTurnAnimFields } from './turnAnimState';
-import { resolveTurnFlowAfterEvent, TURN_FLOW_DIRECTIVE } from './turnFlowManager';
+import { bindTurnFlowEvents, resolveTurnFlowAfterEvent, TURN_FLOW_DIRECTIVE } from './turnFlowManager';
 import { popDecisionContinuation } from './decisionContinuations';
+import { discardDeadDrawerGod } from './deadGodEncounter';
+import { checkWin } from './victory';
 
 export const TARGET_CONTINUATION_ROUTE = Object.freeze({
   REST_DRAW: 'REST_DRAW',
@@ -11,12 +13,17 @@ export const TARGET_CONTINUATION_ROUTE = Object.freeze({
   PROLIFERATING_Z: 'PROLIFERATING_Z',
   DECISION: 'DECISION',
   APPLY_STATE: 'APPLY_STATE',
+  ADVANCE_DEAD_TURN: 'ADVANCE_DEAD_TURN',
 });
 
 export function resolveTargetContinuation(state, {
   continueRest = false,
   continueTurnStartDraw = false,
 } = {}) {
+  if (state && !state.gameOver && ['ACTION', 'AI_TURN'].includes(state.phase)
+    && state.players?.[state.currentTurn]?.isDead) {
+    return { state, route: TARGET_CONTINUATION_ROUTE.ADVANCE_DEAD_TURN };
+  }
   const resolved = resolveTurnFlowAfterEvent(state, { continueRest, continueTurnStartDraw });
   const route = {
     [TURN_FLOW_DIRECTIVE.HOLD_INTERACTION]: TARGET_CONTINUATION_ROUTE.DECISION,
@@ -71,8 +78,27 @@ export function buildTargetContinuationState({
 } = {}) {
   if (!baseState) return baseState;
 
-  const queuedDecision = phase ? { frame: null, remaining: baseState._decisionContinuations || [] }
+  let queuedDecision = phase ? { frame: null, remaining: baseState._decisionContinuations || [] }
     : popDecisionContinuation(baseState);
+  let cancelledVisualEvents = extraPatch._visualEvents || baseState._visualEvents || [];
+  let cancelledGodChoice = false;
+  const cancelDeadChoice = choice => {
+    const drawerIdx = choice?.drawerIdx ?? choice?.playerIndex ?? turnOwner;
+    if (!choice?.godCard || !players?.[drawerIdx]?.isDead) return false;
+    const cancelled = discardDeadDrawerGod({ players, discard, godCard: choice.godCard,
+      drawerIdx, visualEvents: cancelledVisualEvents });
+    discard = cancelled.discard;
+    cancelledVisualEvents = bindTurnFlowEvents(baseState, cancelled.visualEvents);
+    cancelledGodChoice = true;
+    return true;
+  };
+  while (queuedDecision.frame?.phase === 'GOD_CHOICE' && cancelDeadChoice(queuedDecision.frame.abilityData)) {
+    queuedDecision = popDecisionContinuation({ _decisionContinuations: queuedDecision.remaining });
+  }
+  if (!phase && cancelDeadChoice(abilityData?.pendingGodChoice)) {
+    const { pendingGodChoice: _cancelled, ...remainingAbilityData } = abilityData;
+    abilityData = remainingAbilityData;
+  }
   const legacyGodChoice = abilityData?.pendingGodChoice?.godCard
     ? abilityData.pendingGodChoice
     : null;
@@ -120,6 +146,10 @@ export function buildTargetContinuationState({
     abilityData: nextAbilityData,
     _decisionContinuations: queuedDecision.remaining,
     ...extraPatch,
+    ...(cancelledGodChoice ? {
+      _visualEvents: cancelledVisualEvents,
+      gameOver: baseState.gameOver || checkWin(players, baseState._isMP),
+    } : {}),
   };
 
   return clearTurnAnim ? withClearedTurnAnimFields(nextState) : nextState;

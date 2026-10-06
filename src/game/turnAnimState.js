@@ -748,6 +748,26 @@ export function buildTurnStartDrawReplayQueue({
     ...(timedOutDrawDiscardStep ? [timedOutDrawDiscardStep] : []),
     ...(Array.isArray(preTurnSteps) ? preTurnSteps.filter(Boolean) : []),
   ];
+  const turnKeys = new Set(getVisualEvents(newGs)
+    .filter(event => event.turnStartStage && event.turnKey != null)
+    .map(event => event.turnKey));
+  if (turnKeys.size > 1) {
+    // A fatal opening can advance immediately to a living player's opening.
+    // Compile both canonical transactions; selecting only the final drawer
+    // would erase the lethal reveal and reorder death after the later draw.
+    const canonicalQueue = compileRuleVisualEventsToAnimTransaction(newGs, oldGs, {
+      visualEventScope: 'turnStart', consumedEventIds: consumedVisualEventIds,
+    })?.queue || [];
+    const queue = [...boundarySteps, ...canonicalQueue];
+    return { drawnCard: getTurnStartDrawnCard(newGs),
+      drawerPid: getTurnStartDrawerIdx(newGs),
+      beforeDrawPlayers: oldGs?.players || newGs?.players || [],
+      drawEffectQ: canonicalQueue, stageQueues: splitTurnStartAnimationStages(queue),
+      queue, startAnim: queue[0] || null, startQueue: queue.slice(1),
+      visualLock: oldGs?.players ? { players: oldGs.players, zhuLight: oldGs.zhuLight || null } : null,
+      inspectionEvents: getVisualEvents(newGs).filter(event => event.type === VISUAL_EVENT.INSPECTION),
+    };
+  }
   const boundaryLogIds = getVisualEvents(newGs).filter(event => (
     event.type === VISUAL_EVENT.LOG_ONLY && event.turnStartStage === 'turnBoundary'
   )).map(event => event.id);

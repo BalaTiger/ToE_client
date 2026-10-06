@@ -1,9 +1,10 @@
 import { copyPlayers, makeInspectionMeta } from './coreUtils';
 import { applyInspectionForSanLoss } from './effectEngine';
 import { deriveEffectDecisionState } from './effectStatePatch';
-import { checkWin, resolveGodEncounterForAI } from './turnEngine';
+import { checkWin, markTerminalVisualEventBoundary, resolveGodEncounterForAI } from './turnEngine';
 import { cardIdentity } from './cardIdentity';
 import { VISUAL_EVENT } from './visualEvents';
+import { discardDeadDrawerGod } from './deadGodEncounter';
 
 function getPendingGodDrawEventId(gs, actorIdx, godCard) {
   const targetCardId = cardIdentity(godCard);
@@ -31,6 +32,7 @@ export function resolveAiGodChoiceTransition(gs) {
   let discard = [...gs.discard];
   let log = [...gs.log];
   let resolveBaseGs = gs;
+  let livingInspectionReaction = null;
   if (pending.pendingEncounterInspection) {
     let inspectionMeta = makeInspectionMeta(gs);
     const inspected = applyInspectionForSanLoss(
@@ -48,6 +50,13 @@ export function resolveAiGodChoiceTransition(gs) {
     discard = inspected.Disc;
     log = inspected.log;
     inspectionMeta = inspected.inspectionMeta;
+    const inspectionDecision = deriveEffectDecisionState(inspectionMeta, {
+      fallbackPhase: 'AI_TURN', turnOwner: gs.currentTurn ?? actorIdx,
+    });
+    const reactionOwner = inspectionDecision.abilityData.targetIdx;
+    if (inspectionDecision.hasDecision && players[reactionOwner] && !players[reactionOwner].isDead) {
+      livingInspectionReaction = inspectionDecision;
+    }
     resolveBaseGs = {
       ...gs,
       players,
@@ -63,6 +72,21 @@ export function resolveAiGodChoiceTransition(gs) {
     };
   }
 
+  if (players[actorIdx]?.isDead) {
+    const cancelled = discardDeadDrawerGod({ players, discard, godCard, drawerIdx: actorIdx,
+      visualEvents: resolveBaseGs._visualEvents || [] });
+    // The dead drawer has no god response. A living partner's already-triggered
+    // inspection/rope reaction still settles before the victory check.
+    const gameOver = livingInspectionReaction ? null : checkWin(players, gs._isMP);
+    return { actorIdx, godCard, abandonedGodGift: false, resultMsgs: [], state: {
+      ...resolveBaseGs, players, deck, discard: cancelled.discard, log,
+      phase: livingInspectionReaction?.phase || 'AI_TURN',
+      abilityData: livingInspectionReaction?.abilityData || {}, drawReveal: null, selectedCard: null,
+      _pendingAiGodChoice: undefined,
+      _visualEvents: markTerminalVisualEventBoundary(cancelled.visualEvents, { players, gameOver }),
+      gameOver,
+    } };
+  }
   const result = resolveGodEncounterForAI(
     actorIdx,
     godCard,
