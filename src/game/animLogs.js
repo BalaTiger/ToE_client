@@ -143,11 +143,12 @@ export function prepareAnimQueueLogs(queue,state=null){
     const rawEntries=Array.isArray(item.logEntries)
       ?item.logEntries
       :createVisualLogEntries(ownerId,Array.isArray(item._logChunk)?item._logChunk:item.msgs);
-    const turnOwner=item.turnOwner??eventsById.get(item.visualEventId)?.turnOwner;
+    const ownerEvent=item.visualEventId?eventsById.get(item.visualEventId):null;
+    const turnOwner=item.turnOwner??ownerEvent?.turnOwner??ownerEvent?.actorIdx;
     const ownerName=state?.players?.[turnOwner]?.name;
+    const responderName=item.type==='BURY_TO_DECK'?state?.players?.[item.fromPid]?.name:null;
     // 掉包发起者（旋转后座位 0）的本地视角可以看到自己暗抽到的牌，
     // 其他视角的日志保持“暗抽牌”占位不变。
-    const ownerEvent=item.visualEventId?eventsById.get(item.visualEventId):null;
     const localSwapTakenCard=ownerEvent?.type==='swapCards'&&ownerEvent.sourceIdx===0
       ?ownerEvent.takenCard
       :null;
@@ -155,7 +156,7 @@ export function prepareAnimQueueLogs(queue,state=null){
     // may still render the local name as “你”, but no later banner owns this line.
     const entries=rawEntries.map(entry=>{
       const text=normalizeLogLineForViewer(entry.text,{
-        isMultiplayer:!!state?._isMP,turnOwner:ownerName,
+        isMultiplayer:!!state?._isMP,turnOwner:ownerName,responderName,
       });
       return {...entry,text:localSwapTakenCard?revealSwapTakenCardLine(text,localSwapTakenCard):text};
     });

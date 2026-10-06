@@ -29,6 +29,7 @@ import { copyPlayers } from './coreUtils';
 import { statEventsToAnimQueue } from './statEvents';
 import { assertValidRuleResolutionEvents, orderRuleResolutionEvents, statEventIdentity, validateRuleResolutionEvents } from './ruleResolutionTransaction';
 import { adaptLegacyStatEventGraph } from './statEventIdentity';
+import { createVisualLogEntries, selectVisualLogEntries } from './visualEventLogs';
 import { ANIMATION_COMPILED_SCHEMA_VERSION, animationCardIdentity, buildAnimationQueueStepManifest, flattenAnimationCoverageSteps, queueCoversCompiledEvent, validateAnimationQueueEventDependencies } from './animationEventCoverage';
 export { ANIMATION_COMPILED_SCHEMA_VERSION, buildAnimationQueueStepManifest, validateAnimationQueueEventDependencies } from './animationEventCoverage';
 
@@ -68,6 +69,9 @@ function tagVisualEventSteps(event, steps = []) {
     step
       ? {
           ...step,
+          ...(Array.isArray(event?.announcementLogEntries) && (!step.visualEventId || step.visualEventId === event.id) && !Array.isArray(step.logEntries)
+            ? { logEntries: selectVisualLogEntries(event.id, step._logChunk || step.msgs, event.announcementLogEntries) }
+            : {}),
           ...(event?.id && !step.visualEventId ? { visualEventId: event.id } : {}),
           ...(event?.turnOwner != null && step.turnOwner == null ? { turnOwner: event.turnOwner } : {}),
           ...(event?.turnKey != null && step.turnKey == null ? { turnKey: event.turnKey } : {}),
@@ -80,6 +84,26 @@ function tagVisualEventSteps(event, steps = []) {
         }
       : step
   ));
+}
+
+function withRestAnnouncementOwnership(events = []) {
+  return events.map((event, index) => {
+    const dice = events[index - 1];
+    if (event?.type !== VISUAL_EVENT.STAT_EVENTS || dice?.type !== VISUAL_EVENT.DICE_RESULT
+      || dice.mode !== 'rest' || !dice.id || !dice.transactionId
+      || event.transactionId !== dice.transactionId || event.order !== dice.order + 1
+      || !event.statEvents?.length || !event.statEvents.every(stat => (
+        stat.target === dice.actorIdx && stat.reason === '休息'
+        && (stat.type === 'HP_GAIN' || stat.type === 'HP_SAN_GAIN')
+      ))) return event;
+    // AI rest emits a dice announcement and its recovery as siblings in one
+    // ordered action. Only that recovery shares the dice message occurrence;
+    // additional reactions/occurrences retain the stat event's own identity.
+    return {
+      ...event,
+      announcementLogEntries: dice.logEntries || createVisualLogEntries(dice.id, dice.msgs),
+    };
+  });
 }
 
 function orderTurnStartVisualEvents(events = []) {
@@ -462,6 +486,10 @@ function assertNoEmptyVisualEventCompilations(compiled = [], options = {}, stage
 }
 
 export function compileVisualEventToAnimSteps(event, state, previousState = null, options = {}) {
+  return tagVisualEventSteps(event, compileVisualEventSteps(event, state, previousState, options));
+}
+
+function compileVisualEventSteps(event, state, previousState = null, options = {}) {
   if (!event) return [];
   if (!options._statIdentityAdapted) {
     const adapted = adaptLegacyStatEventGraph({
@@ -859,7 +887,7 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     suppressedEventIds: suppressedStatEventIds,
   } = suppressStatsOwnedByExplicitEvents(nestedSuppression.events);
   const suppressedEventIds = [...nestedSuppression.suppressedEventIds, ...suppressedStatEventIds];
-  const events = interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents));
+  const events = withRestAnnouncementOwnership(interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents)));
   const compiledWithEmpty = events.map(event => ({
       event,
       steps: tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, previousState, options)),

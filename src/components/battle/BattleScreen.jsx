@@ -401,7 +401,7 @@ export function BattleScreen(props) {
             isMobile={false}
             baseFontSizes={{ ...interactionFontSizes, body: 12, small: 11 }}
             scaleRatio={1}
-            displayPhaseLabel={phase === 'ACTION' && myTurn ? '你的回合 · 请选择行动' : typeof displayPhaseLabel === 'string' ? displayPhaseLabel.replace(/(手牌超限)\s*[（(]\d+\/\d+[)）]/, '$1') : displayPhaseLabel}
+            displayPhaseLabel={phase === 'ACTION' && myTurn && canShowEndTurnButton && !isSpectating ? '你的回合 · 请选择行动' : typeof displayPhaseLabel === 'string' ? displayPhaseLabel.replace(/(手牌超限)\s*[（(]\d+\/\d+[)）]/, '$1') : displayPhaseLabel}
             cardHintText={phase === 'ACTION' ? '' : cardHintText === '鼠标悬停查看卡牌详情（移动端请点击卡牌）' ? '点击手牌选择行动' : cardHintText}
             isPhaseWarningText={isPhaseWarningText}
             isSpectating={isSpectating}

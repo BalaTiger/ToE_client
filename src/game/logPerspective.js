@@ -1,12 +1,25 @@
 import { cardLogText } from './coreUtils';
+import { FIXED_ZONE_CARD_VARIANTS_BY_KEY } from '../constants/card';
 
 const TURN_START_RE = /^── (.+?) 的回合开始 ──$/;
 
 const SWAP_TAKEN_PLACEHOLDER_PREFIX = '拿走 暗抽牌，还给';
 
-function replaceAllLiteral(text, search, replacement) {
-  if (!search || search === replacement) return text;
-  return text.split(search).join(replacement);
+const escapePattern = text => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const CARD_TEXT_PATTERN = Object.entries(FIXED_ZONE_CARD_VARIANTS_BY_KEY)
+  .map(([key, variants]) => `\\[${escapePattern(key)}\\]\\s*(?:${variants.map(card => escapePattern(card.name)).sort((a, b) => b.length - a.length).join('|')})`)
+  .join('|');
+
+function replaceViewerReferences(text, myName, playerNames) {
+  // Match the room's complete names longest first. This keeps every existing
+  // producer format while preventing one player's name from changing another.
+  const names = [...new Set([myName, ...(Array.isArray(playerNames) ? playerNames : [])])]
+    .filter(name => typeof name === 'string' && name.length)
+    .sort((a, b) => b.length - a.length)
+    .map(escapePattern).join('|');
+  // Explicit card-code/name spans are cards even when a player has that name.
+  const pattern = new RegExp(`(?<card>${CARD_TEXT_PATTERN})|(?<player>${names})`, 'g');
+  return text.replace(pattern, (match, _card, player, _offset, _text, groups) => groups.card ? match : player === myName ? '你' : match);
 }
 
 /**
@@ -17,7 +30,7 @@ function replaceAllLiteral(text, search, replacement) {
  * be resolved to the owner of that turn. The local player's real name is then
  * rendered as “你” everywhere (actor, target and turn heading alike).
  */
-export function normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, myName } = {}) {
+export function normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, responderName, myName, playerNames } = {}) {
   if (!isMultiplayer || typeof line !== 'string') return line;
 
   let display = line;
@@ -26,20 +39,23 @@ export function normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, myNa
     // “你的手牌…被暗抽” describe the local target even during another seat's
     // turn and must remain “你”.
     display = display
-      .replace(/^你(?=（|\s+(?:从手牌|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽)|从手牌|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽|$)/, turnOwner)
-      .replace(/^你的邪神之力/, `${turnOwner}的邪神之力`);
+      .replace(/^你(?=（|\s+(?:从手牌|从\s|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽|夺取|即将承受)|从(?:手牌|\s|你的手牌)|遭遇|信仰|放弃|摸到|选择|借用|收入|暗抽|夺取|即将承受|$)/, () => turnOwner)
+      .replace(/^你的邪神之力/, () => `${turnOwner}的邪神之力`);
   }
-  if (myName && myName !== '你') display = replaceAllLiteral(display, myName, '你');
+  // A bury response belongs to the hand being moved, not to the turn's actor.
+  // Without that explicit ownership, preserve the text rather than guessing.
+  if (responderName) display = display.replace(/^【活埋】你(?=\s+将\s)/, () => `【活埋】${responderName}`);
+  if (myName && myName !== '你') display = replaceViewerReferences(display, myName, playerNames);
   return display;
 }
 
-export function normalizeLogForViewer(log, { isMultiplayer, myName } = {}) {
+export function normalizeLogForViewer(log, { isMultiplayer, myName, playerNames } = {}) {
   const lines = Array.isArray(log) ? log : [];
   let turnOwner = null;
   return lines.map(line => {
     const turnMatch = typeof line === 'string' ? line.match(TURN_START_RE) : null;
     if (turnMatch) turnOwner = turnMatch[1] === '你' ? myName : turnMatch[1];
-    return normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, myName });
+    return normalizeLogLineForViewer(line, { isMultiplayer, turnOwner, myName, playerNames });
   });
 }
 

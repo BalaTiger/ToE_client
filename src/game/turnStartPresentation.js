@@ -1,6 +1,6 @@
 import { bindAnimLogChunks, subtractLogOccurrences } from './animLogs';
 import { statePatchStep } from './animQueueHelpers';
-import { cardLogText, copyPlayers } from './coreUtils';
+import { cardLogText, copyPlayers, ROLE_TREASURE } from './coreUtils';
 import { revealLocalSwapTakenCards } from './logPerspective';
 import { buildStatEvents, statEventsToAnimQueue } from './statEvents';
 import { buildTurnStartStepFromVisualEvents, getTurnBannerVisualEventId } from './visualEvents';
@@ -137,6 +137,11 @@ export function appendMissingLogLines(base = [], extra = []) {
   return result;
 }
 
+function numberedTreasureVictoryName(line) {
+  if (typeof line !== 'string') return null;
+  return line.match(/^(.+?)\s*集齐了?全部编号并获胜！$/)?.[1].trim() || null;
+}
+
 export function buildCompleteGameOverLog(state, visibleLog = []) {
   if (!state?.gameOver) return Array.isArray(state?.log) ? state.log : [];
   let log = Array.isArray(state.log) ? [...state.log] : [];
@@ -148,7 +153,17 @@ export function buildCompleteGameOverLog(state, visibleLog = []) {
     ...(state._statLogs || []),
   ]);
   const reason = state.gameOver?.reason;
-  if (reason && !log.includes(reason)) log = [...log, reason];
+  if (reason) {
+    // This known wording variant identifies only the terminal tail, not an
+    // earlier same-name notice. Keep all authored occurrences unchanged.
+    const winnerName = state.gameOver.winner === ROLE_TREASURE
+      ? numberedTreasureVictoryName(reason)
+      : null;
+    const alreadyAnnounced = winnerName
+      ? numberedTreasureVictoryName(log.at(-1)) === winnerName
+      : log.includes(reason);
+    if (!alreadyAnnounced) log = [...log, reason];
+  }
   return log;
 }
 
@@ -282,6 +297,9 @@ export function withTurnStartActorLabel(replay, state, { actorName = null, force
 
 export function normalizeVisibleTurnStartQueue(queue = []) {
   if (!Array.isArray(queue) || !queue.length) return [];
+  // Skipped turns are already concatenated in canonical actor order. Global
+  // stage buckets would move later banners before earlier wake/effect steps.
+  if (queue.filter(step => step?.type === 'YOUR_TURN').length > 1) return [...queue];
   const stages = splitTurnStartAnimationStages(queue);
   const turnBoundaryQueue = stages[TURN_START_ANIMATION_STAGE.TURN_BOUNDARY];
   const turnBannerQueue = stages[TURN_START_ANIMATION_STAGE.TURN_BANNER];

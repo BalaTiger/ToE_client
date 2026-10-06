@@ -57,7 +57,7 @@ export function BattleLogPanel({
   const myName = players?.[0]?.name;
   // Normalize before truncating so the current turn owner is still known when
   // a long turn pushes its heading outside the last 50 visible entries.
-  const allNormalizedLines = normalizeLogForViewer(allLogLines, { isMultiplayer, myName });
+  const allNormalizedLines = normalizeLogForViewer(allLogLines, { isMultiplayer, myName, playerNames: players?.map(player => player.name) });
   const logLines = allLogLines.slice(-50);
   const normalizedLines = allNormalizedLines.slice(-50);
   const displayLogLines = logLines.map((line, index) => ({ line, display: normalizedLines[index] }));

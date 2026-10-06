@@ -3809,7 +3809,7 @@ export default function Game(){
     const{winner,winnerIdx}=gs.gameOver;
     const gameOverFullLog=normalizeLogForViewer(
       revealLocalSwapTakenCards(buildCompleteGameOverLog(gs,visibleLogRef.current),gs),
-      {isMultiplayer:!!gs._isMP,myName:gs.players?.[0]?.name},
+      {isMultiplayer:!!gs._isMP,myName:gs.players?.[0]?.name,playerNames:gs.players?.map(player=>player.name)},
     );
     const myRole=gs.players[0].role;
     const iWon=winner==='LOSE'||winner==='LOSE_ALL'?false
@@ -5593,7 +5593,7 @@ export default function Game(){
     setGsWithApophisTargetAnim({...gs,players:P,deck:D,discard:Disc,phase:targetPlayer.revealHand?'SWAP_SELECT_TARGET_CARD':'SWAP_STEAL_CARD',
       drawReveal:null,
       abilityData:{swapTi:ti,preSkillRevealed:gs.abilityData?.preSkillRevealed},
-      log:[...L,`你${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
+      log:[...L,`${gs._isMP?`${P[0].name} `:'你'}${gs.globalOnlySwapOwner!==null?'':'（寻宝者）'}对 ${gs.players[ti].name} 【掉包】，请选择要抽取的牌`],
       ...apophisNightPatch(night)});
     // 教学提示等暗抽洗牌动画结束后再出现，与骰子动画定格类似
     if(tutorialNext&&tutorialNext!==TUTORIAL_FLOW.TREASURE_STEAL_CARD)setTutorialStep(tutorialNext);
@@ -6073,12 +6073,12 @@ export default function Game(){
           from:{hp:playersBeforeSlimePop[targetIdx].hp,san:playersBeforeSlimePop[targetIdx].san},
           to:{hp:target.hp,san:target.san},
         };
-        L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 牺牲黏液，将HP/SAN平分为 ${target.hp}/${target.san}`);
+        L.push(`【撒托古亚的赐福黏液】${gs._isMP?target.name:localDisplayName(targetIdx,target.name)} 牺牲黏液，将HP/SAN平分为 ${target.hp}/${target.san}`);
       }else{
-        L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 已没有可牺牲的黏液`);
+        L.push(`【撒托古亚的赐福黏液】${gs._isMP?target.name:localDisplayName(targetIdx,target.name)} 已没有可牺牲的黏液`);
       }
     }else{
-      L.push(`【撒托古亚的赐福黏液】${localDisplayName(targetIdx,target.name)} 没有牺牲黏液`);
+      L.push(`【撒托古亚的赐福黏液】${gs._isMP?target.name:localDisplayName(targetIdx,target.name)} 没有牺牲黏液`);
     }
     const linkReaction=resolvePendingDamageLinkBreak(
       P,targetIdx,Disc,L,abilityData._turnOwner??gs.currentTurn,D,
@@ -6610,7 +6610,7 @@ export default function Game(){
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
     const [chosenCard]=revealedCards.splice(cardIndex,1);
     P[pickerIdx].hand.push(chosenCard);
-    const L=[...gs.log,`【先到先得】${localDisplayName(pickerIdx,P[pickerIdx].name)}选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
+    const L=[...gs.log,`【先到先得】${gs._isMP?`${P[pickerIdx].name} `:localDisplayName(pickerIdx,P[pickerIdx].name)}选择了 ${cardLogText(chosenCard,{alwaysShowName:true})}`];
     const proliferatingZPatch=appendPublicCardGainTriggers(gs,P,pickerIdx,chosenCard);
     const nextPickIndex=pickIndex+1;
     const win=checkWin(P,gs._isMP);
@@ -6728,7 +6728,7 @@ export default function Game(){
       balanceStatPatch=buildStatChangeStatePatch(activeGs,damageDecision);
     }
     grantTurnScopedGodPowerImmunity(P[actorIdx], getCurrentExecutionTurnOwner(activeGs, actorIdx));
-    L.push(`【引燃火把】${localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
+    L.push(`【引燃火把】${activeGs._isMP?P[actorIdx]?.name:localDisplayName(actorIdx,P[actorIdx]?.name)} 本回合不受邪神之力影响`);
     const discardEvent=(
       !discardedCardIsDerived&&
       discardedCard.type!=='blankZone'
@@ -7307,7 +7307,7 @@ export default function Game(){
     if(!P[actorIdx]?.hand?.[cardIndex])return;
     const [buriedCard]=P[actorIdx].hand.splice(cardIndex,1);
     D.push(buriedCard);
-    const actorName=localDisplayName(actorIdx,P[actorIdx]?.name);
+    const actorName=gs._isMP?P[actorIdx]?.name:localDisplayName(actorIdx,P[actorIdx]?.name);
     const L=[...gs.log,`【活埋】${actorName} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`];
     const nextTargetIndex=(abilityData.targetIndex||0)+1;
     if(nextTargetIndex>=targets.length){
@@ -7367,7 +7367,7 @@ export default function Game(){
       const playersBefore=copyPlayers(P);
       const [buriedCard]=P[targetIdx].hand.splice(cardIndex,1);
       D.push(buriedCard);
-      const msg=`【活埋】${localDisplayName(targetIdx,P[targetIdx]?.name)} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`;
+      const msg=`【活埋】${state._isMP?P[targetIdx]?.name:localDisplayName(targetIdx,P[targetIdx]?.name)} 将 ${cardLogText(buriedCard,{alwaysShowName:true})} 放到了牌堆底`;
       L.push(msg);
       queue.push(
         buryToDeckStep({fromPid:targetIdx,msgs:[msg],players:playersBefore}),
@@ -7484,7 +7484,7 @@ export default function Game(){
     const consumedIds = new Set([selectedHandCard.id, ...normalizedTop.map(card => card.id), ...normalizedBottom.map(card => card.id)]);
     if (consumedIds.size !== revealedCards.length) return;
     const sourcePointsById = new Map(revealedCards.map(card => [card.id, measureRevealedCardCenter(card)]));
-    const actorName = localDisplayName(actorIdx, P[actorIdx]?.name);
+    const actorName = gs._isMP ? P[actorIdx]?.name : localDisplayName(actorIdx, P[actorIdx]?.name);
     let L = [...gs.log, `【解读石刻】${actorName} 选择将 ${cardLogText(selectedHandCard, { alwaysShowName: true })} 收入手牌`];
     P[actorIdx].hand.push(selectedHandCard);
     const proliferatingZPatch = appendPublicCardGainTriggers(gs, P, actorIdx, selectedHandCard);
@@ -7585,8 +7585,8 @@ export default function Game(){
     setGs({...gs,players:P,phase:'SWAP_GIVE_CARD',drawReveal:null,skillUsed:true,
       abilityData:{...gs.abilityData,takenCard:taken},
       log:[...gs.log,targetWasRevealed
-        ?`你选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`
-        :'你暗抽了1张牌'
+        ?`${gs._isMP?`${P[0].name} `:'你'}选择抽取了 ${cardLogText(taken,{alwaysShowName:true})}`
+        :`${gs._isMP?`${P[0].name} `:'你'}暗抽了1张牌`
       ]}
     );
     if(tutorialNext)setTutorialStep(tutorialNext);
@@ -7721,7 +7721,7 @@ export default function Game(){
     if(gs._isMP){
       // 多人游戏：目标是真人玩家，让目标自己选择亮出哪张牌（20秒超时随机）
       // 暂停房主回合计时器：进入 HUNT_WAIT_REVEAL 子阶段，目标玩家选完后恢复
-      const waitMsg=`你（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`;
+      const waitMsg=`${P[0].name}（追猎者）追捕 ${P[ti].name}，等待对方亮出一张手牌…`;
       const targetEvent=createHuntTargetEvent({
         sourceIdx:0,targetIdx:ti,msgs:[waitMsg],attemptId:huntAttemptId,
         targetResolutionEventId:night.targetResolutionEventId,
@@ -7776,6 +7776,7 @@ export default function Game(){
     const tutorialNext=myCardIdx>=0?getNextTutorialStepForAction(tutorialAction):null;
     const{huntTi}=gs.abilityData;
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard],L=[...gs.log];
+    const actorName=gs._isMP?P[0].name:'你';
     if(myCardIdx>=0){
       const huntLogStart=L.length;
       const targetHandBefore=[...(P[huntTi]?.hand||[])];
@@ -7890,7 +7891,7 @@ export default function Game(){
              });
             const {state:lootSelectGs,queue}=buildHuntStageVisualTransaction({
               previousState:gs,
-              state:{...gs,players:P,deck:D,discard:Disc,log:[...L,`你（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`],
+              state:{...gs,players:P,deck:D,discard:Disc,log:[...L,`${actorName}（追猎者）从 ${P[huntTi].name} 的公开手牌中任选 ${Math.min(maxToTake,handCount)} 张！`],
               phase:'HUNT_SELECT_CARD_FROM_PUBLIC',
               abilityData:{huntTi:huntTi,preSkillRevealed:gs.abilityData?.preSkillRevealed,maxToTake:Math.min(maxToTake,handCount)},
               },
@@ -7908,7 +7909,7 @@ export default function Game(){
             P[0].hand.push(...lootableHand);
             lootTransferCount=lootableHand.length;
             P[huntTi].hand=[];
-            L.push(`你夺取了 ${P[huntTi].name} 的全部公开手牌（${lootableHand.length} 张）！`);
+            L.push(`${actorName}${gs._isMP?' ':''}夺取了 ${P[huntTi].name} 的全部公开手牌（${lootableHand.length} 张）！`);
           }else{
             afterDamagePlayers=copyPlayers(defeatedEvent?.committedPlayers||P);
             afterDamageDiscard=[...Disc];
@@ -7919,7 +7920,7 @@ export default function Game(){
               const stolenCard=P[huntTi].hand.splice(randomIndex,1)[0];
               P[0].hand.push(stolenCard);
               lootTransferCount++;
-              L.push(`你从 ${P[huntTi].name} 的手牌中暗抽了一张 ${cardLogText(stolenCard)}！`);
+              L.push(`${actorName}${gs._isMP?' ':''}从 ${P[huntTi].name} 的手牌中暗抽了一张 ${cardLogText(stolenCard)}！`);
             }
             const remainingSettlement=splitKeptDestroyedDiscarded(P[huntTi].hand);
             lootDiscardCards=remainingSettlement.animationCards;
@@ -7992,7 +7993,7 @@ export default function Game(){
       }else setGs(newGsWithEvent);
     }else{
       const newAbandoned=[...(gs.huntAbandoned||[]),huntTi];
-      L.push(`你（追猎者）放弃追捕 ${P[huntTi].name}`);
+      L.push(`${actorName}（追猎者）放弃追捕 ${P[huntTi].name}`);
       // 放弃追捕时揭晓追猎者身份
       if(!P[0].roleRevealed){
         P[0].roleRevealed=true;
@@ -8011,7 +8012,7 @@ export default function Game(){
     if(huntTi==null||!P[huntTi]||cardIdx<0||cardIdx>=P[huntTi].hand.length)return;
     const stolenCard=P[huntTi].hand.splice(cardIdx,1)[0];
     P[0].hand.push(stolenCard);
-    L.push(`你从 ${P[huntTi].name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
+    L.push(`${gs._isMP?`${P[0].name} `:'你'}从 ${P[huntTi].name} 的公开手牌中选择了 ${cardLogText(stolenCard)}！`);
     // 检查是否已经选择了足够的手牌
     const selectedCount=P[0].hand.length-gs.players[0].hand.length;
     if(selectedCount<maxToTake && P[huntTi].hand.length>0){
@@ -8407,7 +8408,7 @@ export default function Game(){
     const actorIdx=gs.abilityData?.playerIndex??gs.currentTurn;
     const actor=P[actorIdx];
     if(!actor)return;
-    const actorLabel=isLocalSeatIndex(actorIdx)?'你':actor.name;
+    const actorLabel=gs._isMP?`${actor.name} `:(isLocalSeatIndex(actorIdx)?'你':actor.name);
     const continuationAbilityData={
       ...buildTargetContinuationAbilityData(gs.abilityData),
       _turnOwner:turnOwner,
@@ -9755,6 +9756,7 @@ export default function Game(){
     me,
     visualMe,
     currentTurnPlayer,
+    visualTurnPlayer:visualPlayers?.[visualCurrentTurn],
     effectiveHandLimit,
     isSpectating,
     softGuidePauseActive,

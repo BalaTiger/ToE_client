@@ -68,6 +68,7 @@ export function buildPhaseUiState({
   me = {},
   visualMe = me,
   currentTurnPlayer = null,
+  visualTurnPlayer = null,
   effectiveHandLimit = 0,
   isSpectating = false,
   softGuidePauseActive = false,
@@ -101,6 +102,10 @@ export function buildPhaseUiState({
   ) || (isLocalHuntRevealPrompt && huntRevealPromptActive);
   const promptColors = getPhasePromptColors(gs?.expansionKey);
   const isMultiplayer = !!gs?._isMP;
+  const turnActionText = player => isMultiplayer
+    ? `等候 ${player?.name} 行动…`
+    : `${player?.name} 正在行动…`;
+  const isTurnPresentationActive = !!(anim || animExiting || animQueueLength > 0);
   const thinkingText = idx => `${players[idx]?.name || '目标'} 正在思考…`;
   const localOwnsCurrentDecision = decisionContext ? decisionContext.localCanAct : localCurrentTurn;
   const decisionPrompt = localText => {
@@ -114,6 +119,9 @@ export function buildPhaseUiState({
   const label = (() => {
     switch (phase) {
       case 'ACTION':
+        // The next turn banner can precede the pending rule-state commit.
+        // Keep this notice with the visible actor while controls stay blocked.
+        if (isTurnPresentationActive && visualTurnPlayer) return turnActionText(visualTurnPlayer);
         return localCurrentTurn ? '你的回合 — 可发动技能、休息，或结束回合' : '等候其他旅者…';
       case 'SWAP_SELECT_TARGET':
         return decisionPrompt('【掉包】选择目标角色');
@@ -200,7 +208,7 @@ export function buildPhaseUiState({
         return `手牌超限 (${me.hand?.length || 0}/${effectiveHandLimit}) — 需弃 ${need} 张，已选 ${selected.length}/${need}`;
       }
       case 'AI_TURN':
-        return isMultiplayer ? `等候 ${players[gs?.currentTurn]?.name} 行动…` : `${players[gs?.currentTurn]?.name} 正在行动…`;
+        return turnActionText(visualTurnPlayer || players[gs?.currentTurn]);
       case 'PLAYER_WIN_PENDING':
         return '✦ 你已集齐全部编号！';
       case 'MP_PLAYER_WIN_WAIT':
