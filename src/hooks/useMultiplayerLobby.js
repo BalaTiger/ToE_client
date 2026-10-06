@@ -37,6 +37,7 @@ export function useMultiplayerLobby({ socketRef }) {
   const [roomModal, setRoomModal] = useState(null);
   const roomModalRef = useSyncedRef(roomModal);
   const leavingRoomRef = useRef(false);
+  const roomExitSocketRef = useRef(null);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -179,11 +180,14 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeRoomModal() {
+    const socket = socketRef.current;
+    if (socket && roomExitSocketRef.current === socket) return;
+    // Capture membership before clearing the modal; later calls must not
+    // disconnect this socket before the server acknowledges its room exit.
+    const roomId = roomModalRef.current?.roomId;
     leavingRoomRef.current = true;
     setRoomModal(null);
     roomModalRef.current = null;
-    const socket = socketRef.current;
-    const roomId = roomModalRef.current?.roomId;
     if (!socket) return;
 
     const finishDisconnect = () => {
@@ -197,10 +201,12 @@ export function useMultiplayerLobby({ socketRef }) {
       return;
     }
 
+    roomExitSocketRef.current = socket;
     let settled = false;
     const finishOnce = () => {
       if (settled) return;
       settled = true;
+      if (roomExitSocketRef.current === socket) roomExitSocketRef.current = null;
       finishDisconnect();
     };
 

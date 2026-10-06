@@ -40,8 +40,10 @@ import {
   compileFreshVisualEventsToAnimSteps,
   compileRuleVisualEventsToAnimTransaction,
   compileVisualEventToAnimSteps,
-  compileVisualEventToAnimTransaction,
+  getVisualEventIdsCoveredByAnimationQueue,
 } from './visualEventTransactionCompiler';
+import { queueCoversCompiledEvent } from './animationEventCoverage';
+import { isStatAnimationType } from './statEvents';
 
 export const MP_REMOTE_REPLAY = {
   ROLE_REVEAL: 'ROLE_REVEAL',
@@ -149,7 +151,10 @@ function buildZhuHideWaitAction(rotated, previousGs) {
 }
 
 function buildMaskedActionState(state) {
-  return { ...state, phase: 'ACTION', drawReveal: null, abilityData: {} };
+  // Terminal state belongs to the completed transaction. Publishing it on
+  // the replay baseline would make queue completion treat the intermediate
+  // player snapshot as an already settled game and reject pendingGs.
+  return { ...state, gameOver: null, phase: 'ACTION', drawReveal: null, abilityData: {} };
 }
 
 function withApophisTargetReplay(queue = [], previousGs, rotated, compileFreshVisualEventQueue) {
@@ -195,29 +200,58 @@ function buildExactAnimTransactionReplayAction(events, rotated, previousGs, comp
   if (!exactEvents.length) return null;
 
   const transactionIds = exactEvents.map(event => event.id).filter(Boolean);
-  const coveredEventIds = new Set(exactEvents.flatMap(event => event.coveredEventIds || []));
+  const exactQueue = exactEvents.flatMap(prepareExactTransactionQueue);
+  const visualEvents = getVisualEvents(rotated);
+  const inferredCoveredIds = new Set(getVisualEventIdsCoveredByAnimationQueue(rotated, exactQueue));
+  const coveredEventIds = new Set([
+    ...exactEvents.flatMap(event => event.coveredEventIds || []).filter(id => (
+      // Older producers infer a whole wrapper from a tag on just one of its
+      // projections. A stat wrapper is covered only when all its work exists.
+      visualEvents.find(event => event.id === id)?.type !== VISUAL_EVENT.STAT_EVENTS
+      || inferredCoveredIds.has(id)
+    )),
+    ...inferredCoveredIds,
+  ]);
   const exactEventIds = new Set(transactionIds);
   const uncoveredEvents = (Array.isArray(rotated?._visualEvents) ? rotated._visualEvents : []).filter(event => (
     event?.id && !exactEventIds.has(event.id) && !coveredEventIds.has(event.id)
   ));
-  const uncoveredTransactions = uncoveredEvents.map(event => ({
-    event,
-    transaction: compileVisualEventToAnimTransaction(event, rotated, previousGs, {
-      compileFreshVisualEventQueue,
-      logDelta: getFreshEventMessages(previousGs, rotated),
-    }),
-  }));
-  const compiledUncovered = uncoveredTransactions.filter(item => item.transaction?.queue?.length);
-  const uncompiledEventIds = uncoveredTransactions
-    .filter(item => !item.transaction?.queue?.length)
-    .map(item => item.event.id);
-  const explicitTailQueue = compiledUncovered.flatMap(item => item.transaction.queue);
+  // Compile the remaining events together so composite settlements retain
+  // their stat ownership and rule ordering. Exact queues may contain raw
+  // stat steps without a visualEventId, so infer coverage from their work.
+  const uncoveredTransaction = uncoveredEvents.length
+    ? compileRuleVisualEventsToAnimTransaction(
+      { ...rotated, _visualEvents: uncoveredEvents }, previousGs, {
+        compileFreshVisualEventQueue,
+        logDelta: getFreshEventMessages(previousGs, rotated),
+      },
+    ) : null;
+  const compiledUncoveredIds = new Set(uncoveredTransaction?.eventIds || []);
+  const uncompiledEventIds = uncoveredEvents
+    .filter(event => !compiledUncoveredIds.has(event.id))
+    .map(event => event.id);
+  // A partially presented HP/SAN wrapper is still uncovered as a whole.
+  // Keep its missing projection while retaining the existing projection's
+  // identity and position in the exact queue.
+  const explicitTailQueue = (uncoveredTransaction?.queue || []).flatMap(step => {
+    const owner = visualEvents.find(event => event.id === step.visualEventId);
+    if (!owner) return [step];
+    if (queueCoversCompiledEvent(owner, [step], exactQueue, visualEvents)) return [];
+    if (!isStatAnimationType(step.type) || !Array.isArray(step.statEvents)) return [step];
+    // One projection can group several players. Subtract covered members,
+    // keeping each remaining rule event intact and targeting only its player.
+    const statEvents = step.statEvents.filter(event => !queueCoversCompiledEvent(
+      owner, [{ ...step, statEvents: [event] }], exactQueue, visualEvents,
+    ));
+    if (!statEvents.length) return [];
+    if (statEvents.length === step.statEvents.length) return [step];
+    return [{ ...step, statEvents, hitIndices: [...new Set(statEvents.map(event => event.target))] }];
+  });
   const consumedVisualEventIds = [...new Set([
     ...transactionIds,
     ...coveredEventIds,
-    ...compiledUncovered.flatMap(item => item.transaction.eventIds || [item.event.id]),
+    ...compiledUncoveredIds,
   ].filter(Boolean))];
-  const exactQueue = exactEvents.flatMap(prepareExactTransactionQueue);
   if (uncoveredEvents.length && import.meta.env?.DEV) {
     console.warn('[animTransaction] uncovered visual events will replay after the exact queue', {
       transactionIds,

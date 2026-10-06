@@ -78,13 +78,22 @@ export function SwapBlindDrawOverlay({
           const visualWidth = isFlying && flyPath ? flyPath.width : isShuffling && shufflePath ? shufflePath.width : swapBlindCardLayout.width;
           const visualHeight = visualWidth * CARD_FACE_RATIO;
           return (
-            <div
+            <button
               key={idx}
+              className="toe-button toe-blind-draw-card"
+              type="button"
               data-blind-card-index={idx}
+              aria-label={isFaceUp ? `抽取第 ${idx + 1} 张牌：${card.name || '卡牌'}` : `暗抽第 ${idx + 1} 张牌`}
+              disabled={!isSelecting}
               onClick={isSelecting ? () => handleSwapBlindDrawSelect(idx) : undefined}
               style={{
                 position: 'relative',
                 width: swapBlindCardLayout.width, height: cardHeight,
+                display: 'block', boxSizing: 'border-box',
+                padding: 0, margin: 0, border: 0, borderRadius: 3,
+                appearance: 'none', background: 'transparent', boxShadow: 'none', opacity: 1,
+                // Keep the shared gold focus ring inside the tutorial spotlight.
+                outlineOffset: 2,
                 cursor: isSelecting ? 'pointer' : 'default',
               }}
             >
@@ -135,7 +144,7 @@ export function SwapBlindDrawOverlay({
                 fontSize: swapBlindCardLayout.nameFontSize, color: '#c8a96e', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
                 whiteSpace: 'nowrap', pointerEvents: 'none', opacity: 0.8,
               }}>{card.name}</div>}
-            </div>
+            </button>
           );
         })}
       </div>

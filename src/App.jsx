@@ -255,7 +255,6 @@ import {
   TARGET_CONTINUATION_ROUTE,
   VISUAL_EVENT,
   ANIMATION_QUEUE_AUTHORITY,
-  getAnimationQueueVisualEventIds,
   getVisualEventIdsCoveredByAnimationQueue,
   compileRuleVisualEventsToAnimTransaction,
   compileFreshVisualEventReplay,
@@ -757,6 +756,14 @@ export default function Game(){
     handleRandomUsername,
     closeRoomModal,
   } = useMultiplayerLobby({ socketRef });
+  const roomExitSoloStartBlockedUntilRef=useRef(0);
+  function closeRoomModalWithInputGuard(){
+    // The second tap of a room-exit double click can land on the solo
+    // button revealed underneath. Keep the exit immediate, but consume
+    // that follow-up input before it can start a different game.
+    roomExitSoloStartBlockedUntilRef.current=performance.now()+600;
+    closeRoomModal();
+  }
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
   const isMultiplayerRef=useRef(false);  // 供 socket 闭包读取最新值
@@ -3685,7 +3692,10 @@ export default function Game(){
         vw={vw}
         vh={vh}
         handleUiSfxCapture={handleUiSfxCapture}
-        startNewGame={startNewGame}
+        startNewGame={()=>{
+          if(performance.now()<roomExitSoloStartBlockedUntilRef.current)return;
+          startNewGame();
+        }}
         handleMultiplayer={handleMultiplayer}
         multiLoading={multiLoading}
         onOpenAbout={()=>setModal('about')}
@@ -3723,7 +3733,7 @@ export default function Game(){
           playerUUID={playerUUID}
           cdType={cdType}
           cdSecondsLeft={cdSecondsLeft}
-          onClose={closeRoomModal}
+          onClose={closeRoomModalWithInputGuard}
           onTogglePrivacy={handleTogglePrivacy}
           onSetReady={handleSetReady}
           onCopyRoomId={()=>copyRoomIdToClipboard(roomModal.roomId)}
@@ -4455,7 +4465,7 @@ export default function Game(){
       msgs,
       context,
       barrier,
-      coveredEventIds:Array.isArray(coveredEventIds)?coveredEventIds:getAnimationQueueVisualEventIds(steps),
+      coveredEventIds:Array.isArray(coveredEventIds)?coveredEventIds:getVisualEventIdsCoveredByAnimationQueue(state,steps),
       beforePlayers,
       beforeDiscard,
       zhuLight:state.zhuLight||null,
