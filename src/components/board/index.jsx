@@ -732,7 +732,7 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
-                :<DDCard card={card} small={!showFaceUp} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} hideCssFrame={isBlackGoatYoung(card)||isTsathogguaSlime(card)} tokenFaceWidth={!showFaceUp&&(isBlackGoatYoung(card)||isTsathogguaSlime(card))?hiddenDerivedFaceWidth:undefined} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
+                :<DDCard card={card} small={!showFaceUp} showCaption={false} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} hideCssFrame={isBlackGoatYoung(card)||isTsathogguaSlime(card)} tokenFaceWidth={!showFaceUp&&(isBlackGoatYoung(card)||isTsathogguaSlime(card))?hiddenDerivedFaceWidth:undefined} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
             </div>
           );
         })}

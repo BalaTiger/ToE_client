@@ -195,13 +195,8 @@ function rotateTimedOutDrawDiscardEvent(event, rotateIndex) {
 
 function rotateTsathogguaSlimePop(slimePop, rotateIndex, myIndex) {
   if (!slimePop) return slimePop;
-  return {
-    ...slimePop,
-    playerIdx: slimePop.playerIdx != null ? rotateIndex(slimePop.playerIdx) : slimePop.playerIdx,
-    targetPid: slimePop.targetPid != null ? rotateIndex(slimePop.targetPid) : slimePop.targetPid,
-    playersBefore: rotatePlayersArray(slimePop.playersBefore, myIndex),
-    playersAfter: rotatePlayersArray(slimePop.playersAfter, myIndex),
-  };
+  const rotated = rotateIndexedFields(slimePop, ['playerIdx', 'targetPid'], rotateIndex);
+  return rotatePlayerSnapshotFields(rotated, ['playersBefore', 'playersAfter'], myIndex);
 }
 
 function rotateGodGiftKeepEvent(event, rotateIndex, myIndex) {
@@ -328,6 +323,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     if (event?.type === 'timedOutDrawDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftDiscard') return rotateTimedOutDrawDiscardEvent(event, rotateIndex);
     if (event?.type === 'godGiftKeep') return rotateGodGiftKeepEvent(event, rotateIndex, myIndex);
+    if (event?.type === 'tsgSlimePop') return rotateTsathogguaSlimePop(event, rotateIndex, myIndex);
     if (event?.type === 'tsgSlimeGrant') {
       return {
         ...event,
@@ -339,7 +335,7 @@ function rotateVisualEvents(events, rotateIndex, myIndex) {
     }
     if (event?.type === 'earthquake' || event?.type === 'cardEffect') return rotateCardEffectVisualEvent(event, rotateIndex, myIndex);
     if (event?.type === 'endlessCorridorReplay' || event?.type === 'animTransaction') return rotateEndlessCorridorReplayVisualEvent(event, rotateIndex, myIndex);
-    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'tsgSlimePop' || event?.type === 'godStatusChanged' || event?.type === 'graveDig') {
+    if (event?.type === 'turnStart' || event?.type === 'drawCard' || event?.type === 'handLimitDiscard' || event?.type === 'godStatusChanged' || event?.type === 'graveDig') {
       return {
         ...event,
         playerIdx: event.playerIdx != null ? rotateIndex(event.playerIdx) : event.playerIdx,

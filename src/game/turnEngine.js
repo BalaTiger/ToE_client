@@ -1479,6 +1479,7 @@ function consumeTsathogguaSlimeBeforeDraw(P, ownerIdx, slime, L, visualEvents = 
   });
   if (event) visualEvents.push(event);
   return {
+    ...(event?.id ? { id: event.id } : {}),
     targetPid: holderIdx,
     cards: [removed || slime].filter(Boolean),
     msgs: [msg],

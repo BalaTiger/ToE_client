@@ -1547,6 +1547,7 @@ export default function Game(){
       myPlayerIndexRef,
       setIsMultiplayer,
       isMultiplayerRef,
+      latestGsRef,
       setIsDisconnected,
       mpRoleRevealedRef,
       mpOpeningRoleRevealPendingRef,
@@ -6233,6 +6234,13 @@ export default function Game(){
         _statEvents:processed.inspectionMeta._statEvents,
         _statEventSeq:processed.inspectionMeta._statEventSeq,
       };
+      if(hasEffectDecisionState(processed.inspectionMeta)){
+        const decision=deriveEffectDecisionState(processed.inspectionMeta,{
+          baseAbilityData:buildTargetContinuationAbilityData({...abilityData,pendingSanInspection:null}),
+          turnOwner:abilityData._turnOwner??gs.currentTurn,
+        });
+        extraPatch={...extraPatch,phase:decision.phase,abilityData:decision.abilityData};
+      }
       inspected=(processed.inspectionMeta._inspectionSeq||0)>(gs._inspectionSeq||0);
       sanWin=checkWin(P,gs._isMP);
     }
@@ -6277,6 +6285,7 @@ export default function Game(){
       log:L,
       abilityData:{...abilityData,pendingSanInspection:null},
       turnOwner:abilityData._turnOwner??gs.currentTurn,
+      phase:extraPatch.phase||null,
       extraPatch,
     });
     const slimeQueue=useSlime?[

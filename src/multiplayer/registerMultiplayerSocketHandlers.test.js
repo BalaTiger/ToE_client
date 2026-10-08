@@ -242,7 +242,7 @@ describe('registerMultiplayerSocketHandlers', () => {
   });
 
   it('resets multiplayer refs when AI takeover disconnects the player', () => {
-    const { socket, deps, state } = makeDeps();
+    const { socket, deps, state } = makeDeps({ isMultiplayerRef: { current: true } });
     registerMultiplayerSocketHandlers(deps);
 
     socket.trigger('aiTakeover');
@@ -255,6 +255,43 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.mpRoleRevealedRef.current).toBe(false);
     expect([...deps.consumedVisualEventIdsRef.current]).toEqual([]);
     expect(deps.pendingMpAiTakeoverRef.current).toBe(null);
+  });
+
+  it('keeps a refused home-screen entry accessible without changing its identity', () => {
+    const { socket, deps, state } = makeDeps({ latestGsRef: { current: null } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('aiTakeover', { reason: '座位已由 AI 接管' });
+    expect(state.isDisconnected).toBe(false);
+    expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(true);
+    expect(state.roomModal).toBeNull();
+    expect(deps.cleanupConnection).toHaveBeenCalled();
+    expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
+    expect(deps.addToast).toHaveBeenCalledWith(expect.stringContaining('不能创建或加入'));
+    expect(deps.playerUUIDRef.current).toBe('u2');
+    expect(deps.setPlayerUUID).not.toHaveBeenCalled();
+    expect(deps.setIdentityToken).not.toHaveBeenCalled();
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('retains the exit boundary for a repeated terminal packet until the old game view is cleared', () => {
+    const { socket, deps, state } = makeDeps({ latestGsRef: { current: { phase: 'ACTION' } } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('aiTakeover');
+    socket.trigger('aiTakeover');
+    expect(state.isDisconnected).toBe(true);
+    expect(deps.setOnlineOptionsModal).toHaveBeenLastCalledWith(false);
+    expect(deps.latestGsRef.current).toEqual({ phase: 'ACTION' });
+  });
+
+  it('ignores an old socket terminal result after a different connection owns the session', () => {
+    const { socket, deps } = makeDeps({ isMultiplayerRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    deps.socketRef.current = { connected: true };
+    socket.trigger('aiTakeover', { reason: 'stale old connection' });
+    expect(deps.isMultiplayerRef.current).toBe(true);
+    expect(deps.setIsDisconnected).not.toHaveBeenCalled();
+    expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
+    expect(deps.addToast).not.toHaveBeenCalled();
   });
 
   it('updates announcement state from server broadcasts', () => {

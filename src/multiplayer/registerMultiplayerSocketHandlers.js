@@ -32,6 +32,7 @@ export function registerMultiplayerSocketHandlers({
   myPlayerIndexRef,
   setIsMultiplayer,
   isMultiplayerRef,
+  latestGsRef,
   setIsDisconnected,
   mpRoleRevealedRef,
   mpOpeningRoleRevealPendingRef,
@@ -330,7 +331,16 @@ export function registerMultiplayerSocketHandlers({
   });
 
   socket.on('aiTakeover', ({ reason } = {}) => {
-    setIsDisconnected(true);
+    if (socketRef.current !== socket) return;
+    // A rejected home-screen entry has no match to exit. Keep its authenticated
+    // options session visible; an existing battle still needs the explicit exit.
+    const hasMatchView = isMultiplayerRef.current || !!latestGsRef?.current;
+    cleanupConnection();
+    setMultiLoading(false);
+    setConnErrModal(false);
+    setIsDisconnected(hasMatchView);
+    setOnlineOptionsModal(!hasMatchView);
+    if (!hasMatchView) setRoomModal(null);
     setIsMultiplayer(false);
     isMultiplayerRef.current = false;
     setMyPlayerIndex(0);
@@ -339,6 +349,7 @@ export function registerMultiplayerSocketHandlers({
     consumedVisualEventIdsRef.current = new Set();
     pendingMpAiTakeoverRef.current = null;
     if (reason) addToast(reason);
+    if (!hasMatchView) addToast('原对局结束前，当前身份不能创建或加入其他房间；可返回主界面。');
   });
 
   socket.on('disconnect', () => {

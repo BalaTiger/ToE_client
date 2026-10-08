@@ -477,6 +477,7 @@ function tsgSlimePopStepFromEvent(event) {
   const playersAfter = Array.isArray(event.playersAfter) ? event.playersAfter : null;
   return {
     type: 'TSG_SLIME_POP',
+    ...(event.id ? { visualEventId: event.id } : {}),
     targetPid: event.playerIdx ?? event.targetPid ?? 0,
     count: event.count || (Array.isArray(event.cards) ? event.cards.length : 1),
     cards: Array.isArray(event.cards) ? event.cards : [],
@@ -546,6 +547,7 @@ export function buildTurnStartPreDrawEffectQueue({
   queue.push(...preDrawBlockedSteps);
   const slimePopSteps = getVisualEvents(newGs)
     .filter(event => event?.type === VISUAL_EVENT.TSG_SLIME_POP)
+    .filter(event => !isConsumedVisualEvent(event))
     .filter(event => event.turnStartStage ? event.turnStartStage === 'turnStart' : (event?.msgs || []).some(msg => preDrawMsgs.includes(msg)))
     .map(tsgSlimePopStepFromEvent)
     .filter(Boolean);
@@ -950,7 +952,7 @@ export function buildTurnStartDrawReplayQueue({
         const fallbackReshuffleStep = legacyReshuffleStep(newGs?._drawLogs);
         if (fallbackReshuffleStep) steps.push(fallbackReshuffleStep, reshuffleLandingStep);
       }
-      if (event.slimePop) {
+      if (event.slimePop && !isConsumedVisualEvent(event.slimePop)) {
         steps.push(tsgSlimePopStepFromEvent({
           ...event.slimePop,
           targetPid: event.slimePop.targetPid ?? event.drawerIdx ?? drawerPid,
