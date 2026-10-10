@@ -1,4 +1,6 @@
 import { createRuleResolutionTransaction } from './ruleResolutionTransaction';
+import { canRevealForHunt, cardLogText } from './coreUtils';
+import { isLocalHuntTargetSeat } from './rotateState';
 import { bindTurnFlowEvents } from './turnFlowManager';
 import {
   compileFreshVisualEventQueue,
@@ -7,6 +9,7 @@ import {
 import {
   getVisualEventIdsFromState,
   getVisualEvents,
+  createHuntRevealEvent,
   VISUAL_EVENT,
 } from './visualEvents';
 
@@ -250,6 +253,28 @@ export function buildHuntStageVisualTransaction({
     queue: compileFreshVisualEventQueue(previousState, nextState, compileOptions),
     attemptId: attemptId || getHuntAttemptId(nextState),
   };
+}
+
+export function buildMpHuntRevealVisualTransaction(previousState, card, { timedOut = false } = {}) {
+  const me = previousState?.players?.[0];
+  if (!previousState?._isMP || previousState.gameOver || previousState.phase !== 'HUNT_WAIT_REVEAL'
+    || !isLocalHuntTargetSeat(previousState) || !me?.hand?.includes(card) || !canRevealForHunt(card)) return null;
+  const message = timedOut
+    ? `(超时) ${me.name || '该玩家'} 随机亮出 ${cardLogText(card, { alwaysShowName: true })}`
+    : `${me.name} 亮出 ${cardLogText(card, { alwaysShowName: true })}`;
+  const huntTi = previousState.abilityData.huntTi;
+  const attemptId = getHuntAttemptId(previousState, previousState.currentTurn, huntTi);
+  return buildHuntStageVisualTransaction({
+    previousState,
+    state: { ...previousState, log: [...previousState.log, message], phase: 'HUNT_CONFIRM',
+      abilityData: { ...previousState.abilityData, revCard: card, huntPromptId: attemptId } },
+    events: [createHuntRevealEvent({ sourceIdx: previousState.currentTurn, targetIdx: huntTi, card,
+      msgs: [message], attemptId })],
+    attemptId,
+    stage: 'reveal',
+    barrier: 'decision',
+    compileOptions: { allowTargetZero: true },
+  });
 }
 
 export function compileFreshHuntVisualTransaction(state, previousState = null, compileOptions = {}) {

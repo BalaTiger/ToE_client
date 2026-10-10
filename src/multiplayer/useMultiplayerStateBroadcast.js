@@ -112,6 +112,8 @@ export function useMultiplayerStateBroadcast({
   animQueueRef,
   pendingGsRef,
 }) {
+  const roomId = roomModal?.roomId;
+
   useEffect(() => {
     if (!isMultiplayer || !gs?.gameOver) return;
     if (gameEndSentRef.current) return;
@@ -120,11 +122,11 @@ export function useMultiplayerStateBroadcast({
       socket: socketRef.current,
       gs,
       playerUUID,
-      roomId: roomModal?.roomId,
+      roomId,
       myPlayerIndex: myPlayerIndexRef.current,
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs?.gameOver, isMultiplayer, playerUUID, roomModal?.roomId]);
+  }, [gs?.gameOver, isMultiplayer, playerUUID, roomId]);
 
   useEffect(() => {
     if (!gs || !isMultiplayer || !socketRef.current) return;
@@ -141,7 +143,7 @@ export function useMultiplayerStateBroadcast({
         socket: socketRef.current,
         broadcast: buildPlayerWinWaitBroadcast({
           gs,
-          room: roomModal,
+          room: { roomId },
           myPlayerIndex: myPlayerIndexRef.current,
         }),
       });
@@ -157,7 +159,7 @@ export function useMultiplayerStateBroadcast({
 
     const broadcast = buildNormalStateBroadcast({
       gs,
-      room: roomModal,
+      room: { roomId },
       myPlayerIndex: myPlayerIndexRef.current,
       consumedVisualEventIds: consumedVisualEventIdsRef.current,
     });
@@ -174,7 +176,7 @@ export function useMultiplayerStateBroadcast({
     animExiting,
     showTutorial,
     isMultiplayer,
-    roomModal,
+    roomId,
     socketRef,
     myPlayerIndexRef,
     gameEndSentRef,

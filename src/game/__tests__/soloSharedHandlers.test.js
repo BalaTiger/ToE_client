@@ -170,6 +170,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
       playbackRef: { current: { id: 17, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() } },
       queueLifecycleRef: { current: { phase: 'playing', previousPhase: null } },
       consumedVisualEventIdsRef: { current: new Set(['old-event']) },
+      completedMpHuntRevealPromptIdsRef: { current: new Set(['old-hunt-prompt']) },
       pendingMpRawQueueRef: { current: [pending] }, pendingMpLatestStateRawRef: { current: pending },
       recentMpAnimatedRawSignaturesRef: { current: ['old'] },
       pendingMpAiTakeoverRef: { current: pending }, mpOpeningRoleRevealPendingRef: { current: true },
@@ -195,6 +196,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
     expect(context.setGs).toHaveBeenCalledWith(null);
     expect(context.pendingGsRef.current).toBeNull();
     expect(context.recentMpAnimatedRawSignaturesRef.current).toEqual([]);
+    expect(context.completedMpHuntRevealPromptIdsRef.current.size).toBe(0);
     expect(context.pendingVisualEventIdsRef.current).toEqual([]);
     expect(context.endTurnSeqRef.current).toBeNull();
     expect(context.latestGsRef.current).toBeNull();

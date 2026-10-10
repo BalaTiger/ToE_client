@@ -10,6 +10,10 @@ import {
   ANIMATION_QUEUE_AUTHORITY,
   compileFreshVisualEventQueue,
 } from '../game/visualEventTransactionCompiler';
+import {
+  isResolvedMpHuntWaitState,
+  rememberMpHuntRevealConfirmation,
+} from './multiplayerHuntReplayGuard';
 
 const ANIMATED_REPLAY_TYPES = new Set([
   MP_REMOTE_REPLAY.ROLE_REVEAL,
@@ -224,6 +228,7 @@ export function applyMultiplayerReplayAction(
 export function processIncomingMultiplayerStateSync({
   rawState,
   allowBuffer = true,
+  replayingQueuedAnimation = false,
   currentState,
   roleRevealAnim,
   anim,
@@ -241,6 +246,13 @@ export function processIncomingMultiplayerStateSync({
   // missing presentation on remote clients.
   const hasFreshVisualEvents = getVisualEventIdsFromState(rotatedState)
     .some(id => !context.consumedVisualEventIdsRef.current.has(id));
+  // Preserve a target animation accepted before its confirmation in the FIFO.
+  // New inbound and cached plain waits may not reopen that resolved prompt,
+  // even while its accepted reveal is queued or playing.
+  if (isResolvedMpHuntWaitState(
+    rotatedState,
+    context.completedMpHuntRevealPromptIdsRef?.current,
+  ) && !(!allowBuffer && replayingQueuedAnimation && hasFreshVisualEvents)) return 'ignored';
   const localIsTerminal = !!previousState?.gameOver
     || previousState?.phase === 'GOD_RESURRECTION';
   const incomingIsTerminal = !!rotatedState?.gameOver
@@ -289,6 +301,12 @@ export function processIncomingMultiplayerStateSync({
     buildFullHandSwapTransferQueueFromLogs,
     consumedVisualEventIds: context.consumedVisualEventIdsRef.current,
   });
+  // Record on acceptance, before buffering: the visible state can remain in
+  // HUNT_WAIT_REVEAL until this confirmation's presentation finishes.
+  rememberMpHuntRevealConfirmation(
+    rotatedState,
+    context.completedMpHuntRevealPromptIdsRef?.current,
+  );
   if (allowBuffer && ANIMATED_REPLAY_TYPES.has(replayAction?.type)) {
     rememberAnimatedRawSignature(incomingSignature, context);
   }

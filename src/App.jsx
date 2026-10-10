@@ -49,10 +49,12 @@ import {
 } from "./constants/card";
 import { getBattleBackgroundImage, getBattlePredecodeImages, getBattleTheme } from './constants/theme';
 import { buildPhaseUiState, getHuntRevealPromptId } from './game/phaseUi';
+import { claimMpHuntRevealConfirmation, isResolvedMpHuntWaitState } from './multiplayer/multiplayerHuntReplayGuard';
 import {
   appendHuntStageEvents,
   buildBewitchGiftVisualTransaction,
   buildHuntStageVisualTransaction,
+  buildMpHuntRevealVisualTransaction,
   buildSwapCardsVisualTransaction,
   getHuntAttemptId,
 } from './game/identitySkillVisualTransaction';
@@ -128,7 +130,6 @@ import {
   isBlackGoatYoung,
   isTsathogguaSlime,
   isRevealedCultist,
-  canRevealForHunt,
   hasHuntRevealableCard,
   buildTsathogguaSlimeBalanceDecision,
   aiStep,
@@ -723,6 +724,7 @@ export default function Game(){
   const socketRef=useRef(null);
   const mpAiTakeoverSeqRef=useRef(0);
   const pendingMpAiTakeoverRef=useRef(null);
+  const completedMpHuntRevealPromptIdsRef=useRef(new Set());
   const {
     playerUUID, setPlayerUUID, playerUUIDRef,
     identityToken, setIdentityToken, identityTokenRef,
@@ -879,11 +881,12 @@ export default function Game(){
     });
   }
 
-  function processIncomingMpStateSync(rawGs,{allowBuffer=true}={}){
+  function processIncomingMpStateSync(rawGs,{allowBuffer=true,replayingQueuedAnimation=false}={}){
     if(gameOverPresentationFrozenRef.current||!isMultiplayerRef.current)return 'ignored';
     return processIncomingMultiplayerStateSync({
       rawState:rawGs,
       allowBuffer,
+      replayingQueuedAnimation,
       currentState:gs,
       roleRevealAnim,
       anim,
@@ -894,6 +897,7 @@ export default function Game(){
         mpOpeningRoleRevealPendingRef,
         mpRoleRevealedRef,
         consumedVisualEventIdsRef,
+        completedMpHuntRevealPromptIdsRef,
         pendingMpRawQueueRef,
         pendingMpLatestStateRawRef,
         recentMpAnimatedRawSignaturesRef,
@@ -932,12 +936,14 @@ export default function Game(){
       return;
     }
     const sourceGs=latest||(payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):null);
+    if(isResolvedMpHuntWaitState(sourceGs,completedMpHuntRevealPromptIdsRef.current))return;
     const takeoverIdx=rotateRawSeatIndex(payload.playerIndex,sourceGs);
     const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx,{
       getHandLimitForPlayer,
       resolveCaveDuelState,
     });
     if(!nextGs||nextGs===sourceGs)return;
+    if(!claimMpHuntRevealConfirmation(nextGs,completedMpHuntRevealPromptIdsRef.current))return;
     const roomId=payload.roomId||roomModalRef.current?.roomId;
     const rawNextGs=derotateGs(nextGs,myPlayerIndexRef.current);
     if(socketRef.current?.connected&&roomId){
@@ -1429,10 +1435,11 @@ export default function Game(){
       return;
     }
     if(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsRef.current)return;
-    const pendingRaw=pendingMpRawQueueRef.current.shift()||pendingMpLatestStateRawRef.current;
+    const queuedAnimationRaw=pendingMpRawQueueRef.current.shift();
+    const pendingRaw=queuedAnimationRaw||pendingMpLatestStateRawRef.current;
     if(!pendingRaw)return;
     if(pendingRaw===pendingMpLatestStateRawRef.current)pendingMpLatestStateRawRef.current=null;
-    processIncomingMpStateSync(pendingRaw,{allowBuffer:false});
+    processIncomingMpStateSync(pendingRaw,{allowBuffer:false,replayingQueuedAnimation:!!queuedAnimationRaw});
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[roleRevealAnim,anim,animExiting,gs?.phase,gs?._turnKey,gs?.log?.length]);
 
@@ -1552,6 +1559,8 @@ export default function Game(){
       mpRoleRevealedRef,
       mpOpeningRoleRevealPendingRef,
       consumedVisualEventIdsRef,
+      completedMpHuntRevealPromptIdsRef,
+      setDismissedHuntRevealPromptId,
       mpAiTakeoverSeqRef,
       pendingMpAiTakeoverRef,
       gameEndSentRef,
@@ -1613,6 +1622,7 @@ export default function Game(){
     pendingMpLatestStateRawRef.current=null;
     recentMpAnimatedRawSignaturesRef.current=[];
     pendingMpAiTakeoverRef.current=null;
+    completedMpHuntRevealPromptIdsRef.current.clear();
     mpOpeningRoleRevealPendingRef.current=false;
     setRoleRevealAnim(null);
   },[clearBattleAnimationState]);
@@ -3345,7 +3355,8 @@ export default function Game(){
   const mpCthSec = useMpCthDecisionTimer({ isMpCthDecisionPhase, gs, playTickSound, setGs });
   const mpDiscardSec = useMpDiscardTimer({ isMultiplayer, gs, isLocalCurrentTurn, playTickSound, setGs });
   const timerMe = gs?.players?.[0] || null;
-  const timerIsHuntTarget = !!gs && isLocalHuntTargetSeat(gs);
+  const timerIsHuntTarget = !!gs && isLocalHuntTargetSeat(gs)
+    && getHuntRevealPromptId(gs)!==dismissedHuntRevealPromptId;
   const isLocalMpDecisionActive=!!gs
     &&!showTutorial
     &&!anim
@@ -3383,7 +3394,7 @@ export default function Game(){
     playTickSound,
     setGs,
   });
-  const mpHuntSec = useMpHuntRevealTimer({ isMultiplayer, gs, isLocalHuntTarget: timerIsHuntTarget, me: timerMe, playTickSound, setGs });
+  const mpHuntSec = useMpHuntRevealTimer({ isMultiplayer, gs, isLocalHuntTarget: timerIsHuntTarget, me: timerMe, playTickSound, onReveal: revealForMPHunt });
   const mpDecisionSec=useMpDecisionTimer({
     isMultiplayer,
     gs,
@@ -8108,35 +8119,20 @@ export default function Game(){
 
   // 多人游戏：被追捕的真人玩家选择亮出一张手牌
   function humanRevealForMPHunt(cardIdx){
-    const card=me.hand[cardIdx];
-    if(!canRevealForHunt(card))return;
-    setDismissedHuntRevealPromptId(getHuntRevealPromptId(gs));
-    // huntTi = 被追捕者在当前视角下的 index（非0）
-    // 被追捕者将选择结果推送回规范 gs 并广播：
-    // 设置 revCard，切换到 HUNT_CONFIRM 让追猎者（currentTurn=0 视角）完成后续
-    const P=copyPlayers(gs.players);
-    const L=[...gs.log,`${me.name} 亮出 ${cardLogText(card,{alwaysShowName:true})}`];
-    const huntTi=gs.abilityData?.huntTi ?? 0;
-    const huntAttemptId=getHuntAttemptId(gs,gs.currentTurn??0,huntTi);
-    const huntRevealEvent=createHuntRevealEvent({
-      sourceIdx:gs.currentTurn??0,
-      targetIdx:huntTi,
-      card,
-      msgs:L.slice(gs.log.length),
-      attemptId:huntAttemptId,
-    });
-    const {state:newGs,queue}=buildHuntStageVisualTransaction({
-      previousState:gs,
-      state:{...gs,players:P,log:L,phase:'HUNT_CONFIRM',
-        abilityData:{...gs.abilityData,revCard:card,huntPromptId:huntAttemptId}},
-      events:[huntRevealEvent],
-      attemptId:huntAttemptId,
-      stage:'reveal',
-      barrier:'decision',
-      compileOptions:{allowTargetZero:true},
-    });
+    revealForMPHunt(me.hand[cardIdx]);
+  }
+
+  function revealForMPHunt(card,options){
+    if(isMpReplayBusy())return false;
+    const sourceGs=latestGsRef.current||gs;
+    if(getHuntRevealPromptId(sourceGs)===dismissedHuntRevealPromptId)return;
+    const transaction=buildMpHuntRevealVisualTransaction(sourceGs,card,options);
+    if(!transaction)return;
+    if(!claimMpHuntRevealConfirmation(transaction.state,completedMpHuntRevealPromptIdsRef.current))return;
+    setDismissedHuntRevealPromptId(getHuntRevealPromptId(sourceGs));
+    const {state:newGs,queue}=transaction;
     triggerSyncedAnimTransaction(queue,newGs,{
-      context:'huntReveal',barrier:'decision',msgs:L.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
+      context:'huntReveal',barrier:'decision',msgs:newGs.log.slice(sourceGs.log.length),beforePlayers:sourceGs.players,beforeDiscard:sourceGs.discard,
     });
   }
 

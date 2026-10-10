@@ -3,6 +3,7 @@ import {
   appendHuntStageEvents,
   buildBewitchGiftVisualTransaction,
   buildHuntStageVisualTransaction,
+  buildMpHuntRevealVisualTransaction,
   buildSwapCardsVisualTransaction,
   compileFreshBewitchVisualTransaction,
   compileFreshHuntVisualTransaction,
@@ -23,6 +24,7 @@ import { compileFreshVisualEventQueue } from '../visualEventTransactionCompiler'
 import { prepareAnimQueueLogs } from '../animLogs';
 import { consumeVisualLogEntries } from '../visualEventLogs';
 import { normalizeLogForViewer } from '../logPerspective';
+import { createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../../constants/card';
 
 function player(name, hand = []) {
   return { name, hp: 10, san: 10, hand, godZone: [], isDead: false };
@@ -195,5 +197,45 @@ describe('identity skill visual transactions', () => {
 
     expect(replay.transaction.eventIds).toEqual([apophis.id, hunt.id]);
     expect(replay.transaction.queue.map(step => step.type)).toEqual(['DICE_ROLL', 'SKILL_HUNT']);
+  });
+
+  it.each([false, true])('plays one local and peer reveal log with timedOut=%s', timedOut => {
+    const card = { id: 'owned-APO', name: '阿波菲斯', isGod: true, godKey: 'APO' };
+    const before = { _isMP: true, _turnKey: 7, currentTurn: 1, phase: 'HUNT_WAIT_REVEAL',
+      players: [player('目标', [card]), player('追猎者'), player('旁观者')],
+      log: ['等待亮牌'], abilityData: { huntTi: 0, huntPromptId: 'real-hunt-7' }, _visualEvents: [] };
+    const result = buildMpHuntRevealVisualTransaction(before, card, { timedOut });
+    const expected = timedOut ? '(超时) 目标 随机亮出 阿波菲斯' : '目标 亮出 阿波菲斯';
+    expect(result.state.abilityData).toMatchObject({ revCard: card, huntPromptId: 'real-hunt-7' });
+    expect(result.state.phase).toBe('HUNT_CONFIRM');
+    expect(result.state.players).toBe(before.players);
+    expect(result.state._visualEvents.at(-1)).toMatchObject({ attemptId: 'real-hunt-7', transactionId: 'real-hunt-7:reveal' });
+    expect(before.phase).toBe('HUNT_WAIT_REVEAL');
+    const broadcast = { ...result.state, _visualEvents: [createAnimTransactionEvent({
+      actorIdx: before.currentTurn, actorName: before.players[before.currentTurn].name,
+      queue: result.queue, context: 'huntReveal',
+    }), ...result.state._visualEvents] };
+    for (let viewer = 0; viewer < 3; viewer++) {
+      const state = rotateGsForViewer(broadcast, viewer);
+      const queue = viewer === 0 ? result.queue : compileFreshVisualEventQueue(rotateGsForViewer(before, viewer), state);
+      const consumed = new Set();
+      const entries = prepareAnimQueueLogs(queue, state).flatMap(step => step.logEntries || []);
+      expect(consumeVisualLogEntries(entries, consumed)).toEqual([expected]);
+      expect(consumeVisualLogEntries(entries, consumed)).toEqual([]);
+    }
+  });
+
+  it('rejects illegal/unheld cards and a decision that already advanced', () => {
+    const slime = createTsathogguaSlimeCard(), young = createBlackGoatYoungCard();
+    const card = { id: 'owned', name: '合法牌', type: 'drawCard', key: 'A1' };
+    const before = { _isMP: true, currentTurn: 1, phase: 'HUNT_WAIT_REVEAL',
+      players: [player('目标', [card, slime, young]), player('追猎者')],
+      log: [], abilityData: { huntTi: 0, huntPromptId: 'attempt' }, _visualEvents: [] };
+    for (const invalid of [slime, young, { ...card }, undefined]) {
+      expect(buildMpHuntRevealVisualTransaction(before, invalid, { timedOut: true })).toBeNull();
+    }
+    expect(buildMpHuntRevealVisualTransaction({ ...before, phase: 'HUNT_CONFIRM' }, card)).toBeNull();
+    expect(buildMpHuntRevealVisualTransaction({ ...before, abilityData: { huntTi: 1 } }, card)).toBeNull();
+    expect(buildMpHuntRevealVisualTransaction({ ...before, gameOver: { winner: 'HUNTER' } }, card)).toBeNull();
   });
 });

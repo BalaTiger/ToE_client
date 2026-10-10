@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { registerMultiplayerSocketHandlers } from './registerMultiplayerSocketHandlers';
+import { buildPhaseUiState, getHuntRevealPromptId } from '../game/phaseUi';
+import { isLocalHuntTargetSeat } from '../game/rotateState';
+import { isResolvedMpHuntWaitState } from './multiplayerHuntReplayGuard';
 
 function makeSocket() {
   const handlers = new Map();
@@ -27,6 +30,7 @@ function makeDeps(overrides = {}) {
     isDisconnected: null,
     myPlayerIndex: null,
     serverAnnouncement: null,
+    dismissedHuntRevealPromptId: null,
   };
   const setRoomModal = vi.fn((next) => {
     state.roomModal = typeof next === 'function' ? next(state.roomModal) : next;
@@ -67,6 +71,8 @@ function makeDeps(overrides = {}) {
       mpRoleRevealedRef: { current: true },
       mpOpeningRoleRevealPendingRef: { current: true },
       consumedVisualEventIdsRef: { current: new Set(['old']) },
+      completedMpHuntRevealPromptIdsRef: { current: new Set(['old-session-prompt']) },
+      setDismissedHuntRevealPromptId: vi.fn(value => { state.dismissedHuntRevealPromptId = value; }),
       mpAiTakeoverSeqRef: { current: 0 },
       pendingMpAiTakeoverRef: { current: { stale: true } },
       gameEndSentRef: { current: true },
@@ -230,6 +236,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(state.roomModal).toMatchObject({ roomId: 'room-1', count: 2 });
     expect(deps.mpAiTakeoverSeqRef.current).toBe(3);
     expect([...deps.consumedVisualEventIdsRef.current]).toEqual(['already-seen']);
+    expect([...deps.completedMpHuntRevealPromptIdsRef.current]).toEqual([]);
     expect(deps.restoreVisibleLog).toHaveBeenCalledWith(rawGs.log, expect.objectContaining({currentTurn:0}));
     expect(deps.animQueueRef.current).toEqual([]);
     expect(deps.pendingGsRef.current).toBe(null);
@@ -239,6 +246,80 @@ describe('registerMultiplayerSocketHandlers', () => {
       currentTurn: 0,
       players: [{ name: '我' }, { name: '房主' }],
     }));
+  });
+
+  it('starts a new game without retaining a previous session hunt completion', () => {
+    const { socket, deps, state } = makeDeps();
+    state.dismissedHuntRevealPromptId = 'old-session-prompt';
+    registerMultiplayerSocketHandlers(deps);
+    // This receiver is seat 1, so the host owns initialization and broadcasting.
+    socket.trigger('gameStart', { roomId: 'new-room', players: [
+      { uuid: 'u1', username: '房主' }, { uuid: 'u2', username: '我' },
+    ] });
+    expect([...deps.completedMpHuntRevealPromptIdsRef.current]).toEqual([]);
+    expect(state.dismissedHuntRevealPromptId).toBe(null);
+    expect(deps.setDismissedHuntRevealPromptId).toHaveBeenCalledExactlyOnceWith(null);
+  });
+
+  it('reopens an authoritative restored wait after the same prompt was locally dismissed and claimed', () => {
+    const promptId = 'restored-pending-hunt';
+    const { socket, deps, state } = makeDeps({
+      completedMpHuntRevealPromptIdsRef: { current: new Set([promptId]) },
+    });
+    state.dismissedHuntRevealPromptId = promptId;
+    let adoptedGs;
+    deps.setGs = vi.fn(next => {
+      // Reset local speculation before adopting the server's pending decision.
+      expect(state.dismissedHuntRevealPromptId).toBe(null);
+      expect([...deps.completedMpHuntRevealPromptIdsRef.current]).toEqual([]);
+      adoptedGs = next;
+    });
+    registerMultiplayerSocketHandlers(deps);
+
+    socket.trigger('matchRestored', { roomId: 'room-1', playerIndex: 1,
+      players: [{ uuid: 'u1' }, { uuid: 'u2' }],
+      gs: { _isMP: true, phase: 'HUNT_WAIT_REVEAL', currentTurn: 0,
+        players: [{ name: '追猎者' }, { name: '我' }],
+        abilityData: { huntTi: 1, huntPromptId: promptId }, log: ['等待亮牌'] } });
+
+    expect(deps.setDismissedHuntRevealPromptId).toHaveBeenCalledExactlyOnceWith(null);
+    expect(getHuntRevealPromptId(adoptedGs)).toBe(promptId);
+    expect(isResolvedMpHuntWaitState(adoptedGs, deps.completedMpHuntRevealPromptIdsRef.current)).toBe(false);
+    expect(isLocalHuntTargetSeat(adoptedGs)).toBe(true);
+    const ui = buildPhaseUiState({ gs: adoptedGs, phase: adoptedGs.phase,
+      local: { huntTarget: isLocalHuntTargetSeat(adoptedGs) },
+      isLocalHuntRevealPrompt: true,
+      huntRevealPromptActive: getHuntRevealPromptId(adoptedGs) !== state.dismissedHuntRevealPromptId });
+    expect(ui.phaseLabel).toContain('请选择一张手牌亮出（20秒）');
+    expect(ui.isPhaseWarningText).toBe(true);
+  });
+
+  it('restores only the current confirmed hunt into the session guard before a stale wait can arrive', () => {
+    const { socket, deps, state } = makeDeps();
+    state.dismissedHuntRevealPromptId = 'restored-hunt';
+    registerMultiplayerSocketHandlers(deps);
+    const rawGs = { phase: 'HUNT_CONFIRM', currentTurn: 0,
+      players: [{ name: '房主' }, { name: '我' }],
+      abilityData: { huntTi: 1, huntPromptId: 'restored-hunt', revCard: { id: 'card' } },
+      log: ['我亮出手牌'] };
+    socket.trigger('matchRestored', { roomId: 'room-1', playerIndex: 1,
+      players: [{ uuid: 'u1' }, { uuid: 'u2' }], gs: rawGs });
+    expect([...deps.completedMpHuntRevealPromptIdsRef.current]).toEqual(['restored-hunt']);
+    expect(state.dismissedHuntRevealPromptId).toBe(null);
+    expect(deps.setDismissedHuntRevealPromptId).toHaveBeenCalledExactlyOnceWith(null);
+    expect(deps.setGs).toHaveBeenCalledWith(expect.objectContaining({
+      phase: 'HUNT_CONFIRM', currentTurn: 1,
+      abilityData: expect.objectContaining({ huntTi: 0, huntPromptId: 'restored-hunt' }),
+    }));
+  });
+
+  it('keeps restoration compatible with callers that do not provide a hunt guard ref', () => {
+    const { socket, deps } = makeDeps({ completedMpHuntRevealPromptIdsRef: undefined, setDismissedHuntRevealPromptId: undefined });
+    registerMultiplayerSocketHandlers(deps);
+    expect(() => socket.trigger('matchRestored', { roomId: 'room-1', playerIndex: 1,
+      players: [{ uuid: 'u1' }, { uuid: 'u2' }], gs: { phase: 'HUNT_CONFIRM',
+        currentTurn: 0, players: [{ name: '房主' }, { name: '我' }],
+        abilityData: { huntTi: 1, huntPromptId: 'legacy-consumer' }, log: [] } })).not.toThrow();
   });
 
   it('resets multiplayer refs when AI takeover disconnects the player', () => {

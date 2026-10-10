@@ -118,6 +118,7 @@ describe('leaving a match during queued playback', () => {
         useCallback: fn => fn,
         isMultiplayer: exit !== 'returnToMainMenu',
         consumedVisualEventIdsRef: { current: new Set() },
+        completedMpHuntRevealPromptIdsRef: { current: new Set(['old-hunt-prompt']) },
         pendingMpRawQueueRef: { current: [nextGs] },
         pendingMpLatestStateRawRef: { current: nextGs },
         recentMpAnimatedRawSignaturesRef: { current: ['old'] },
@@ -184,6 +185,7 @@ describe('leaving a match during queued playback', () => {
       expect(context.pendingMpRawQueueRef.current).toEqual([]);
       expect(context.pendingMpLatestStateRawRef.current).toBeNull();
       expect(context.recentMpAnimatedRawSignaturesRef.current).toEqual([]);
+      expect(context.completedMpHuntRevealPromptIdsRef.current.size).toBe(0);
       expect(context.endTurnSeqRef.current).toBeNull();
       expect(context.setRoleRevealAnim).toHaveBeenCalledWith(null);
 

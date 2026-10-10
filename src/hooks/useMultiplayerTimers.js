@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { cardLogText } from '../game/coreUtils';
-import { createHuntRevealEvent } from '../game/visualEvents';
+import { canRevealForHunt } from '../game/coreUtils';
 
 export function startSecondCountdown({ seconds, warningAt, setSeconds, intervalRef, playTickSound, onComplete }) {
   setSeconds(seconds);
@@ -219,11 +218,18 @@ export function useMpHuntRevealTimer({
   isLocalHuntTarget,
   me,
   playTickSound,
-  setGs,
+  onReveal,
 }) {
   const [mpHuntSec, setMpHuntSec] = useState(null);
   const mpHuntIntervalRef = useRef(null);
   const huntRevealTimerRef = useRef(null);
+  const onRevealRef = useRef(onReveal);
+  const meRef = useRef(me);
+
+  useEffect(() => {
+    onRevealRef.current = onReveal;
+    meRef.current = me;
+  }, [onReveal, me]);
 
   useEffect(() => {
     if (!isMultiplayer || !gs || gs.gameOver) return;
@@ -236,26 +242,18 @@ export function useMpHuntRevealTimer({
       playTickSound,
     });
     if (isLocalHuntTarget) {
-      const timeoutId = setTimeout(() => {
-        const hand = me?.hand || [];
+      const attemptReveal = () => {
+        huntRevealTimerRef.current = null;
+        const hand = (meRef.current?.hand || []).filter(canRevealForHunt);
         if (!hand.length) return;
         const rc = hand[0 | Math.random() * hand.length];
-        const L = [...gs.log, `(超时) ${me?.name || '该玩家'} 随机亮出 ${cardLogText(rc, { alwaysShowName: true })}`];
-        const huntRevealEvent = createHuntRevealEvent({
-          sourceIdx: gs.currentTurn ?? 0,
-          targetIdx: gs.abilityData?.huntTi ?? 0,
-          card: rc,
-          msgs: L.slice(gs.log.length),
-        });
-        setGs({
-          ...gs,
-          log: L,
-          phase: 'HUNT_CONFIRM',
-          abilityData: { ...gs.abilityData, revCard: rc },
-          ...(huntRevealEvent ? { _visualEvents: [huntRevealEvent] } : { _visualEvents: [] }),
-        });
-      }, 20000);
-      huntRevealTimerRef.current = timeoutId;
+        // A busy replay cannot accept a new transaction yet. Keep the expired
+        // deadline and retry through the same owned timer so cleanup cancels it.
+        if (onRevealRef.current?.(rc, { timedOut: true }) === false) {
+          huntRevealTimerRef.current = setTimeout(attemptReveal, 250);
+        }
+      };
+      huntRevealTimerRef.current = setTimeout(attemptReveal, 20000);
     }
     return () => {
       clearTimeout(huntRevealTimerRef.current);
@@ -264,7 +262,7 @@ export function useMpHuntRevealTimer({
       setMpHuntSec(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs?.phase, gs?.currentTurn, gs?.abilityData?.huntTi, isLocalHuntTarget, isMultiplayer]);
+  }, [gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.abilityData?.huntTi, gs?.abilityData?.huntPromptId, isLocalHuntTarget, isMultiplayer]);
 
   return mpHuntSec;
 }

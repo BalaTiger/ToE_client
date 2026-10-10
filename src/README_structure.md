@@ -55,6 +55,14 @@ The existing turn-flow manager selects the rule stage. Rules produce visual even
 - Canonical event queues bypass legacy log-bucket attachment. Historical replay adapters remain for snapshots without staged events; do not use them for new producers.
 - `auditVisualEventLogCoverage` is a read-only audit of one ordered transaction against its rule-log delta. It reports missing/extra occurrences and ordering differences; it must not repair events or drive playback.
 
+Multiplayer manual and 20-second automatic hunt reveals share
+`buildMpHuntRevealVisualTransaction` in `game/identitySkillVisualTransaction.js`.
+The timer selects an eligible held card and delegates playback to `App.jsx`, so
+the target and peers receive the same queue-owned reveal log.
+`multiplayer/multiplayerHuntReplayGuard.js` tracks confirmed explicit hunt prompt
+IDs for the current session, preventing stale waiting snapshots and AI callbacks
+from reopening a confirmed hunt while preserving later hunts.
+
 ## Major Modules
 
 ### `App.jsx`

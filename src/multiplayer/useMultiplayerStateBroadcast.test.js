@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ROLE_CULTIST, ROLE_HUNTER, ROLE_TREASURE } from '../game/coreUtils';
 import {
   buildNormalStateBroadcast,
@@ -7,7 +7,142 @@ import {
   getMultiplayerWinnerRole,
   isEndTurnReplayDecisionState,
   shouldSuppressNormalStateBroadcast,
+  useMultiplayerStateBroadcast,
 } from './useMultiplayerStateBroadcast';
+
+const hooks = vi.hoisted(() => ({ current: null }));
+vi.mock('react', () => ({
+  useEffect: (...args) => hooks.current.useEffect(...args),
+}));
+
+// Retain dependency slots between renders and execute the production effects.
+// Calling the pure broadcast builders cannot reproduce a roomUpdated rerender.
+function renderBroadcast(args) {
+  const slots = [];
+  let cursor = 0;
+  const runtime = {
+    useEffect(callback, deps) {
+      const index = cursor++;
+      const previous = slots[index];
+      if (!previous || deps.some((value, i) => !Object.is(value, previous.deps[i]))) {
+        slots[index] = { deps, callback, cleanup: previous?.cleanup, pending: true };
+      }
+    },
+  };
+  return {
+    render(patch = {}) {
+      Object.assign(args, patch);
+      if (Object.hasOwn(patch, 'gs')) args.latestGsRef.current = patch.gs;
+      cursor = 0;
+      hooks.current = runtime;
+      // eslint-disable-next-line react-hooks/rules-of-hooks -- Run the actual hook with retained effect dependencies.
+      useMultiplayerStateBroadcast(args);
+      slots.filter(slot => slot.pending).forEach(slot => {
+        slot.pending = false;
+        slot.cleanup?.();
+        slot.cleanup = slot.callback();
+      });
+    },
+    unmount() { slots.forEach(slot => slot.cleanup?.()); },
+  };
+}
+
+const renderers = [];
+afterEach(() => {
+  renderers.splice(0).forEach(renderer => renderer.unmount());
+  hooks.current = null;
+});
+
+function setupBroadcast(patch = {}) {
+  const gs = {
+    _isMP: true,
+    phase: 'HUNT_WAIT_REVEAL',
+    currentTurn: 0,
+    _turnKey: 5,
+    players: [{ name: '追猎者' }, { name: '目标' }, { name: '观察者' }],
+    abilityData: { huntTi: 1, huntPromptId: 'hunt-prompt-5' },
+    log: ['等待目标亮牌'],
+    _visualEvents: [],
+  };
+  const socket = { connected: true, emit: vi.fn() };
+  const args = {
+    gs,
+    setGs: vi.fn(),
+    isMultiplayer: true,
+    playerUUID: 'hunter',
+    roomModal: { roomId: 'room-1', aiAuthorityUuid: 'observer', players: [{ uuid: 'hunter' }, { uuid: 'target', isAI: false }, { uuid: 'observer' }] },
+    socketRef: { current: socket },
+    myPlayerIndexRef: { current: 0 },
+    gameEndSentRef: { current: false },
+    receivedGsRef: { current: false },
+    latestGsRef: { current: gs },
+    consumedVisualEventIdsRef: { current: new Set() },
+    anim: null,
+    animExiting: false,
+    showTutorial: false,
+    animQueueRef: { current: [] },
+    pendingGsRef: { current: null },
+    ...patch,
+  };
+  const renderer = renderBroadcast(args);
+  renderers.push(renderer);
+  return { args, socket, renderer };
+}
+
+function aiRoomUpdate(room) {
+  return { ...room, players: room.players.map(player => player.uuid === 'target' ? { ...player, isAI: true } : player) };
+}
+
+describe('useMultiplayerStateBroadcast room metadata rerenders', () => {
+  it('does not echo a received hunt wait when the same room announces AI takeover', () => {
+    const { args, socket, renderer } = setupBroadcast({ receivedGsRef: { current: true } });
+    const waitingGs = args.gs;
+    renderer.render();
+    expect(args.receivedGsRef.current).toBe(false);
+    expect(socket.emit).not.toHaveBeenCalled();
+
+    renderer.render({ roomModal: aiRoomUpdate(args.roomModal) });
+    expect(args.gs).toBe(waitingGs);
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
+
+  it('does not resend a locally published hunt wait for same-room metadata changes', () => {
+    const { args, socket, renderer } = setupBroadcast();
+    renderer.render();
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+
+    renderer.render({ roomModal: aiRoomUpdate(args.roomModal) });
+    expect(socket.emit).toHaveBeenCalledTimes(1);
+  });
+
+  it('still publishes a fresh local state after skipping a received wait', () => {
+    const { args, socket, renderer } = setupBroadcast({ receivedGsRef: { current: true } });
+    renderer.render();
+    const nextGs = { ...args.gs, phase: 'HUNT_CONFIRM', abilityData: { ...args.gs.abilityData, revCard: { id: 'revealed' } } };
+    renderer.render({ gs: nextGs });
+
+    expect(socket.emit).toHaveBeenCalledExactlyOnceWith('mpStateSync', { roomId: 'room-1', gs: nextGs });
+  });
+
+  it('still publishes the current local state when animation blocking ends', () => {
+    const { args, socket, renderer } = setupBroadcast({ anim: { type: 'HUNT_TARGET' } });
+    renderer.render();
+    renderer.render({ roomModal: aiRoomUpdate(args.roomModal) });
+    expect(socket.emit).not.toHaveBeenCalled();
+
+    renderer.render({ anim: null });
+    expect(socket.emit).toHaveBeenCalledExactlyOnceWith('mpStateSync', { roomId: 'room-1', gs: args.gs });
+  });
+
+  it('still publishes when the actual room ID changes', () => {
+    const { args, socket, renderer } = setupBroadcast();
+    renderer.render();
+    renderer.render({ roomModal: { ...args.roomModal, roomId: 'room-2' } });
+
+    expect(socket.emit).toHaveBeenCalledTimes(2);
+    expect(socket.emit).toHaveBeenLastCalledWith('mpStateSync', { roomId: 'room-2', gs: args.gs });
+  });
+});
 
 describe('useMultiplayerStateBroadcast helpers', () => {
   it('only forwards multiplayer winner roles to gameEnd', () => {

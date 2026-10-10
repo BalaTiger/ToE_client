@@ -1,6 +1,11 @@
 import { readFileSync } from 'node:fs';
 import { runInNewContext } from 'node:vm';
 import { describe, expect, it, vi } from 'vitest';
+import { resolveMpAiTakeoverState } from '../multiplayerAiTakeover';
+import {
+  claimMpHuntRevealConfirmation,
+  isResolvedMpHuntWaitState,
+} from '../../multiplayer/multiplayerHuntReplayGuard';
 
 const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8');
 const start = source.indexOf('  function handleMpAiTakeover(');
@@ -13,6 +18,7 @@ function bind(latest) {
     playerUUIDRef: { current: 'authority' }, isMultiplayerRef: { current: true },
     latestGsRef: { current: latest }, myPlayerIndexRef: { current: 0 },
     pendingMpAiTakeoverRef: { current: null },
+    completedMpHuntRevealPromptIdsRef: { current: new Set() },
     pendingMpRawQueueRef: { current: [] }, pendingMpLatestStateRawRef: { current: null },
     roomModalRef: { current: { roomId: 'local-regression', aiAuthorityUuid: 'authority' } },
     socketRef: { current: { connected: true, emit: vi.fn() } },
@@ -20,6 +26,7 @@ function bind(latest) {
     rotateGsForViewer: state => state, rotateRawSeatIndex: index => index,
     derotateGs: state => state, getHandLimitForPlayer: () => 4,
     resolveCaveDuelState: vi.fn(),
+    claimMpHuntRevealConfirmation, isResolvedMpHuntWaitState,
     resolveMpAiTakeoverState: vi.fn(state => ({ ...state, phase: 'ACTION' })),
     processIncomingMpStateSync: vi.fn(),
   };
@@ -53,5 +60,36 @@ describe('TOE016 buffered takeover uses the committed match state', () => {
     context.handleMpAiTakeover(payload);
     expect(context.resolveMpAiTakeoverState).not.toHaveBeenCalled();
     expect(context.pendingMpAiTakeoverRef.current).toBe(payload);
+  });
+
+  it('emits one hunt confirmation across both App entry paths and permits a new prompt in the same turn', () => {
+    const card = { id: 'natural-apophis', name: '阿波菲斯', isGod: true, godKey: 'APO' };
+    const waiting = { _isMP: true, phase: 'HUNT_WAIT_REVEAL', currentTurn: 1, _turnKey: 5,
+      players: [{ name: 'A', hand: [] }, { name: 'B', hand: [] }, { name: 'C', hand: [card] }],
+      deck: [], discard: [], log: ['B追捕C，等待亮牌'],
+      abilityData: { huntTi: 2, huntPromptId: 'hunt:5:0:1:20' } };
+    const context = bind(waiting);
+    context.resolveMpAiTakeoverState = vi.fn(resolveMpAiTakeoverState);
+    const payload = { authorityUuid: 'authority', playerIndex: 2 };
+    // The real App handler is entered first by the socket and later by the
+    // progress effect while its committed source can still be the old WAIT.
+    context.handleMpAiTakeover(payload);
+    context.handleMpAiTakeover(payload);
+    expect(context.resolveMpAiTakeoverState).toHaveBeenCalledOnce();
+    expect(context.socketRef.current.emit).toHaveBeenCalledOnce();
+    expect(context.processIncomingMpStateSync).toHaveBeenCalledOnce();
+    const emitted = context.socketRef.current.emit.mock.calls[0][1].gs;
+    expect(emitted.phase).toBe('HUNT_CONFIRM');
+    expect(emitted.abilityData.revCard).toBe(card);
+    expect(emitted.log.filter(line => line.includes('(AI接管)'))).toHaveLength(1);
+    expect(context.completedMpHuntRevealPromptIdsRef.current.has(waiting.abilityData.huntPromptId)).toBe(true);
+
+    context.latestGsRef.current = { ...waiting, abilityData: {
+      ...waiting.abilityData, huntPromptId: 'hunt:5:0:1:23',
+    } };
+    context.handleMpAiTakeover(payload);
+    expect(context.socketRef.current.emit).toHaveBeenCalledTimes(2);
+    expect(context.processIncomingMpStateSync).toHaveBeenCalledTimes(2);
+    expect(context.completedMpHuntRevealPromptIdsRef.current.size).toBe(2);
   });
 });

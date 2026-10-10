@@ -3,6 +3,7 @@ import { isLocalSeatIndex, rotateGsForViewer } from '../game/rotateState';
 import { getMultiplayerIdentityStorage } from '../hooks/useMultiplayerLobby';
 import { _getZoomCompensatedRect } from '../utils/dom';
 import { FIRST_BATTLE_DONE_KEY, safeLS } from '../utils/runtime';
+import { rememberMpHuntRevealConfirmation } from './multiplayerHuntReplayGuard';
 
 export function registerMultiplayerSocketHandlers({
   socket,
@@ -37,6 +38,8 @@ export function registerMultiplayerSocketHandlers({
   mpRoleRevealedRef,
   mpOpeningRoleRevealPendingRef,
   consumedVisualEventIdsRef,
+  completedMpHuntRevealPromptIdsRef,
+  setDismissedHuntRevealPromptId,
   mpAiTakeoverSeqRef,
   pendingMpAiTakeoverRef,
   gameEndSentRef,
@@ -169,6 +172,8 @@ export function registerMultiplayerSocketHandlers({
     mpRoleRevealedRef.current = false;
     mpOpeningRoleRevealPendingRef.current = false;
     consumedVisualEventIdsRef.current = new Set();
+    if (completedMpHuntRevealPromptIdsRef) completedMpHuntRevealPromptIdsRef.current = new Set();
+    setDismissedHuntRevealPromptId?.(null);
     if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];
     if (pendingMpLatestStateRawRef) pendingMpLatestStateRawRef.current = null;
     if (recentMpAnimatedRawSignaturesRef) recentMpAnimatedRawSignaturesRef.current = [];
@@ -246,6 +251,12 @@ export function registerMultiplayerSocketHandlers({
     consumedVisualEventIdsRef.current = new Set(
       (rawGs?._visualEvents || []).map(event => event?.id).filter(Boolean),
     );
+    if (completedMpHuntRevealPromptIdsRef) {
+      completedMpHuntRevealPromptIdsRef.current = new Set();
+      rememberMpHuntRevealConfirmation(rawGs, completedMpHuntRevealPromptIdsRef.current);
+    }
+    // The authoritative restored prompt supersedes a local speculative dismissal.
+    setDismissedHuntRevealPromptId?.(null);
     animQueueRef.current = [];
     pendingGsRef.current = null;
     if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];

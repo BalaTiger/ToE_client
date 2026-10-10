@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MP_REMOTE_REPLAY } from '../game/multiplayerRemoteReplay';
-import { createEndlessCorridorReplayEvent, createTurnDrawVisualEvents, createLogOnlyVisualEvent } from '../game/visualEvents';
+import { createEndlessCorridorReplayEvent, createTurnDrawVisualEvents, createLogOnlyVisualEvent, createHuntTargetEvent } from '../game/visualEvents';
+import { resolveMpAiTakeoverState } from '../game/multiplayerAiTakeover';
+import { rotateGsForViewer } from '../game/rotateState';
+import {
+  claimMpHuntRevealConfirmation,
+  isResolvedMpHuntWaitState,
+} from './multiplayerHuntReplayGuard';
 import {
   applyMultiplayerReplayAction,
   getPendingZhuHideCardForState,
@@ -45,6 +51,7 @@ function context(overrides = {}) {
     mpOpeningRoleRevealPendingRef: ref(false),
     mpRoleRevealedRef: ref(true),
     consumedVisualEventIdsRef: ref(new Set()),
+    completedMpHuntRevealPromptIdsRef: ref(new Set()),
     pendingMpRawQueueRef: ref([]),
     pendingMpLatestStateRawRef: ref(null),
     receivedGsRef: ref(false),
@@ -314,6 +321,130 @@ describe('multiplayer remote replay executor', () => {
     expect(result).toBe('ignored');
     expect(ctx.setGs).not.toHaveBeenCalled();
     expect(ctx.setAnimExiting).not.toHaveBeenCalled();
+  });
+
+  it('confirms an AI hunt once across a socket takeover, an observer stale wait, and the progress entry', () => {
+    const rawWait = state({
+      _isMP: true,
+      _turnKey: 5,
+      currentTurn: 1,
+      phase: 'HUNT_WAIT_REVEAL',
+      players: [player('A'), player('B'), player('C', { hand: [{ id: 'apo', name: '阿波菲斯', isGod: true, godKey: 'APO' }] })],
+      abilityData: { huntTi: 2, huntPromptId: 'hunt:5:0:1:20' },
+      log: ['B（追猎者）追捕 C，等待对方亮出一张手牌…'],
+    });
+    const ctx = context({ latestGsRef: ref(rawWait) });
+    const emittedConfirmations = [];
+    // Exercise the App wrapper contract using the real resolver and executor.
+    // While reveal playback is active, its committed/visible source may still
+    // be WAIT; neither authority entry may rely on that phase being updated.
+    const authorityEntry = () => {
+      const source = ctx.latestGsRef.current;
+      const completed = ctx.completedMpHuntRevealPromptIdsRef.current;
+      if (isResolvedMpHuntWaitState(source, completed)) return false;
+      const next = resolveMpAiTakeoverState(source, 2, {
+        getHandLimitForPlayer: () => 4,
+        resolveCaveDuelState: vi.fn(),
+      });
+      if (!next || next === source || !claimMpHuntRevealConfirmation(next, completed)) return false;
+      emittedConfirmations.push(next);
+      processIncomingMultiplayerStateSync({ rawState: next, allowBuffer: false,
+        currentState: source, anim: null, animExiting: false, context: ctx });
+      return true;
+    };
+
+    expect(authorityEntry()).toBe(true);
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledOnce();
+    const staleWait = { ...rawWait, _visualEvents: [{
+      id: 'unconsumed-old-hunt-target', type: 'huntTarget', sourceIdx: 1, targetIdx: 2,
+      attemptId: rawWait.abilityData.huntPromptId,
+    }] };
+    const replayCalls = ctx.triggerAnimQueue.mock.calls.length;
+    expect(processIncomingMultiplayerStateSync({ rawState: staleWait,
+      currentState: rawWait, anim: { type: 'HUNT_REVEAL' }, animExiting: false, context: ctx })).toBe('ignored');
+    expect(ctx.pendingMpLatestStateRawRef.current).toBeNull();
+    expect(ctx.pendingMpRawQueueRef.current).toEqual([]);
+    expect(ctx.triggerAnimQueue.mock.calls.length).toBe(replayCalls);
+    expect(authorityEntry()).toBe(false);
+    expect(emittedConfirmations).toHaveLength(1);
+    expect(emittedConfirmations[0].phase).toBe('HUNT_CONFIRM');
+    expect(emittedConfirmations[0].log.filter(line => line.includes('(AI接管)'))).toHaveLength(1);
+  });
+
+  it('remembers an accepted confirmation before buffering and still drains its own replay', () => {
+    const wait = state({ _turnKey: 5, phase: 'HUNT_WAIT_REVEAL',
+      abilityData: { huntTi: 1, huntPromptId: 'buffered-hunt' } });
+    const confirm = { ...wait, phase: 'HUNT_CONFIRM',
+      abilityData: { ...wait.abilityData, revCard: { id: 'revealed-card', name: '鼠群' } },
+      _visualEvents: [{ id: 'buffered-hunt-reveal', type: 'huntReveal', sourceIdx: 0,
+        targetIdx: 1, card: { id: 'revealed-card', name: '鼠群' }, msgs: ['远端玩家亮出鼠群'] }] };
+    const ctx = context({ latestGsRef: ref(wait) });
+    expect(processIncomingMultiplayerStateSync({ rawState: confirm, currentState: wait,
+      anim: { type: 'DRAW_CARD' }, animExiting: false, context: ctx })).toBe('buffered');
+    expect(ctx.completedMpHuntRevealPromptIdsRef.current.has('buffered-hunt')).toBe(true);
+    expect(processIncomingMultiplayerStateSync({ rawState: wait, currentState: wait,
+      anim: { type: 'DRAW_CARD' }, animExiting: false, context: ctx })).toBe('ignored');
+    expect(ctx.pendingMpRawQueueRef.current).toEqual([confirm]);
+    expect(processIncomingMultiplayerStateSync({ rawState: ctx.pendingMpRawQueueRef.current.shift(),
+      allowBuffer: false, currentState: wait, anim: null, animExiting: false, context: ctx })).toBe('applied');
+    expect(ctx.triggerAnimQueue).toHaveBeenCalledOnce();
+  });
+
+  it('preserves an accepted target animation before its queued confirmation while rejecting new or cached stale waits', () => {
+    const promptId = 'queued-target-before-reveal';
+    const targetEvent = createHuntTargetEvent({ sourceIdx: 1, targetIdx: 2,
+      attemptId: promptId, msgs: ['B追捕C，等待亮牌'] });
+    const wait = state({ _isMP: true, _turnKey: 5, currentTurn: 1, phase: 'HUNT_WAIT_REVEAL',
+      players: [player('A'), player('B'), player('C', { hand: [{ id: 'apo', name: '阿波菲斯', isGod: true, godKey: 'APO' }] })],
+      abilityData: { huntTi: 2, huntPromptId: promptId },
+      log: ['B追捕C，等待亮牌'], _visualEvents: [targetEvent] });
+    const confirm = resolveMpAiTakeoverState(wait, 2, {
+      getHandLimitForPlayer: () => 4, resolveCaveDuelState: vi.fn(),
+    });
+    const ctx = context({ latestGsRef: ref(state({ _turnKey: 5 })) });
+    const receive = (rawState, options = {}) => processIncomingMultiplayerStateSync({
+      rawState, currentState: ctx.latestGsRef.current, anim: { type: 'DRAW_CARD' },
+      animExiting: false, context: ctx, ...options,
+    });
+    expect(receive(wait)).toBe('buffered');
+    expect(receive(confirm)).toBe('buffered');
+    expect(ctx.pendingMpRawQueueRef.current).toEqual([wait, confirm]);
+    expect(ctx.completedMpHuntRevealPromptIdsRef.current.has(promptId)).toBe(true);
+    expect(receive(wait)).toBe('ignored');
+    // A cached plain wait is not entitled to replay merely because it carries
+    // an unconsumed target event; only the accepted animated FIFO gets that.
+    expect(receive(wait, { allowBuffer: false, anim: null })).toBe('ignored');
+
+    const queuedWait = ctx.pendingMpRawQueueRef.current.shift();
+    expect(receive(queuedWait, { allowBuffer: false, replayingQueuedAnimation: true, anim: null })).toBe('applied');
+    expect(ctx.triggerAnimQueue.mock.calls[0][0].some(step => step.type === 'SKILL_HUNT')).toBe(true);
+    ctx.consumedVisualEventIdsRef.current.add(targetEvent.id);
+    ctx.latestGsRef.current = wait;
+    const queuedConfirm = ctx.pendingMpRawQueueRef.current.shift();
+    expect(receive(queuedConfirm, { allowBuffer: false, replayingQueuedAnimation: true, anim: null })).toBe('applied');
+    expect(ctx.triggerAnimQueue.mock.calls[1][0].some(step => step.type === 'HUNT_REVEAL_CARD')).toBe(true);
+    expect(receive(wait, { allowBuffer: false, replayingQueuedAnimation: true, anim: null })).toBe('ignored');
+  });
+
+  it.each([0, 1, 2])('guards the wire prompt at viewer seat %s while allowing the next hunt and a new session', myIndex => {
+    const wait = state({ _turnKey: 5, currentTurn: 1, phase: 'HUNT_WAIT_REVEAL',
+      players: [player('A'), player('B'), player('C')],
+      abilityData: { huntTi: 2, huntPromptId: 'first-wire-prompt' } });
+    const confirm = { ...wait, phase: 'HUNT_CONFIRM',
+      abilityData: { ...wait.abilityData, revCard: { id: 'card', name: '鼠群' } } };
+    const ctx = context({ myPlayerIndexRef: ref(myIndex), latestGsRef: ref(rotateGsForViewer(wait, myIndex)) });
+    const receive = rawState => processIncomingMultiplayerStateSync({ rawState, allowBuffer: false,
+      currentState: ctx.latestGsRef.current, anim: null, animExiting: false, context: ctx });
+    expect(receive(confirm)).toBe('applied');
+    expect(ctx.completedMpHuntRevealPromptIdsRef.current.has('first-wire-prompt')).toBe(true);
+    expect(receive(wait)).toBe('ignored');
+    const nextWait = { ...wait, abilityData: { ...wait.abilityData, huntPromptId: 'second-wire-prompt' } };
+    expect(receive(nextWait)).toBe('applied');
+    // Reset is a session boundary, not a turn boundary; a later game may reuse
+    // the same prompt format and must not inherit this game's completions.
+    ctx.completedMpHuntRevealPromptIdsRef.current.clear();
+    ctx.latestGsRef.current = null;
+    expect(receive(wait)).toBe('applied');
   });
 
   it('applies a fresh endless-corridor visual delta even when the public state is unchanged', () => {
