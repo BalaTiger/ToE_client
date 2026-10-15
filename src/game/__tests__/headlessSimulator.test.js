@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import * as aiTurn from '../aiTurn';
 import {
   advanceHeadlessGame,
   createHeadlessGame,
@@ -115,6 +116,20 @@ describe('headless simulator', () => {
       steps: first.steps,
       turns: first.turns,
     });
+  });
+
+  it('counts a terminal result as progress when the last casualty already settled', () => {
+    const aiStep = vi.spyOn(aiTurn, 'aiStep').mockImplementationOnce(state => ({
+      ...state, gameOver: { winner: ROLE_HUNTER },
+    }));
+    try {
+      const result = runHeadlessGame({ seed: 4081, expansionKey: 'temporary_stars_call' });
+      expect(aiStep).toHaveBeenCalledOnce();
+      expect(result.status).toBe('complete');
+      expect(result.winner).toBe(ROLE_HUNTER);
+    } finally {
+      aiStep.mockRestore();
+    }
   });
 
   it('reports unknown decision phases instead of silently skipping them', () => {

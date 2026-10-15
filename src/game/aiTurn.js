@@ -521,6 +521,7 @@ export function processAiEndTurnReplayHand(P, D, Disc, L, ct, gs) {
   replayMsgs.push(introMsg);
   let statePatch = {};
   for (const cardId of replayIds) {
+    if (hasEffectDecisionState(statePatch) || checkWin(P, gs?._isMP)) break;
     const handIdx = (P[ct].hand || []).findIndex(card => card?.id === cardId);
     if (handIdx < 0 || P[ct].isDead) break;
     const card = P[ct].hand[handIdx];
@@ -786,6 +787,7 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs, { cursor = 0 } = {
   let statePatch = {};
 
   for (let eventIndex = cursor; eventIndex < events.length; eventIndex++) {
+    if (hasEffectDecisionState(statePatch) || checkWin(P, gs?._isMP)) break;
     const event = events[eventIndex];
     const eventGs = enterTurnFlowStage(
       { ...gs, ...statePatch, players: P, deck: D, discard: Disc, log: L },
@@ -843,6 +845,20 @@ export function processAiEndTurnEvents(P, D, Disc, L, ct, gs, { cursor = 0 } = {
   return { P, D, Disc, L, statePatch, replayQueue, replayMsgs, events };
 }
 
+function finishAiEndTurn(gs, opts) {
+  const win = gs.gameOver || (!hasEffectDecisionState(gs) && checkWin(gs.players, gs._isMP));
+  if (!win) return startNextTurn(gs, opts);
+  const replayQueue = gs._aiEndTurnReplayQueue || [];
+  return withClearedTurnAnimFields(gs, {
+    gameOver: win,
+    _statEvents: gs._statEvents || [],
+    // Finish the winning card's complete causal replay before settlement.
+    _aiEndTurnReplayQueue: replayQueue.map((step, index) => ({
+      ...step, terminalBoundary: index === replayQueue.length - 1,
+    })),
+  });
+}
+
 // Resume the remaining CTH 「梦访拉莱耶」 rest draws after a mid-draw decision
 // (e.g. 穴居人战争) has been resolved. This mirrors the local-player
 // _cthContinueRestDraws continuation but stays inside the AI turn flow.
@@ -880,7 +896,7 @@ export function continueAiCthRestDraws(gs, opts = {}) {
   P = evRes.P; D = evRes.D; Disc = evRes.Disc; L = evRes.L;
   const playersBeforeNextDraw = copyPlayers(P);
   const discardBeforeNextDraw = [...Disc];
-  const nextGs = startNextTurn({
+  const nextGs = finishAiEndTurn({
     ...gs,
     ...drawRes.statePatch,
     ...evRes.statePatch,
@@ -1767,7 +1783,7 @@ function resolveAiStep(gs, opts = {}) {
         _P_beforeEndTurnReplay,
       );
     }
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
+    const nextGs=finishAiEndTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,restUsed:true,skillUsed:false,...restStatPatch,...replayed.statePatch,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterRest, _P_beforeEndTurnReplay);
   }
   // 追猎者按手牌结构与近期追捕失败记录评估；邪祀者积极蛊惑，寻宝者随进度提高掉包意愿。
@@ -1883,7 +1899,7 @@ function resolveAiStep(gs, opts = {}) {
         _P_beforeEndTurnReplay,
       );
     }
-    const nextGs=startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
+    const nextGs=finishAiEndTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct,huntAbandoned:newAbandoned,skillUsed:gs.skillUsed,_aiEndTurnReplayQueue:replayed.replayQueue,_aiEndTurnReplayMsgs:replayed.replayMsgs}, opts);
     return buildReturnPack(nextGs, _P_afterAction, _P_beforeEndTurnReplay);
   }
 
@@ -2421,7 +2437,7 @@ function resolveAiStep(gs, opts = {}) {
     } else if (aiEffRole === ROLE_HUNTER && huntContinue && hasZoneCards && hasValidTargets) {
         nextGs = withClearedTurnAnimFields({...gs, players:P, deck:D, discard:Disc, log:L, phase: 'AI_TURN', currentTurn: ct, huntAbandoned: newAbandoned, skillUsed: false});
     } else {
-        nextGs = startNextTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs}, opts);
+        nextGs = finishAiEndTurn({...gs,players:P,deck:D,discard:Disc,log:L,currentTurn:ct, huntAbandoned: newAbandoned, skillUsed: (useSkill || gs.skillUsed), _aiEndTurnReplayQueue:replayed.replayQueue, _aiEndTurnReplayMsgs: replayed.replayMsgs}, opts);
     }
   }catch(e){
     throw new Error(`${ai.name} 回合收尾失败: ${e?.message||'未知错误'}`);

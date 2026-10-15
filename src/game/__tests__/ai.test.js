@@ -24,6 +24,8 @@ import { addDamageLink } from '../damageLinks';
 import { orderRuleResolutionEvents, validateRuleResolutionEvents } from '../ruleResolutionTransaction';
 import { prepareAnimQueueLogs } from '../animLogs';
 import { consumeVisualLogEntries } from '../visualEventLogs';
+import { strictActionQueueMeta } from '../animationQueuePolicy';
+import { prepareAnimationTransaction } from '../animationTransaction';
 
 describe('AI 两人一绳策略', () => {
   const rope = () => makeZoneCard('B4', 0, { name: '两人一绳', type: 'damageLink', polarity: 'neutral' });
@@ -910,6 +912,79 @@ describe('aiChooseRevealCard', () => {
 });
 
 describe('AI end-turn endless corridor replay', () => {
+  it.each([false, true])('preserves an end-turn SAN victory before the next AI can draw a fatal volcano (multiplayer=%s)', isMP => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const chant = makeZoneCard('A4', 2);
+    const scarab = makeZoneCard('B1', 0);
+    const corridor = makeZoneCard('A3', 3);
+    const volcano = makeZoneCard('C1', 3);
+    const players = [
+      makePlayer({ name: '你', role: ROLE_TREASURE, hp: 4 }),
+      makePlayer({ name: '邪祀AI', role: ROLE_CULTIST, hp: 4, san: 1,
+        disableRest: true, hand: [chant, scarab, corridor] }),
+      makePlayer({ name: '追猎AI', role: ROLE_HUNTER }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN',
+      skillUsed: true, restUsed: true, deck: [volcano], _isMP: isMP });
+
+    const result = aiStep(gs, { allAi: true });
+
+    expect(result.gameOver?.winner).toBe(ROLE_CULTIST);
+    expect(result.currentTurn).toBe(1);
+    expect(result.deck).toEqual([volcano]);
+    expect(result.players[1]).toMatchObject({ hp: 4, san: 0, isDead: false });
+    expect(result.players[1].hand).toContainEqual(scarab);
+    expect(result.log.some(line => line.includes('回合开始'))).toBe(false);
+    expect(result._aiEndTurnReplayQueue.filter(step => step.type === 'DRAW_CARD')
+      .map(step => step.card.id)).toEqual([chant.id]);
+    expect(result._aiEndTurnReplayQueue.some(step => step.type === 'SAN_DAMAGE')).toBe(true);
+    expect(result._aiEndTurnReplayQueue.at(-1)).toMatchObject({ type: 'STATE_PATCH', terminalBoundary: true });
+
+    const replay = result._aiEndTurnReplayQueue;
+    const metadata = scopeAiActionReplayMetadata(result, {
+      excludedVisualEventIds: new Set(getVisualEventIdsCoveredByAnimationQueue(result, replay)),
+      excludedStatEvents: replay.flatMap(step => step.statEvents || []),
+    });
+    const actionQueue = compileRuleVisualEventsToAnimTransaction({
+      ...result, _visualEvents: metadata.visualEvents, _statEvents: metadata.statEvents,
+    }, gs)?.queue || [];
+    const queue = [...actionQueue, ...replay];
+    const transaction = prepareAnimationTransaction({
+      queue, nextState: result, callback: vi.fn(),
+      transactionMeta: strictActionQueueMeta(result, queue),
+    });
+    expect(transaction.queue).toEqual(queue);
+    expect(transaction.callback).toBeUndefined();
+    const consumed = new Set();
+    expect(prepareAnimQueueLogs(transaction.queue, result)
+      .flatMap(step => consumeVisualLogEntries(step.logEntries, consumed))).toEqual(result.log);
+  });
+
+  it('stops resumed CTH draws at victory before corridor replay or the next turn', () => {
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
+    const chant = makeZoneCard('A4', 2);
+    const scarab = makeZoneCard('B1', 0);
+    const corridor = makeZoneCard('A3', 3);
+    const volcano = makeZoneCard('C1', 3);
+    const players = [
+      makePlayer({ role: ROLE_TREASURE, hp: 4 }),
+      makePlayer({ role: ROLE_CULTIST, hp: 4, san: 1, godName: 'CTH', godLevel: 1,
+        isResting: true, hand: [scarab, corridor] }),
+      makePlayer({ role: ROLE_HUNTER }),
+    ];
+    const gs = makeGs({ players, currentTurn: 1, phase: 'AI_TURN',
+      abilityData: { fromRest: true, cthDrawsRemaining: 1 }, deck: [chant, volcano], _isMP: true });
+
+    const result = continueAiCthRestDraws(gs, { allAi: true });
+
+    expect(result.gameOver?.winner).toBe(ROLE_CULTIST);
+    expect(result.currentTurn).toBe(1);
+    expect(result.deck).toEqual([volcano]);
+    expect(result.players[1].san).toBe(0);
+    expect(result.log.some(line => line.includes('无尽通道') || line.includes('回合开始'))).toBe(false);
+    expect(result._aiEndTurnReplayQueue.at(-1)).toMatchObject({ type: 'STATE_PATCH', terminalBoundary: true });
+  });
+
   it.each([1, 2])('无尽通道重摸 %i 张同名石化配方时，每次翻牌只输出一次消息', count => {
     const formulas = Array.from({ length: count }, () => makeZoneCard('C1', 5));
     const corridor = makeZoneCard('A3', 3);

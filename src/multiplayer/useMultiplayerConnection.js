@@ -33,7 +33,10 @@ export function useMultiplayerConnection({
       connTimeoutRef.current = null;
     }
 
+    let expired = false;
     connTimeoutRef.current = setTimeout(() => {
+      expired = true;
+      connTimeoutRef.current = null;
       if (socketRef.current) {
         socketRef.current.disconnect();
         socketRef.current = null;
@@ -47,6 +50,7 @@ export function useMultiplayerConnection({
     try {
       ioFn = await loadSocketIO();
     } catch {
+      if (expired) return;
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
       connectingRef.current = false;
@@ -54,6 +58,7 @@ export function useMultiplayerConnection({
       if (!silent) addToast('网络加载失败，请检查连接后重试');
       return;
     }
+    if (expired) return;
 
     const socket = ioFn(serverUrl, {
       path: socketPath,

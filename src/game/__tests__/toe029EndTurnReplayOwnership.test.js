@@ -231,6 +231,28 @@ describe('TOE029 real App endless-corridor queue ownership', () => {
     assertRemoteViews(initial, runtime);
   });
 
+  it.each([false, true])('logs a repeated TSG encounter once locally and remotely (SAN immune=%s)', immune => {
+    const god = makeGodCard('TSG', { id: 'replayed-tsg' });
+    const initial = initialState([god]);
+    Object.assign(initial.players[0], {
+      san: 9, godEncounters: 1,
+      ...(immune ? { role: '邪祀者', roleRevealed: true } : {}),
+    });
+    const runtime = bind(initial);
+    runtime.begin(); runtime.complete();
+    const encounter = runtime.complete();
+
+    expect(runtime.context.gs.phase).toBe('GOD_CHOICE');
+    expect(runtime.context.gs.players[0].godEncounters).toBe(2);
+    expect(runtime.context.gs.players[0].san).toBe(immune ? 9 : 7);
+    expect(encounter.queue.filter(step => step.type === 'SAN_DAMAGE')).toHaveLength(immune ? 0 : 1);
+    const isEncounter = line => line.includes('遭遇邪神 蟾蜍之神！（第2次）');
+    expect(runtime.localLogs.filter(isEncounter)).toHaveLength(1);
+    expect(runtime.localLogs.find(isEncounter)).toContain(immune ? '免疫SAN损耗' : '失去 2 SAN');
+    const { logs } = assertRemoteViews(initial, runtime);
+    expect(logs.filter(isEncounter)).toHaveLength(1);
+  });
+
   it('retains the original single-player queue when there is no multiplayer wrapper', () => {
     const heal = makeZoneCard('A2', 0, { id: 'solo-heal' });
     const initial = initialState([heal], { _isMP: false });

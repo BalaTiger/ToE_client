@@ -643,6 +643,7 @@ function getHeadlessProgressKey(state) {
     turn: state?.turn,
     currentTurn: state?.currentTurn,
     phase: state?.phase,
+    gameOver: state?.gameOver,
     abilityData: state?.abilityData,
     skillUsed: state?.skillUsed,
     restUsed: state?.restUsed,

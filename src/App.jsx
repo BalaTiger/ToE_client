@@ -4578,7 +4578,7 @@ export default function Game(){
           ...encounter.replayPatch};
         const split=splitAnimBoundLogs(L.slice((stateLike.log||[]).length));
         const statQ=bindAnimLogChunks(compileFreshVisualEventQueue(stateLike,newGs),{statLogs:split.stat});
-        const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat.length?split.preStat:[encounter.effectMsg]},...statQ];
+        const queue=[{type:'DRAW_CARD',card,triggerName:'无尽通道',targetPid:actorIndex,skipTravel:true,msgs:split.preStat},...statQ];
         appendEndTurnReplaySyncQueue(queue,L.slice((stateLike.log||[]).length));
         const presentation=broadcastEndTurnReplayPresentation(newGs,queue);
         triggerAnimQueue(presentation.queue,presentation.pendingGs,undefined,authoritativeEndTurnReplayQueueMeta(presentation.pendingGs,presentation.queue,consumedVisualEventIdsRef.current));
