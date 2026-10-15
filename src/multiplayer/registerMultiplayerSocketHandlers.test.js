@@ -98,6 +98,136 @@ function makeDeps(overrides = {}) {
 }
 
 describe('registerMultiplayerSocketHandlers', () => {
+  it.each([
+    ['connect', undefined],
+    ['connect_error', new Error('late failure')],
+    ['uuidAssigned', { uuid: 'old-id', identityToken: 'old-token' }],
+    ['userInfo', { username: 'old-name' }],
+    ['roomUpdated', { roomId: 'old-room', players: [] }],
+    ['gameStart', { roomId: 'old-room', players: [{ uuid: 'u1' }, { uuid: 'u2' }] }],
+    ['matchRestored', { roomId: 'old-room', playerIndex: 1, players: [{ uuid: 'u1' }, { uuid: 'u2' }],
+      gs: { phase: 'ACTION', currentTurn: 1, players: [{ name: 'host' }, { name: 'me' }] } }],
+    ['mpStateSync', { gs: { phase: 'ACTION' } }],
+    ['mpAiTakeover', { seq: 9, playerIndex: 1 }],
+    ['kickedFromRoom', { reason: 'old room kicked' }],
+    ['roomClosed', { reason: 'old room expired' }],
+    ['disconnect', undefined],
+    ['serverError', 'old error'],
+    ['heartbeatPing', undefined],
+  ])('ignores stale %s after a newer socket owns the session', (event, payload) => {
+    const { socket, deps } = makeDeps({ isMultiplayerRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    const currentSocket = makeSocket();
+    deps.socketRef.current = currentSocket;
+    socket.trigger(event, payload);
+    for (const value of Object.values(deps)) {
+      if (vi.isMockFunction(value)) expect(value).not.toHaveBeenCalled();
+    }
+    expect(deps.socketRef.current).toBe(currentSocket);
+    expect(currentSocket.disconnect).not.toHaveBeenCalled();
+    expect(currentSocket.emit).not.toHaveBeenCalled();
+    expect(deps.playerUUIDRef.current).toBe('u2');
+    expect(deps.mpAiTakeoverSeqRef.current).toBe(0);
+  });
+
+  it('settles a connection whose automatic restore was cancelled before connect', () => {
+    const { socket, deps } = makeDeps({ onConnected: vi.fn(() => false) });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('connect');
+    expect(deps.cleanupConnection).toHaveBeenCalledOnce();
+    expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
+    expect(deps.socketRef.current).toBeNull();
+    expect(socket.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it.each(['gameStart', 'matchRestored'])('ignores %s while waiting for the room exit acknowledgement', event => {
+    const { socket, deps } = makeDeps({ leavingRoomRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger(event, { roomId: 'leaving-room', playerIndex: 1,
+      players: [{ uuid: 'u1' }, { uuid: 'u2' }],
+      gs: { phase: 'ACTION', currentTurn: 1, players: [{ name: 'host' }, { name: 'me' }] } });
+    expect(deps.setRoomModal).not.toHaveBeenCalled();
+    expect(deps.setIsMultiplayer).not.toHaveBeenCalled();
+    expect(deps.setGs).not.toHaveBeenCalled();
+  });
+
+  it('accepts the next connection after a previous room exit', () => {
+    const { socket, deps, state } = makeDeps({ leavingRoomRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('connect');
+    socket.trigger('roomUpdated', { roomId: 'restored-room', players: [{ uuid: 'u2' }] });
+    expect(state.roomModal?.roomId).toBe('restored-room');
+  });
+
+  it.each([false, true])('ends the stale match when automatic reconnect restores only a room: %s', roomRestored => {
+    const { socket, deps, state } = makeDeps({
+      silentConnectionErrors: true,
+      isMultiplayerRef: { current: true },
+      latestGsRef: { current: { phase: 'AI_TURN' } },
+      pendingMpRawQueueRef: { current: [{ old: true }] },
+      pendingMpLatestStateRawRef: { current: { old: true } },
+    });
+    state.roomModal = { roomId: 'old-room' };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', roomRestored });
+    expect(deps.isMultiplayerRef.current).toBe(false);
+    expect(state.isDisconnected).toBe(false);
+    expect(deps.setGs).toHaveBeenCalledWith(null);
+    expect(deps.latestGsRef.current).toBeNull();
+    expect(deps.animQueueRef.current).toEqual([]);
+    expect(deps.pendingGsRef.current).toBeNull();
+    expect(deps.pendingMpRawQueueRef.current).toEqual([]);
+    expect(deps.pendingMpLatestStateRawRef.current).toBeNull();
+    expect(deps.setRoleRevealAnim).toHaveBeenCalledWith(null);
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    if (roomRestored) {
+      socket.trigger('roomUpdated', { roomId: 'old-room', players: [{ uuid: 'u2' }] });
+      expect(state.roomModal?.roomId).toBe('old-room');
+    } else {
+      expect(state.roomModal).toBeNull();
+      expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(true);
+    }
+  });
+
+  it('leaves an unrestorable waiting room after its transport reconnect succeeds', () => {
+    const { socket, deps, state } = makeDeps({ silentConnectionErrors: true, latestGsRef: { current: null } });
+    state.roomModal = { roomId: 'removed-room' };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me' });
+    expect(state.roomModal).toBeNull();
+    expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(true);
+    expect(deps.addToast).toHaveBeenCalled();
+  });
+
+  it('does not reopen online options or clear a solo match after abandoning an in-flight restore', () => {
+    const soloGs = { phase: 'AI_TURN', _isMP: false };
+    const { socket, deps } = makeDeps({
+      silentConnectionErrors: true,
+      leavingRoomRef: { current: true },
+      isMultiplayerRef: { current: false },
+      latestGsRef: { current: soloGs },
+    });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', waitingRoomExpired: true });
+    socket.trigger('aiTakeover', { reason: 'late takeover result' });
+    expect(deps.cleanupConnection).toHaveBeenCalledTimes(2);
+    expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
+    expect(deps.setIsDisconnected).not.toHaveBeenCalled();
+    expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
+    expect(deps.setGs).not.toHaveBeenCalled();
+    expect(deps.latestGsRef.current).toBe(soloGs);
+    expect(deps.addToast).not.toHaveBeenCalled();
+  });
+
+  it('keeps an active match intact until the promised restored snapshot arrives', () => {
+    const { socket, deps } = makeDeps({ silentConnectionErrors: true, isMultiplayerRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', roomRestored: true, matchRestored: true });
+    expect(deps.isMultiplayerRef.current).toBe(true);
+    expect(deps.setGs).not.toHaveBeenCalled();
+    expect(deps.animQueueRef.current).toEqual(['old']);
+  });
+
   it('registers expected multiplayer socket events', () => {
     const { socket, deps } = makeDeps();
     registerMultiplayerSocketHandlers(deps);

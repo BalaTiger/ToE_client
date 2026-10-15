@@ -368,6 +368,7 @@ import {
   FIRST_BATTLE_DONE_KEY,
   getRuntimeServerUrl,
   getRuntimeSocketPath,
+  isArtifactRuntime,
   isH5PackagedRuntime,
   isLocalDebugEnabled,
   isLocalTestHost,
@@ -552,17 +553,7 @@ export default function Game(){
   
   // ── Tutorial ──────────────────────────────────────────────────
   const isH5Package=isH5PackagedRuntime();
-  // Detect non-production environments (Claude Artifacts iframe, local dev, etc.)
-  // Use multiple signals: iframe check + origin check + localhost
-  const isArtifact = (()=>{
-    try{
-      if(window.self!==window.top)return true;          // inside any iframe (Artifacts)
-      if(isH5Package)return false;                      // packaged H5 / file runtime: allow persistence and multiplayer
-      if(window.location.origin==='null')return true;   // sandboxed origin
-      if(/localhost|127\.0\.1/.test(window.location.hostname))return false; // local dev: use real localStorage
-      return false;                                      // deployed website: use real localStorage
-    }catch{return true;}                              // cross-origin frame access blocked → treat as Artifact
-  })();
+  const isArtifact=isArtifactRuntime(isH5Package);
   const TUTORIAL_KEY='cthulhu_tutorial_v2_done'; // v2: bump version to reset all prior cached state
   const isLocalTestMode=isLocalTestHost();
   const canPersistTutorial=!isArtifact||isH5Package;

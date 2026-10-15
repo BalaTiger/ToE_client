@@ -32,6 +32,25 @@ export const isH5PackagedRuntime = () => {
   return false;
 };
 
+export const isArtifactRuntime = (isH5Package = isH5PackagedRuntime()) => {
+  try {
+    if (window.self !== window.top) {
+      // frameElement is only exposed to same-origin children. Allow the
+      // top-level site's own mobile viewport, not an external preview wrapper.
+      const frame = window.frameElement;
+      const isMobileViewport = window.parent === window.top
+        && frame?.tagName === 'IFRAME'
+        && frame.name === 'toe-landscape-game'
+        && frame.hasAttribute('data-toe-landscape-game');
+      if (!isMobileViewport) return true;
+    }
+    if (isH5Package) return false;
+    return window.location.origin === 'null';
+  } catch {
+    return true;
+  }
+};
+
 export const getRuntimeServerUrl = () => {
   if (typeof window === 'undefined') return '';
   const configured = window.__TOE_SERVER_URL__;

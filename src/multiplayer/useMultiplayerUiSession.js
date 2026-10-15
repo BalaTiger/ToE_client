@@ -75,8 +75,10 @@ export function useMultiplayerSessionReconnect({
         return;
       }
       lastReconnectAttemptRef.current = Date.now();
+      const reconnectRoomId = roomModalRef.current.roomId;
       connectSocket(socket => {
-        emitOpenOnlineOptions(
+        if (roomModalRef.current?.roomId !== reconnectRoomId) return false;
+        return emitOpenOnlineOptions(
           socket,
           playerUUIDRef.current || playerUUID,
           identityTokenRef.current || identityToken,
@@ -89,14 +91,19 @@ export function useMultiplayerSessionReconnect({
       if (document.visibilityState === 'visible') scheduleReconnect(0);
     };
     const handleOnline = () => scheduleReconnect(0);
+    const socket = socketRef.current;
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
+    window.addEventListener('pageshow', handleOnline);
+    socket?.on('disconnect', handleOnline);
     scheduleReconnect(0);
     return () => {
       clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
+      window.removeEventListener('pageshow', handleOnline);
+      socket?.off('disconnect', handleOnline);
     };
   }, [
     gs,
