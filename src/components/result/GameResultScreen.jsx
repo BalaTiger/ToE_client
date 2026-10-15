@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { RINFO } from '../../game/setup';
 import { buildPublicUrl } from '../../utils/url';
 
 const roleArt = { '寻宝者': 'tr', '追猎者': 'hu', '邪祀者': 'cu' };
 
 export function GameResultScreen({ players, gameOver, iWon, isMultiplayer, onReturnRoom, onRestart, onHome, onShowLog, onClickCapture, children }) {
+  const [returnPending, setReturnPending] = useState(false);
   const { winner, winnerIdx, winnerIdx2, reason } = gameOver;
   const isLose = winner === 'LOSE' || winner === 'LOSE_ALL';
   const title = isLose ? (winner === 'LOSE_ALL' ? '全员覆灭' : '英魂殒落')
@@ -25,7 +27,9 @@ export function GameResultScreen({ players, gameOver, iWon, isMultiplayer, onRet
         })}
       </section>
       <div className="toe-actions">
-        {isMultiplayer ? <button className="toe-button toe-button-primary" onClick={onReturnRoom}>返回房间</button> : <>
+        {isMultiplayer ? <button className="toe-button toe-button-primary" disabled={returnPending} onClick={()=>{
+          if(onReturnRoom()===false)setReturnPending(true);
+        }}>{returnPending?'确认结算中…':'返回房间'}</button> : <>
           <button className="toe-button toe-button-primary" onClick={onRestart}>再次降临</button>
           <button className="toe-button" onClick={onHome}>返回主页</button>
         </>}

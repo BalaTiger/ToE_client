@@ -18,10 +18,42 @@ afterEach(() => {
 
 function eventTarget() {
   const target = new EventTarget();
+  const listeners = new Map();
   return {
-    addEventListener: target.addEventListener.bind(target),
-    removeEventListener: target.removeEventListener.bind(target),
+    addEventListener(name, callback) {
+      if (!listeners.has(name)) listeners.set(name, new Set());
+      listeners.get(name).add(callback);
+      target.addEventListener(name, callback);
+    },
+    removeEventListener(name, callback) {
+      listeners.get(name)?.delete(callback);
+      target.removeEventListener(name, callback);
+    },
+    listenerCount: name => listeners.get(name)?.size || 0,
     dispatch: (name, fields = {}) => target.dispatchEvent(Object.assign(new Event(name), fields)),
+  };
+}
+
+function makeSocket(probeReply = true) {
+  const handlers = new Map();
+  return {
+    handlers,
+    connected: true,
+    on: vi.fn((event, fn) => {
+      if (!handlers.has(event)) handlers.set(event, new Set());
+      handlers.get(event).add(fn);
+    }),
+    off: vi.fn((event, fn) => {
+      const callbacks = handlers.get(event);
+      callbacks?.delete(fn);
+      if (!callbacks?.size) handlers.delete(event);
+    }),
+    emit: vi.fn((event, callback) => {
+      if (event === 'heartbeatPong' && probeReply) callback(null, { ok: true });
+    }),
+    timeout: vi.fn(function () { return this; }),
+    disconnect: vi.fn(),
+    drop() { this.connected = false; handlers.get('disconnect')?.forEach(fn => fn('transport close')); },
   };
 }
 
@@ -32,18 +64,8 @@ function setup({ probeReply = true } = {}) {
   const window = eventTarget();
   vi.stubGlobal('document', document);
   vi.stubGlobal('window', window);
-  const handlers = new Map();
-  const socket = {
-    connected: true,
-    on: vi.fn((event, fn) => handlers.set(event, fn)),
-    off: vi.fn((event, fn) => { if (handlers.get(event) === fn) handlers.delete(event); }),
-    emit: vi.fn((event, callback) => {
-      if (event === 'heartbeatPong' && probeReply) callback(null, { ok: true });
-    }),
-    timeout: vi.fn(function () { return this; }),
-    disconnect: vi.fn(),
-    drop() { this.connected = false; handlers.get('disconnect')?.('transport close'); },
-  };
+  const socket = makeSocket(probeReply);
+  const { handlers } = socket;
   const args = {
     gs: null,
     isMultiplayerRef: { current: false },
@@ -69,6 +91,110 @@ function setup({ probeReply = true } = {}) {
 }
 
 describe('multiplayer reconnect browser lifecycle', () => {
+  it('retries five failed probe replacements without accumulating listeners or accepting old ACKs', async () => {
+    const { args, socket, window, render } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    const staleAck = socket.emit.mock.calls[0][1];
+    const failed = [];
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      expect(args.connectSocket).toHaveBeenCalledTimes(attempt);
+      expect(args.connectSocket.mock.calls.at(-1)[1]).toEqual({ silent: true, preserveCurrentSocket: true });
+      const candidate = makeSocket();
+      failed.push(candidate);
+      args.multiLoading = true;
+      args.socketRef.current = candidate;
+      render();
+      await vi.advanceTimersByTimeAsync(5000);
+      candidate.connected = false;
+      args.socketRef.current = socket;
+      args.multiLoading = false;
+      staleAck(null, { ok: true });
+      render();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(socket.emit).toHaveBeenCalledOnce();
+      expect(socket.handlers.get('disconnect').size).toBe(1);
+      for (const old of failed) expect(old.handlers.size).toBe(0);
+    }
+    expect(args.connectSocket).toHaveBeenCalledTimes(6);
+    args.socketRef.current = makeSocket();
+    render();
+    await vi.advanceTimersByTimeAsync(6000);
+    expect(args.connectSocket).toHaveBeenCalledTimes(6);
+    expect(socket.handlers.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps one listener per target through ten disconnects and foreground resumes', async () => {
+    const { args, document, window, render } = setup();
+    const retired = [];
+    for (let round = 1; round <= 10; round++) {
+      const previous = args.socketRef.current;
+      previous.drop();
+      await vi.advanceTimersByTimeAsync(0);
+      if (args.connectSocket.mock.calls.length < round) await vi.advanceTimersByTimeAsync(1500);
+      expect(args.connectSocket).toHaveBeenCalledTimes(round);
+      const onConnected = args.connectSocket.mock.calls.at(-1)[0];
+      const candidate = makeSocket();
+      args.socketRef.current = candidate;
+      args.multiLoading = true;
+      render();
+      args.identityTokenRef.current = `token-${round}`;
+      onConnected(candidate);
+      expect(candidate.emit).toHaveBeenCalledWith('openOnlineOptions', { uuid: 'me', identityToken: `token-${round}` });
+      args.multiLoading = false;
+      render();
+      await vi.advanceTimersByTimeAsync(0);
+      retired.push(previous);
+      document.visibilityState = 'hidden';
+      document.dispatch('visibilitychange');
+      document.visibilityState = 'visible';
+      document.dispatch('visibilitychange');
+      await vi.advanceTimersByTimeAsync(0);
+      for (let rerender = 0; rerender < 3; rerender++) render();
+      await vi.advanceTimersByTimeAsync(0);
+      expect(args.connectSocket).toHaveBeenCalledTimes(round);
+      expect(candidate.emit.mock.calls.filter(([event]) => event === 'heartbeatPong')).toHaveLength(1);
+      expect(candidate.handlers.get('disconnect').size).toBe(1);
+      expect(document.listenerCount('visibilitychange')).toBe(1);
+      for (const event of ['online', 'pagehide', 'pageshow']) expect(window.listenerCount(event)).toBe(1);
+      for (const old of retired) {
+        expect(old.handlers.size).toBe(0);
+        old.drop();
+      }
+      expect(vi.getTimerCount()).toBe(0);
+    }
+    cleanup();
+    cleanup = null;
+    expect(document.listenerCount('visibilitychange')).toBe(0);
+    for (const event of ['online', 'pagehide', 'pageshow']) expect(window.listenerCount(event)).toBe(0);
+    expect(args.socketRef.current.handlers.size).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['visibilitychange', 'pagehide'])('does not reuse an acknowledged probe across a later %s interval', async hideEvent => {
+    const { args, socket, document, window } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(100);
+    socket.emit.mock.calls[0][1](null, { ok: true });
+    document.visibilityState = 'hidden';
+    if (hideEvent === 'pagehide') window.dispatch('pagehide');
+    else document.dispatch('visibilitychange');
+    // The previous successful ACK is still waiting for its two-second check.
+    vi.setSystemTime(Date.now() + 60_000);
+    document.visibilityState = 'visible';
+    if (hideEvent === 'pagehide') window.dispatch('pageshow', { persisted: true });
+    else document.dispatch('visibilitychange');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.emit).toHaveBeenCalledTimes(2);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    // This foreground interval has no reply, so the stale success cannot hide a blackhole.
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(args.connectSocket).toHaveBeenCalledWith(expect.any(Function), {
+      silent: true, preserveCurrentSocket: true,
+    });
+  });
+
   it('revalidates a connected socket after a hidden interval even if the transport timeout was suspended', async () => {
     const { args, socket, document, window } = setup({ probeReply: false });
     await vi.advanceTimersByTimeAsync(0);
@@ -144,6 +270,9 @@ describe('multiplayer reconnect browser lifecycle', () => {
     document.visibilityState = 'visible';
     document.dispatch('visibilitychange');
     await vi.advanceTimersByTimeAsync(0);
+    expect(socket.emit).toHaveBeenCalledTimes(2);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(2000);
     expect(args.connectSocket).toHaveBeenCalledExactlyOnceWith(expect.any(Function), {
       silent: true, preserveCurrentSocket: true,
     });

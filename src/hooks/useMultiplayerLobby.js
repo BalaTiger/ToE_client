@@ -39,6 +39,8 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
   const leavingRoomRef = useRef(false);
   const roomExitSocketRef = useRef(null);
   const pendingRoomExitRef = useRef(null);
+  const pendingRoomRequestRef = useRef(null);
+  const roomRequestSequenceRef = useRef(0);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -71,11 +73,19 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 4500);
   }, []);
 
-  function handleCreateRoom() {
-    if (!socketRef.current) return;
+  function requestRoom(event, roomId) {
+    const socket = socketRef.current;
+    if (!socket || multiLoading || pendingRoomRequestRef.current?.socket === socket) return false;
+    const roomRequestId = `${Date.now().toString(36)}-${++roomRequestSequenceRef.current}-${Math.random().toString(36).slice(2)}`;
+    pendingRoomRequestRef.current = { roomRequestId, socket };
     leavingRoomRef.current = false;
-    socketRef.current.emit('createRoom');
+    socket.emit(event, { ...(roomId ? { roomId } : {}), roomRequestId });
     setMultiLoading(true);
+    return true;
+  }
+
+  function handleCreateRoom() {
+    requestRoom('createRoom');
   }
 
   function handleJoinRoom() {
@@ -85,9 +95,7 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
       addToast('请输入房间号');
       return;
     }
-    leavingRoomRef.current = false;
-    socketRef.current.emit('joinRoom', { roomId: rid });
-    setMultiLoading(true);
+    requestRoom('joinRoom', rid);
   }
 
   function handleSetReady(ready) {
@@ -97,6 +105,11 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
 
   function closeOnlineOptions() {
     cancelConnection?.();
+    const request = pendingRoomRequestRef.current;
+    if (request) {
+      pendingRoomExitRef.current = { requestId: request.roomRequestId };
+      pendingRoomRequestRef.current = null;
+    }
     setOnlineOptionsModal(false);
     setMultiLoading(false);
     if (renameCdTimerRef.current) {
@@ -124,10 +137,7 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
   }
 
   function handleJoinLobbyRoom(roomId) {
-    if (!socketRef.current) return;
-    leavingRoomRef.current = false;
-    socketRef.current.emit('joinRoom', { roomId });
-    setMultiLoading(true);
+    if (!requestRoom('joinRoom', roomId)) return;
     setLobbyModal(false);
   }
 
@@ -243,6 +253,7 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
     roomModalRef,
     leavingRoomRef,
     pendingRoomExitRef,
+    pendingRoomRequestRef,
     connErrModal,
     setConnErrModal,
     onlineOptionsModal,

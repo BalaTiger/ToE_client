@@ -261,6 +261,7 @@ export function processIncomingMultiplayerStateSync({
   if (previousState?.gameOver && rotatedState?.gameOver) return 'ignored';
   if (
     !hasFreshVisualEvents
+    && !rotatedState.gameOver
     && previousState
     && rotatedState._turnKey === previousState._turnKey
     && rotatedState.currentTurn === previousState.currentTurn

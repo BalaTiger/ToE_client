@@ -72,6 +72,21 @@ function context(overrides = {}) {
 }
 
 describe('multiplayer remote replay executor', () => {
+  it.each([0, 1])('accepts the first terminal result with unchanged phase and logs for seat %s', myIndex => {
+    const before = state({ _mpMatchId: 'match-a', _turnKey: 5, log: ['same turn'] });
+    const terminal = { ...before, gameOver: { winner: 'LOSE_ALL' } };
+    const ctx = context({
+      myPlayerIndexRef: ref(myIndex),
+      latestGsRef: ref(rotateGsForViewer(before, myIndex)),
+    });
+    expect(processIncomingMultiplayerStateSync({ rawState: terminal, context: ctx })).toBe('applied');
+    expect(ctx.setGs).toHaveBeenCalledWith(expect.objectContaining({ gameOver: terminal.gameOver }));
+
+    ctx.latestGsRef.current = rotateGsForViewer(terminal, myIndex);
+    expect(processIncomingMultiplayerStateSync({ rawState: terminal, context: ctx })).toBe('ignored');
+    expect(ctx.setGs).toHaveBeenCalledOnce();
+  });
+
   it('keeps the local hand snapshot across a remote swap followed by a buffered slime draw', () => {
     const annaKept = { id: 'anna-kept', name: 'Anna kept card' };
     const alanGiven = { id: 'alan-given', name: 'Alan given card' };

@@ -125,9 +125,13 @@ export function useMultiplayerSessionReconnect({
       scheduleReconnect(retryMs);
     };
 
+    const handlePageHide = () => {
+      backgroundedRef.current = true;
+      resumeProbeRef.current = null;
+    };
     const handleVisibilityChange = () => {
       if (document.visibilityState !== 'visible') {
-        backgroundedRef.current = true;
+        handlePageHide();
         return;
       }
       if (backgroundedRef.current) resumeReconnectRef.current = true;
@@ -135,7 +139,6 @@ export function useMultiplayerSessionReconnect({
       scheduleReconnect(0);
     };
     const handleOnline = () => scheduleReconnect(0);
-    const handlePageHide = () => { backgroundedRef.current = true; };
     const handlePageShow = event => {
       if (event.persisted || backgroundedRef.current) resumeReconnectRef.current = true;
       if (document.visibilityState === 'visible') backgroundedRef.current = false;

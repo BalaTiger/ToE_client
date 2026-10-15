@@ -721,7 +721,7 @@ export default function Game(){
     identityToken, setIdentityToken, identityTokenRef,
     multiLoading, setMultiLoading,
     toasts, addToast,
-    roomModal, setRoomModal, roomModalRef, leavingRoomRef, pendingRoomExitRef,
+    roomModal, setRoomModal, roomModalRef, leavingRoomRef, pendingRoomExitRef, pendingRoomRequestRef,
     connErrModal, setConnErrModal,
     onlineOptionsModal, setOnlineOptionsModal,
     playerUsername, setPlayerUsername,
@@ -938,7 +938,7 @@ export default function Game(){
     const roomId=payload.roomId||roomModalRef.current?.roomId;
     const rawNextGs=derotateGs(nextGs,myPlayerIndexRef.current);
     if(socketRef.current?.connected&&roomId){
-      socketRef.current.emit('mpStateSync',{roomId,gs:rawNextGs});
+      socketRef.current.emit('mpStateSync',{roomId,matchId:rawNextGs._mpMatchId,gs:rawNextGs});
     }
     processIncomingMpStateSync(rawNextGs,{allowBuffer:false});
   }
@@ -1538,6 +1538,7 @@ export default function Game(){
       setRoomModal,
       leavingRoomRef,
       pendingRoomExitRef,
+      pendingRoomRequestRef,
       setLobbyLoading,
       setLobbyRooms,
       copyRoomIdToClipboard,
@@ -1562,6 +1563,10 @@ export default function Game(){
       pendingMpRawQueueRef,
       pendingMpLatestStateRawRef,
       recentMpAnimatedRawSignaturesRef,
+      resetReplayPlayback:()=>{
+        clearMultiplayerReplayState();
+        endTurnSeqRef.current=null;
+      },
       setAnimExiting,
       clearDamageAnimations,
       setAnim,
@@ -1584,7 +1589,8 @@ export default function Game(){
       const pendingExit=pendingRoomExitRef.current;
       if(pendingExit)pendingExit.socket=socket;
       socket.emit('openOnlineOptions',{uuid:playerUUID,identityToken,
-        ...(pendingExit?{pendingWaitingRoomExitId:pendingExit.roomId}:{})});
+        ...(pendingExit?.requestId?{pendingWaitingRoomExitRequestId:pendingExit.requestId}
+          :pendingExit?{pendingWaitingRoomExitId:pendingExit.roomId}:{})});
       // A lost explicit exit must settle before showing or restoring a room.
       setOnlineOptionsModal(!pendingExit);
     });
@@ -2738,7 +2744,7 @@ export default function Game(){
     onTimeout:handleAiTurnTimeout,
   });
 
-  useMultiplayerStateBroadcast({
+  const { requestReturnToRoom } = useMultiplayerStateBroadcast({
     gs,
     setGs,
     isMultiplayer,
@@ -3502,7 +3508,7 @@ export default function Game(){
       if(isMultiplayer&&socketRef.current&&roomModal?.roomId){
         suppressNextBroadcastRef.current=true;
         receivedGsRef.current=true;
-        socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
+        socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,matchId:nextGs._mpMatchId,gs:derotateGs(nextGs,myPlayerIndexRef.current)});
       }
       const drawStatQ=bindAnimLogChunks(
         compileFreshVisualEventQueue({...gs,players:nextGs._playersBeforeThisDraw||gs.players},nextGs),
@@ -3867,16 +3873,7 @@ export default function Game(){
       <GameResultScreen players={gs.players} gameOver={gs.gameOver} iWon={iWon} isMultiplayer={isMultiplayer}
         onClickCapture={handleUiSfxCapture}
         onReturnRoom={() => {
-              // 先直接发送 gameEnd（在 state 重置前），避免 useEffect 因 isMultiplayer=false 跳过发送
-              if(!gameEndSentRef.current&&socketRef.current?.connected){
-                gameEndSentRef.current=true;
-                // 确定获胜者身份
-                let winnerRole = null;
-                if (gs?.gameOver?.winner === '寻宝者' || gs?.gameOver?.winner === '追猎者' || gs?.gameOver?.winner === '邪祀者') {
-                  winnerRole = gs.gameOver.winner;
-                }
-                socketRef.current.emit('gameEnd',{uuid:playerUUID,roomId:roomModal?.roomId,winnerRole});
-              }
+            const confirmed=requestReturnToRoom(()=>{
               gameOverPresentationFrozenRef.current=true;
               clearMultiplayerReplayState();
               setIsMultiplayer(false);isMultiplayerRef.current=false;
@@ -3886,7 +3883,8 @@ export default function Game(){
               setShowGodResurrection(false);
               setShowFullLog(false);
               setGs(null);
-
+            });
+            return confirmed;
         }}
         onRestart={() => startNewGame({skipTutorialPrompt:true})}
         onHome={() => {setModal(null);setShowGodResurrection(false);setShowFullLog(false);setGs(null);}}
@@ -9300,7 +9298,7 @@ export default function Game(){
     const hasVisualEvents=Array.isArray(replayState._visualEvents)&&replayState._visualEvents.length>0;
     if((replayState.gameOver&&!hasVisualEvents)||replayState.phase==='TREASURE_WIN')return false;
     const broadcastGs=hasVisualEvents?pruneConsumedVisualEvents(replayState,consumedVisualEventIdsRef.current):replayState;
-    socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,gs:derotateGs(broadcastGs,myPlayerIndexRef.current)});
+    socketRef.current.emit('mpStateSync',{roomId:roomModal.roomId,matchId:broadcastGs._mpMatchId,gs:derotateGs(broadcastGs,myPlayerIndexRef.current)});
     suppressNextBroadcastRef.current=true;
     return true;
   }

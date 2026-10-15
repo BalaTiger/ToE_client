@@ -13,14 +13,18 @@ import {
 const hooks = vi.hoisted(() => ({ current: null }));
 vi.mock('react', () => ({
   useEffect: (...args) => hooks.current.useEffect(...args),
+  useRef: (...args) => hooks.current.useRef(...args),
 }));
 
 // Retain dependency slots between renders and execute the production effects.
 // Calling the pure broadcast builders cannot reproduce a roomUpdated rerender.
 function renderBroadcast(args) {
   const slots = [];
+  const refs = [];
   let cursor = 0;
+  let refCursor = 0;
   const runtime = {
+    useRef(value) { return (refs[refCursor++] ||= { current: value }); },
     useEffect(callback, deps) {
       const index = cursor++;
       const previous = slots[index];
@@ -34,9 +38,10 @@ function renderBroadcast(args) {
       Object.assign(args, patch);
       if (Object.hasOwn(patch, 'gs')) args.latestGsRef.current = patch.gs;
       cursor = 0;
+      refCursor = 0;
       hooks.current = runtime;
       // eslint-disable-next-line react-hooks/rules-of-hooks -- Run the actual hook with retained effect dependencies.
-      useMultiplayerStateBroadcast(args);
+      runtime.result = useMultiplayerStateBroadcast(args);
       slots.filter(slot => slot.pending).forEach(slot => {
         slot.pending = false;
         slot.cleanup?.();
@@ -44,6 +49,7 @@ function renderBroadcast(args) {
       });
     },
     unmount() { slots.forEach(slot => slot.cleanup?.()); },
+    get result() { return runtime.result; },
   };
 }
 
@@ -51,6 +57,7 @@ const renderers = [];
 afterEach(() => {
   renderers.splice(0).forEach(renderer => renderer.unmount());
   hooks.current = null;
+  vi.useRealTimers();
 });
 
 function setupBroadcast(patch = {}) {
@@ -64,7 +71,7 @@ function setupBroadcast(patch = {}) {
     log: ['等待目标亮牌'],
     _visualEvents: [],
   };
-  const socket = { connected: true, emit: vi.fn() };
+  const socket = { connected: true, emit: vi.fn(), timeout: vi.fn(function () { return this; }) };
   const args = {
     gs,
     setGs: vi.fn(),
@@ -94,6 +101,96 @@ function aiRoomUpdate(room) {
 }
 
 describe('useMultiplayerStateBroadcast room metadata rerenders', () => {
+  it('preserves one requested return through same-match restored snapshots and cancels it when gameplay is cleared', () => {
+    const { args, socket, renderer } = setupBroadcast();
+    const terminal = { ...args.gs, _mpMatchId: 'match-a', gameOver: { winner: ROLE_TREASURE } };
+    renderer.render({ gs: terminal, roomModal: { ...args.roomModal, matchId: 'match-a', inGame: true } });
+    const onReturn = vi.fn();
+    renderer.result.requestReturnToRoom(onReturn);
+    const oldAck = socket.emit.mock.calls.find(([event]) => event === 'gameEnd')[2];
+    renderer.render({ gs: JSON.parse(JSON.stringify(terminal)) });
+    oldAck(null, { ok: true, matchId: 'match-a' });
+    expect(onReturn).not.toHaveBeenCalled();
+    socket.emit.mock.calls.filter(([event]) => event === 'gameEnd').at(-1)[2](null, { ok: true, matchId: 'match-a' });
+    expect(onReturn).toHaveBeenCalledOnce();
+    renderer.result.requestReturnToRoom(vi.fn());
+    expect(onReturn).toHaveBeenCalledOnce();
+    renderer.render({ gs: null, isMultiplayer: false });
+    oldAck(null, { ok: true, matchId: 'match-a' });
+    expect(onReturn).toHaveBeenCalledOnce();
+  });
+
+  it.each(['gameOver', 'roomId', 'matchId'])('refuses an unsafe return without %s', missing => {
+    const { args, renderer } = setupBroadcast();
+    const gs = { ...args.gs, _mpMatchId: 'match-a', gameOver: { winner: ROLE_TREASURE } };
+    const roomModal = { ...args.roomModal, matchId: 'match-a', inGame: false };
+    if (missing === 'gameOver') gs.gameOver = null;
+    if (missing === 'matchId') delete gs._mpMatchId;
+    if (missing === 'roomId') delete roomModal.roomId;
+    renderer.render({ gs, roomModal });
+    const onReturn = vi.fn();
+    expect(renderer.result.requestReturnToRoom(onReturn)).toBe(false);
+    expect(onReturn).not.toHaveBeenCalled();
+  });
+
+  it('retries a lost terminal packet and returns once only after its matching acknowledgement', async () => {
+    vi.useFakeTimers();
+    const { args, socket, renderer } = setupBroadcast();
+    const terminal = { ...args.gs, _mpMatchId: 'match-a', gameOver: { winner: ROLE_TREASURE, winnerIdx: 0 } };
+    renderer.render({ gs: terminal, roomModal: { ...args.roomModal, matchId: 'match-a', inGame: true } });
+    const onReturn = vi.fn();
+    const duplicateReturn = vi.fn();
+    expect(renderer.result.requestReturnToRoom(onReturn)).toBe(false);
+    expect(renderer.result.requestReturnToRoom(duplicateReturn)).toBe(false);
+    expect(args.gameEndSentRef.current).toBe(false);
+    await vi.advanceTimersByTimeAsync(2500);
+    const endCalls = socket.emit.mock.calls.filter(([event]) => event === 'gameEnd');
+    expect(endCalls).toHaveLength(2);
+    endCalls[1][2](null, { ok: true, matchId: 'match-a' });
+    expect(args.gameEndSentRef.current).toBe(true);
+    expect(onReturn).toHaveBeenCalledOnce();
+    expect(duplicateReturn).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(socket.emit.mock.calls.filter(([event]) => event === 'gameEnd')).toHaveLength(2);
+    renderer.unmount();
+    vi.useRealTimers();
+  });
+
+  it('lets a guest return on matching waiting-room confirmation and ignores an old acknowledgement after rematch', () => {
+    const { args, socket, renderer } = setupBroadcast();
+    const terminal = { ...args.gs, _mpMatchId: 'match-a', gameOver: { winner: ROLE_TREASURE } };
+    renderer.render({ gs: terminal, roomModal: { ...args.roomModal, matchId: 'match-a', inGame: true } });
+    const onReturn = vi.fn();
+    renderer.result.requestReturnToRoom(onReturn);
+    const oldAck = socket.emit.mock.calls.find(([event]) => event === 'gameEnd')[2];
+    oldAck(null, { ok: false, reason: 'not_authority', matchId: 'match-a' });
+    renderer.render({ roomModal: { ...args.roomModal, inGame: true, count: 3 } });
+    expect(onReturn).not.toHaveBeenCalled();
+    renderer.render({ roomModal: { ...args.roomModal, inGame: false } });
+    expect(onReturn).toHaveBeenCalledOnce();
+    args.gameEndSentRef.current = false;
+    renderer.render({ gs: { ...terminal, _mpMatchId: 'match-b', gameOver: null }, roomModal: { ...args.roomModal, matchId: 'match-b', inGame: true } });
+    oldAck(null, { ok: true, matchId: 'match-a' });
+    expect(args.gameEndSentRef.current).toBe(false);
+    expect(onReturn).toHaveBeenCalledOnce();
+  });
+
+  it('does not consume the terminal broadcast while disconnected and sends it after an authoritative restore', () => {
+    const { args, socket, renderer } = setupBroadcast();
+    socket.connected = false;
+    const terminal = { ...args.gs, _mpMatchId: 'match-a', gameOver: { winner: ROLE_TREASURE, winnerIdx: 0 } };
+    renderer.render({ gs: terminal });
+    expect(args.gameEndSentRef.current).toBe(false);
+    expect(socket.emit).not.toHaveBeenCalled();
+    socket.connected = true;
+    renderer.render({ gs: JSON.parse(JSON.stringify(terminal)) });
+    socket.emit.mock.calls.find(([event]) => event === 'gameEnd')[2](null, { ok: true, matchId: 'match-a' });
+    expect(args.gameEndSentRef.current).toBe(true);
+    expect(socket.emit.mock.calls.map(([event]) => event)).toEqual(['mpStateSync', 'gameEnd']);
+    renderer.render({ roomModal: aiRoomUpdate(args.roomModal) });
+    expect(socket.emit).toHaveBeenCalledTimes(2);
+  });
+
   it('does not echo a received hunt wait when the same room announces AI takeover', () => {
     const { args, socket, renderer } = setupBroadcast({ receivedGsRef: { current: true } });
     const waitingGs = args.gs;

@@ -98,6 +98,45 @@ function makeDeps(overrides = {}) {
 }
 
 describe('registerMultiplayerSocketHandlers', () => {
+  it('keeps old match packets and a repeated start from changing the rematch', () => {
+    const { socket, deps, state } = makeDeps();
+    registerMultiplayerSocketHandlers(deps);
+    const players = [{ uuid: 'u1' }, { uuid: 'u2' }];
+    socket.trigger('gameStart', { roomId: 'room-a', matchId: 'match-a', players });
+    socket.trigger('gameStart', { roomId: 'room-a', matchId: 'match-b', players });
+    socket.trigger('gameStart', { roomId: 'room-a', matchId: 'match-a', players });
+    socket.trigger('roomUpdated', { roomId: 'room-a', matchId: 'match-a', inGame: false, players });
+    deps.setGs.mockClear();
+    socket.trigger('gameStart', { roomId: 'room-a', matchId: 'match-b', players });
+    socket.trigger('mpStateSync', { matchId: 'match-a', gs: { _mpMatchId: 'match-a', gameOver: { winner: '寻宝者' } } });
+    socket.trigger('mpAiTakeover', { matchId: 'match-a', seq: 99, playerIndex: 1 });
+    expect(deps.setGs).not.toHaveBeenCalled();
+    expect(deps.processIncomingMpStateSync).not.toHaveBeenCalled();
+    expect(deps.handleMpAiTakeover).not.toHaveBeenCalled();
+    expect(state.roomModal).toMatchObject({ matchId: 'match-b', inGame: true });
+    socket.trigger('mpStateSync', { matchId: 'match-b', gs: { _mpMatchId: 'match-b', phase: 'ACTION' } });
+    expect(deps.processIncomingMpStateSync).toHaveBeenCalledOnce();
+  });
+
+  it.each(['roomCreated', 'roomUpdated', 'joinError'])('settles the current socket room request on %s', event => {
+    const { socket, deps } = makeDeps();
+    deps.pendingRoomRequestRef = { current: { roomRequestId: 'request-a', socket } };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger(event, { roomId: 'room-a', players: [{ uuid: 'u2' }], msg: 'unavailable' });
+    expect(deps.pendingRoomRequestRef.current).toBeNull();
+  });
+
+  it('settles a pending request exit only for its matching authenticated connection', () => {
+    const { socket, deps } = makeDeps();
+    const pendingExit = { requestId: 'request-a', socket };
+    deps.pendingRoomExitRef = { current: pendingExit };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', waitingRoomExitResult: { requestId: 'request-b', ok: true } });
+    expect(deps.pendingRoomExitRef.current).toBe(pendingExit);
+    socket.trigger('userInfo', { username: 'me', waitingRoomExitResult: { requestId: 'request-a', ok: true } });
+    expect(deps.pendingRoomExitRef.current).toBeNull();
+  });
+
   it.each([{ ok: true }, { ok: false, reason: 'room_in_game' }])('settles a replayed waiting-room exit after server confirmation: %j', result => {
     const { socket, deps } = makeDeps();
     deps.pendingRoomExitRef = { current: { roomId: 'old-room', socket } };
@@ -183,6 +222,55 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
     expect(deps.setRoomModal).not.toHaveBeenCalled();
     expect(deps.addToast).not.toHaveBeenCalled();
+  });
+
+  it.each(['kickedFromRoom', 'roomClosed'])('leaves a finished match when its waiting room emits %s', event => {
+    const { socket, deps, state } = makeDeps({
+      isMultiplayerRef: { current: true },
+      latestGsRef: { current: { _mpMatchId: 'finished-match', gameOver: { winner: '寻宝者' } } },
+      resetReplayPlayback: vi.fn(),
+      pendingMpRawQueueRef: { current: [{ old: true }] },
+      pendingMpLatestStateRawRef: { current: { old: true } },
+    });
+    state.roomModal = { roomId: 'old-room', matchId: 'finished-match', inGame: false };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger(event, { reason: '等待室已失效' });
+    expect(state.roomModal).toBeNull();
+    expect(deps.latestGsRef.current).toBeNull();
+    expect(deps.setGs).toHaveBeenCalledWith(null);
+    expect(deps.isMultiplayerRef.current).toBe(false);
+    expect(state.isMultiplayer).toBe(false);
+    expect(state.isDisconnected).toBe(false);
+    expect(deps.resetReplayPlayback).toHaveBeenCalledOnce();
+    expect(deps.animQueueRef.current).toEqual([]);
+    expect(deps.pendingGsRef.current).toBeNull();
+    expect(deps.pendingMpRawQueueRef.current).toEqual([]);
+    expect(deps.pendingMpLatestStateRawRef.current).toBeNull();
+    expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(event === 'roomClosed');
+    if (event === 'roomClosed') {
+      expect(deps.socketRef.current).toBe(socket);
+      expect(socket.disconnect).not.toHaveBeenCalled();
+    } else {
+      expect(deps.socketRef.current).toBeNull();
+      expect(socket.disconnect).toHaveBeenCalledOnce();
+    }
+  });
+
+  it.each(['kickedFromRoom', 'roomClosed'])('does not clear an unfinished match when receiving %s', event => {
+    const activeGs = { _mpMatchId: 'active-match', phase: 'ACTION' };
+    const { socket, deps } = makeDeps({
+      isMultiplayerRef: { current: true },
+      latestGsRef: { current: activeGs },
+      resetReplayPlayback: vi.fn(),
+    });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger(event, { reason: '房间已失效' });
+    expect(deps.latestGsRef.current).toBe(activeGs);
+    expect(deps.setGs).not.toHaveBeenCalled();
+    expect(deps.isMultiplayerRef.current).toBe(true);
+    expect(deps.setIsMultiplayer).not.toHaveBeenCalled();
+    expect(deps.resetReplayPlayback).not.toHaveBeenCalled();
+    expect(deps.animQueueRef.current).toEqual(['old']);
   });
 
   it.each(['gameStart', 'matchRestored'])('ignores %s while waiting for the room exit acknowledgement', event => {
@@ -410,6 +498,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(state.myPlayerIndex).toBe(1);
     expect(state.roomModal).toMatchObject({ roomId: 'room-1', count: 2 });
     expect(deps.mpAiTakeoverSeqRef.current).toBe(3);
+    expect(deps.gameEndSentRef.current).toBe(false);
     expect([...deps.consumedVisualEventIdsRef.current]).toEqual(['already-seen']);
     expect([...deps.completedMpHuntRevealPromptIdsRef.current]).toEqual([]);
     expect(deps.restoreVisibleLog).toHaveBeenCalledWith(rawGs.log, expect.objectContaining({currentTurn:0}));
@@ -522,7 +611,7 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(state.roomModal).toBeNull();
     expect(deps.cleanupConnection).toHaveBeenCalled();
     expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
-    expect(deps.addToast).toHaveBeenCalledWith(expect.stringContaining('不能创建或加入'));
+    expect(deps.addToast).toHaveBeenCalledWith(expect.stringContaining('可以创建或加入'));
     expect(deps.playerUUIDRef.current).toBe('u2');
     expect(deps.setPlayerUUID).not.toHaveBeenCalled();
     expect(deps.setIdentityToken).not.toHaveBeenCalled();

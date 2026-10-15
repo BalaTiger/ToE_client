@@ -40,9 +40,92 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.resetAllMocks();
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
+});
 
 describe('multiplayer connection attempt lifetime', () => {
+  it('isolates identity, old events, and deadlines through ten replacement attempts', async () => {
+    const actual = await vi.importActual('./registerMultiplayerSocketHandlers');
+    registerMultiplayerSocketHandlers.mockImplementation(actual.registerMultiplayerSocketHandlers);
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const createSocket = () => {
+      const handlers = new Map();
+      return {
+        connected: false,
+        on: (event, handler) => handlers.set(event, handler),
+        emit: vi.fn(),
+        trigger(event, payload) { handlers.get(event)?.(payload); },
+        disconnect: vi.fn(function () {
+          this.connected = false;
+          handlers.get('disconnect')?.('io client disconnect');
+        }),
+      };
+    };
+    const { deps, connectSocket } = setup();
+    Object.assign(deps.handlerDeps, {
+      leavingRoomRef: { current: false }, isMultiplayerRef: { current: false },
+      playerUUIDRef: { current: 'same-player' }, identityTokenRef: { current: 'token-0' },
+      setPlayerUUID: vi.fn(), setIdentityToken: vi.fn(), setPlayerUsername: vi.fn(),
+      setPlayerUsernameSpecial: vi.fn(), setRenameInput: vi.fn(),
+      setRoomModal: vi.fn(), setOnlineOptionsModal: vi.fn(),
+    });
+    const onConnected = socket => socket.emit('openOnlineOptions', {
+      uuid: deps.handlerDeps.playerUUIDRef.current,
+      identityToken: deps.handlerDeps.identityTokenRef.current,
+    });
+    const initial = createSocket();
+    initial.connected = true;
+    loadSocketIO.mockResolvedValueOnce(() => initial);
+    await connectSocket(onConnected);
+    initial.trigger('userInfo', { username: 'me' });
+    const retired = [];
+    for (let round = 1; round <= 10; round++) {
+      const previous = deps.socketRef.current;
+      const candidate = createSocket();
+      loadSocketIO.mockResolvedValueOnce(() => candidate);
+      await connectSocket(onConnected, { silent: true, preserveCurrentSocket: true });
+      expect(vi.getTimerCount()).toBe(1);
+      for (const stale of [previous, ...retired]) {
+        stale.trigger('uuidAssigned', { uuid: 'stale-player', identityToken: 'stale-token' });
+        stale.trigger('userInfo', { username: 'stale' });
+        stale.trigger('roomClosed', { reason: 'stale room' });
+      }
+      expect(deps.handlerDeps.playerUUIDRef.current).toBe('same-player');
+      expect(vi.getTimerCount()).toBe(1);
+      if (round % 3 === 1) {
+        await vi.advanceTimersByTimeAsync(5000);
+        expect(deps.socketRef.current).toBe(previous);
+        retired.push(candidate);
+      } else if (round % 3 === 2) {
+        candidate.trigger('connect_error', new Error('temporary transport failure'));
+        expect(deps.socketRef.current).toBe(previous);
+        retired.push(candidate);
+      } else {
+        candidate.connected = true;
+        candidate.trigger('connect');
+        expect(candidate.emit).toHaveBeenCalledWith('openOnlineOptions', {
+          uuid: 'same-player', identityToken: deps.handlerDeps.identityTokenRef.current,
+        });
+        candidate.trigger('uuidAssigned', { uuid: 'same-player', identityToken: `token-${round}` });
+        candidate.trigger('userInfo', { username: 'me', roomRestored: true });
+        expect(deps.socketRef.current).toBe(candidate);
+        expect(previous.connected).toBe(false);
+        retired.push(previous);
+      }
+      expect(vi.getTimerCount()).toBe(0);
+      const current = deps.socketRef.current;
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(deps.socketRef.current).toBe(current);
+      expect(current.connected).toBe(true);
+    }
+    expect(deps.handlerDeps.identityTokenRef.current).toBe('token-9');
+    expect(deps.handlerDeps.setRoomModal).not.toHaveBeenCalled();
+    expect(deps.setConnErrModal).not.toHaveBeenCalled();
+    errorLog.mockRestore();
+  });
+
   it('cancels an unconnected replacement before leaving through the preserved room socket', async () => {
     const { deps, connectSocket, cancelConnection } = setup();
     const previous = { connected: true, disconnect: vi.fn(), emit: vi.fn((event, data, ack) => ack({ ok: true })) };

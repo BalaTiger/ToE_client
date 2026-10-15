@@ -25,6 +25,7 @@ export function registerMultiplayerSocketHandlers({
   setRoomModal,
   leavingRoomRef,
   pendingRoomExitRef,
+  pendingRoomRequestRef,
   setLobbyLoading,
   setLobbyRooms,
   addToast,
@@ -52,6 +53,7 @@ export function registerMultiplayerSocketHandlers({
   recentMpAnimatedRawSignaturesRef,
   setAnimExiting,
   clearDamageAnimations,
+  resetReplayPlayback,
   setAnim,
   setGs,
   restoreVisibleLog,
@@ -66,6 +68,8 @@ export function registerMultiplayerSocketHandlers({
   silentConnectionErrors = false,
   isConnectionActive = () => true,
 }) {
+  let activeMatchId = null;
+  const seenMatchIds = new Set();
   function onCurrentSocket(event, handler) {
     socket.on(event, (...args) => {
       if (socketRef.current !== socket) return;
@@ -75,6 +79,7 @@ export function registerMultiplayerSocketHandlers({
   }
 
   function clearReplayPlayback() {
+    resetReplayPlayback?.();
     animQueueRef.current = [];
     pendingGsRef.current = null;
     if (pendingMpRawQueueRef) pendingMpRawQueueRef.current = [];
@@ -84,6 +89,19 @@ export function registerMultiplayerSocketHandlers({
     clearDamageAnimations();
     setAnim(null);
     setRoleRevealAnim(null);
+  }
+
+  function clearMatchView() {
+    clearReplayPlayback();
+    isMultiplayerRef.current = false;
+    setIsMultiplayer(false);
+    setIsDisconnected(false);
+    if (latestGsRef) latestGsRef.current = null;
+    setGs(null);
+  }
+
+  function settleRoomRequest() {
+    if (pendingRoomRequestRef?.current?.socket === socket) pendingRoomRequestRef.current = null;
   }
 
   onCurrentSocket('connect_error', (err) => {
@@ -113,7 +131,10 @@ export function registerMultiplayerSocketHandlers({
     cleanupConnection();
     setMultiLoading(false);
     const pendingExit = pendingRoomExitRef?.current;
-    if (pendingExit?.socket === socket && waitingRoomExitResult?.roomId === pendingExit.roomId
+    const confirmsPendingExit = pendingExit?.roomId
+      ? waitingRoomExitResult?.roomId === pendingExit.roomId
+      : pendingExit?.requestId && waitingRoomExitResult?.requestId === pendingExit.requestId;
+    if (pendingExit?.socket === socket && confirmsPendingExit
       && (waitingRoomExitResult.ok || waitingRoomExitResult.reason === 'room_in_game')) {
       pendingRoomExitRef.current = null;
     }
@@ -130,12 +151,7 @@ export function registerMultiplayerSocketHandlers({
     if (silentConnectionErrors && !matchRestored) {
       const hadMatch = isMultiplayerRef.current || !!latestGsRef?.current;
       if (hadMatch) {
-        clearReplayPlayback();
-        isMultiplayerRef.current = false;
-        setIsMultiplayer(false);
-        setIsDisconnected(false);
-        if (latestGsRef) latestGsRef.current = null;
-        setGs(null);
+        clearMatchView();
       }
       if (!roomRestored) setRoomModal(null);
       setOnlineOptionsModal(!roomRestored);
@@ -161,30 +177,38 @@ export function registerMultiplayerSocketHandlers({
     addToast(msg);
   });
 
-  onCurrentSocket('roomCreated', ({ roomId, owner, isPrivate, players, count, max, countdown }) => {
+  onCurrentSocket('roomCreated', ({ roomId, owner, isPrivate, players, count, max, countdown, matchId, inGame }) => {
+    settleRoomRequest();
     leavingRoomRef.current = false;
     setMultiLoading(false);
     setOnlineOptionsModal(false);
     copyRoomIdToClipboard(roomId, { created: true });
-    setRoomModal({ roomId, owner, isPrivate, players, count: count || 1, max: max || 12, countdown: countdown || null });
+    setRoomModal({ roomId, owner, isPrivate, players, matchId, inGame, count: count || 1, max: max || 12, countdown: countdown || null });
   });
 
-  onCurrentSocket('roomUpdated', ({ roomId, owner, isPrivate, aiAuthorityUuid, players, count, max, countdown }) => {
+  onCurrentSocket('roomUpdated', ({ roomId, owner, isPrivate, aiAuthorityUuid, players, count, max, countdown, matchId, inGame }) => {
     if (leavingRoomRef.current) return;
+    if (matchId && seenMatchIds.has(matchId) && matchId !== activeMatchId) return;
+    settleRoomRequest();
     setMultiLoading(false);
     setOnlineOptionsModal(false);
     setRoomModal(prev => prev
-      ? { ...prev, roomId, owner, isPrivate, aiAuthorityUuid, players, count: count ?? prev.count, max: max ?? prev.max, countdown: countdown !== undefined ? countdown : prev.countdown }
-      : { roomId, owner, isPrivate, aiAuthorityUuid, players, count: count || players.length, max: max || 12, countdown: countdown || null });
+      ? { ...prev, roomId, owner, isPrivate, aiAuthorityUuid, players, matchId, inGame, count: count ?? prev.count, max: max ?? prev.max, countdown: countdown !== undefined ? countdown : prev.countdown }
+      : { roomId, owner, isPrivate, aiAuthorityUuid, players, matchId, inGame, count: count || players.length, max: max || 12, countdown: countdown || null });
   });
 
   onCurrentSocket('joinError', ({ msg }) => {
+    settleRoomRequest();
     setMultiLoading(false);
     addToast(msg);
   });
 
   onCurrentSocket('kickedFromRoom', ({ reason }) => {
     setRoomModal(null);
+    if (isMultiplayerRef.current && latestGsRef?.current?.gameOver) {
+      clearMatchView();
+      setOnlineOptionsModal(false);
+    }
     addToast(reason || '你已被踢出房间');
     if (socketRef.current) {
       socketRef.current.disconnect();
@@ -195,6 +219,7 @@ export function registerMultiplayerSocketHandlers({
   onCurrentSocket('roomClosed', ({ reason }) => {
     if (leavingRoomRef.current) return;
     setRoomModal(null);
+    if (isMultiplayerRef.current && latestGsRef?.current?.gameOver) clearMatchView();
     setOnlineOptionsModal(true);
     addToast(reason || '房间已失效，请重新创建房间。');
   });
@@ -204,8 +229,14 @@ export function registerMultiplayerSocketHandlers({
     setLobbyRooms(rooms || []);
   });
 
-  onCurrentSocket('gameStart', ({ roomId, players, expansionPlan }) => {
+  onCurrentSocket('gameStart', ({ roomId, players, expansionPlan, matchId }) => {
     if (leavingRoomRef.current) return;
+    if (matchId && seenMatchIds.has(matchId)) return;
+    activeMatchId = matchId || null;
+    if (matchId) seenMatchIds.add(matchId);
+    clearReplayPlayback();
+    if (latestGsRef) latestGsRef.current = null;
+    setGs(null);
     setFirstBattleStarted(true);
     safeLS.set(FIRST_BATTLE_DONE_KEY, '1');
     const myIdx = players.findIndex(p => p.uuid === playerUUIDRef.current);
@@ -213,7 +244,7 @@ export function registerMultiplayerSocketHandlers({
     myPlayerIndexRef.current = safeIdx;
     setMyPlayerIndex(safeIdx);
     const resetPlayers = players.map(p => ({ ...p, ready: false }));
-    setRoomModal(prev => prev ? { ...prev, players: resetPlayers, countdown: null } : { roomId, players: resetPlayers, count: players.length, max: 12, countdown: null, owner: null, isPrivate: true });
+    setRoomModal(prev => prev ? { ...prev, matchId, inGame: true, players: resetPlayers, countdown: null } : { roomId, matchId, inGame: true, players: resetPlayers, count: players.length, max: 12, countdown: null, owner: null, isPrivate: true });
     setIsMultiplayer(true);
     isMultiplayerRef.current = true;
     setIsDisconnected(false);
@@ -245,6 +276,7 @@ export function registerMultiplayerSocketHandlers({
         startNextTurn,
         mpExpansionKey,
       );
+      if (matchId) rawGs._mpMatchId = matchId;
       animQueueRef.current = [];
       pendingGsRef.current = null;
       setAnimExiting(false);
@@ -258,7 +290,7 @@ export function registerMultiplayerSocketHandlers({
       setAnim(null);
       mpOpeningRoleRevealPendingRef.current = true;
       setRoleRevealAnim({ role: rotatedGs.players[0].role, pendingGs: rotatedGs });
-      socket.emit('mpStateSync', { roomId, gs: rawGs });
+      socket.emit('mpStateSync', { roomId, ...(matchId ? { matchId } : {}), gs: rawGs });
     }
   });
 
@@ -273,8 +305,13 @@ export function registerMultiplayerSocketHandlers({
     playerIndex,
     gs: rawGs,
     takeoverSeq,
+    matchId,
   }) => {
     if (leavingRoomRef.current) return;
+    if (activeMatchId && matchId !== activeMatchId) return;
+    activeMatchId = matchId || null;
+    if (matchId) seenMatchIds.add(matchId);
+    clearReplayPlayback();
     const safePlayers = Array.isArray(players) ? players : [];
     const safeIdx = Number.isInteger(playerIndex) && playerIndex >= 0 ? playerIndex : 0;
     setFirstBattleStarted(true);
@@ -288,6 +325,8 @@ export function registerMultiplayerSocketHandlers({
       count: count ?? safePlayers.length,
       max: max || 12,
       countdown: null,
+      matchId,
+      inGame: true,
     });
     myPlayerIndexRef.current = safeIdx;
     setMyPlayerIndex(safeIdx);
@@ -297,6 +336,7 @@ export function registerMultiplayerSocketHandlers({
     mpRoleRevealedRef.current = true;
     mpOpeningRoleRevealPendingRef.current = false;
     mpAiTakeoverSeqRef.current = takeoverSeq || 0;
+    gameEndSentRef.current = false;
     pendingMpAiTakeoverRef.current = null;
     consumedVisualEventIdsRef.current = new Set(
       (rawGs?._visualEvents || []).map(event => event?.id).filter(Boolean),
@@ -307,11 +347,11 @@ export function registerMultiplayerSocketHandlers({
     }
     // The authoritative restored prompt supersedes a local speculative dismissal.
     setDismissedHuntRevealPromptId?.(null);
-    clearReplayPlayback();
     if (gameOverPresentationFrozenRef) gameOverPresentationFrozenRef.current = false;
     if (rawGs) {
       receivedGsRef.current = true;
       let restoredGs = rotateGsForViewer(rawGs, safeIdx);
+      if (matchId) restoredGs = { ...restoredGs, _mpMatchId: matchId };
       const pendingDrawer = rawGs.phase === 'AI_GOD_CHOICE'
         ? rawGs.abilityData?.playerIndex ?? rawGs.currentTurn
         : rawGs.abilityData?.drawerIdx ?? rawGs.currentTurn;
@@ -331,12 +371,14 @@ export function registerMultiplayerSocketHandlers({
     addToast('连接已恢复，已返回当前对局');
   });
 
-  onCurrentSocket('mpStateSync', ({ gs: rawGs }) => {
+  onCurrentSocket('mpStateSync', ({ gs: rawGs, matchId }) => {
+    if (activeMatchId && matchId !== activeMatchId) return;
     processIncomingMpStateSync(rawGs);
   });
 
   onCurrentSocket('mpAiTakeover', (payload) => {
     if (!payload) return;
+    if (activeMatchId && payload.matchId !== activeMatchId) return;
     if (payload.seq && payload.seq <= mpAiTakeoverSeqRef.current) return;
     if (payload.seq) mpAiTakeoverSeqRef.current = payload.seq;
     handleMpAiTakeover(payload);
@@ -390,6 +432,7 @@ export function registerMultiplayerSocketHandlers({
     cleanupConnection();
     setMultiLoading(false);
     if (leavingRoomRef.current) return;
+    clearReplayPlayback();
     setConnErrModal(false);
     setIsDisconnected(hasMatchView);
     setOnlineOptionsModal(!hasMatchView);
@@ -402,7 +445,7 @@ export function registerMultiplayerSocketHandlers({
     consumedVisualEventIdsRef.current = new Set();
     pendingMpAiTakeoverRef.current = null;
     if (reason) addToast(reason);
-    if (!hasMatchView) addToast('原对局结束前，当前身份不能创建或加入其他房间；可返回主界面。');
+    if (!hasMatchView) addToast('原座位已由 AI 继续对局，你可以创建或加入其他房间。');
   });
 
   onCurrentSocket('disconnect', reason => {
