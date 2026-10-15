@@ -48,6 +48,9 @@ export function useMultiplayerSessionReconnect({
   retryMs = 1500,
 }) {
   const lastReconnectAttemptRef = useRef(0);
+  const backgroundedRef = useRef(false);
+  const resumeReconnectRef = useRef(false);
+  const resumeProbeRef = useRef(null);
 
   useEffect(() => {
     if (typeof document === 'undefined') return;
@@ -59,15 +62,45 @@ export function useMultiplayerSessionReconnect({
     };
 
     const handleSessionReconnect = () => {
+      const roomId = roomModalRef.current?.roomId;
+      const socket = socketRef.current;
+      const previousProbe = resumeProbeRef.current;
+      if (multiLoading) return;
+      if (!roomId || (previousProbe && (previousProbe.roomId !== roomId || previousProbe.socket !== socket))) {
+        resumeReconnectRef.current = false;
+        resumeProbeRef.current = null;
+      }
       if (!shouldReconnectMultiplayerSession({
         visibilityState: document.visibilityState,
         gs,
         isMultiplayer: isMultiplayerRef.current,
         roomModal: roomModalRef.current,
         multiLoading,
-        socket: socketRef.current,
+        socket: resumeReconnectRef.current ? null : socket,
       })) {
         return;
+      }
+      if (socket?.connected) {
+        if (!resumeProbeRef.current) {
+          // Preserve healthy waiting-room guests: disconnecting them releases their seat.
+          const probe = { socket, roomId, deadline: Date.now() + 2000, settled: false, ok: false };
+          resumeProbeRef.current = probe;
+          socket.timeout(2000).emit('heartbeatPong', (error, response) => {
+            if (resumeProbeRef.current !== probe || Date.now() >= probe.deadline) return;
+            probe.settled = true;
+            probe.ok = !error && response?.ok === true;
+          });
+        }
+        const probe = resumeProbeRef.current;
+        if (probe.ok) {
+          resumeReconnectRef.current = false;
+          resumeProbeRef.current = null;
+          return;
+        }
+        if (!probe.settled && Date.now() < probe.deadline) {
+          scheduleReconnect(probe.deadline - Date.now());
+          return;
+        }
       }
       const elapsed = Date.now() - lastReconnectAttemptRef.current;
       if (elapsed < retryMs) {
@@ -75,6 +108,11 @@ export function useMultiplayerSessionReconnect({
         return;
       }
       lastReconnectAttemptRef.current = Date.now();
+      const preserveCurrentSocket = !!socket?.connected;
+      if (!preserveCurrentSocket) {
+        resumeReconnectRef.current = false;
+        resumeProbeRef.current = null;
+      }
       const reconnectRoomId = roomModalRef.current.roomId;
       connectSocket(socket => {
         if (roomModalRef.current?.roomId !== reconnectRoomId) return false;
@@ -83,26 +121,40 @@ export function useMultiplayerSessionReconnect({
           playerUUIDRef.current || playerUUID,
           identityTokenRef.current || identityToken,
         );
-      }, { silent: true });
+      }, { silent: true, ...(preserveCurrentSocket ? { preserveCurrentSocket: true } : {}) });
       scheduleReconnect(retryMs);
     };
 
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') scheduleReconnect(0);
+      if (document.visibilityState !== 'visible') {
+        backgroundedRef.current = true;
+        return;
+      }
+      if (backgroundedRef.current) resumeReconnectRef.current = true;
+      backgroundedRef.current = false;
+      scheduleReconnect(0);
     };
     const handleOnline = () => scheduleReconnect(0);
+    const handlePageHide = () => { backgroundedRef.current = true; };
+    const handlePageShow = event => {
+      if (event.persisted || backgroundedRef.current) resumeReconnectRef.current = true;
+      if (document.visibilityState === 'visible') backgroundedRef.current = false;
+      scheduleReconnect(0);
+    };
     const socket = socketRef.current;
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
     window.addEventListener('online', handleOnline);
-    window.addEventListener('pageshow', handleOnline);
+    window.addEventListener('pagehide', handlePageHide);
+    window.addEventListener('pageshow', handlePageShow);
     socket?.on('disconnect', handleOnline);
     scheduleReconnect(0);
     return () => {
       clearTimeout(retryTimer);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       window.removeEventListener('online', handleOnline);
-      window.removeEventListener('pageshow', handleOnline);
+      window.removeEventListener('pagehide', handlePageHide);
+      window.removeEventListener('pageshow', handlePageShow);
       socket?.off('disconnect', handleOnline);
     };
   }, [

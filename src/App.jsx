@@ -721,7 +721,7 @@ export default function Game(){
     identityToken, setIdentityToken, identityTokenRef,
     multiLoading, setMultiLoading,
     toasts, addToast,
-    roomModal, setRoomModal, roomModalRef, leavingRoomRef,
+    roomModal, setRoomModal, roomModalRef, leavingRoomRef, pendingRoomExitRef,
     connErrModal, setConnErrModal,
     onlineOptionsModal, setOnlineOptionsModal,
     playerUsername, setPlayerUsername,
@@ -749,14 +749,14 @@ export default function Game(){
     handleRename,
     handleRandomUsername,
     closeRoomModal,
-  } = useMultiplayerLobby({ socketRef });
+  } = useMultiplayerLobby({ socketRef, cancelConnection:()=>cancelConnection() });
   const roomExitSoloStartBlockedUntilRef=useRef(0);
   function closeRoomModalWithInputGuard(){
     // The second tap of a room-exit double click can land on the solo
     // button revealed underneath. Keep the exit immediate, but consume
     // that follow-up input before it can start a different game.
     roomExitSoloStartBlockedUntilRef.current=performance.now()+600;
-    closeRoomModal();
+    closeRoomModal({retainExitIntent:true});
   }
   // 联机多人游戏状态
   const [isMultiplayer,setIsMultiplayer]=useState(false);
@@ -1517,7 +1517,7 @@ export default function Game(){
     clearDamageAnimations,
   } = useDamageAnimationEffects({ anim, paused:isSoloPaused, onGuillotineReady:markGuillotineReady, playHpDamageSound, playSanDamageSound, playHpRecoverSound, playSanRecoverSound, playGuillotineDeathSound, playPetrifyDeathSound });
   const guillotinedPids=useMemo(()=>new Set((guillotineTargets||[]).map(t=>t?.pi).filter(v=>v!=null)),[guillotineTargets]);
-  const { connectSocket } = useMultiplayerConnection({
+  const { connectSocket, cancelConnection } = useMultiplayerConnection({
     isArtifact,
     multiLoading,
     socketRef,
@@ -1537,6 +1537,7 @@ export default function Game(){
       setOnlineOptionsModal,
       setRoomModal,
       leavingRoomRef,
+      pendingRoomExitRef,
       setLobbyLoading,
       setLobbyRooms,
       copyRoomIdToClipboard,
@@ -1580,8 +1581,12 @@ export default function Game(){
   // 点击"联机对战"→ 连接后端，打开联机选项界面
   function handleMultiplayer(){
     connectSocket(socket=>{
-      socket.emit('openOnlineOptions',{uuid:playerUUID,identityToken});
-      setOnlineOptionsModal(true);
+      const pendingExit=pendingRoomExitRef.current;
+      if(pendingExit)pendingExit.socket=socket;
+      socket.emit('openOnlineOptions',{uuid:playerUUID,identityToken,
+        ...(pendingExit?{pendingWaitingRoomExitId:pendingExit.roomId}:{})});
+      // A lost explicit exit must settle before showing or restoring a room.
+      setOnlineOptionsModal(!pendingExit);
     });
   }
 

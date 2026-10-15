@@ -101,6 +101,60 @@ afterEach(() => {
 });
 
 describe('TOE022 confirmed room exit', () => {
+  it('keeps an unconfirmed waiting-room exit in memory across its disconnect fallback', () => {
+    const { socket, renderer } = setup();
+    renderer.current.closeRoomModal({ retainExitIntent: true });
+    const acknowledge = leaveAck(socket);
+    vi.advanceTimersByTime(1200);
+    expect(renderer.current.pendingRoomExitRef.current?.roomId).toBe('TOE022-A');
+    acknowledge({ ok: false, reason: 'room_not_found' });
+    expect(renderer.current.pendingRoomExitRef.current?.roomId).toBe('TOE022-A');
+  });
+
+  it('clears a confirmed waiting-room exit, while an in-game exit keeps the existing reconnect semantics', () => {
+    const { socket, renderer } = setup();
+    renderer.current.closeRoomModal({ retainExitIntent: true });
+    leaveAck(socket)({ ok: true });
+    expect(renderer.current.pendingRoomExitRef.current).toBeNull();
+    const active = setup(fakeSocket(), { roomId: 'active-game' });
+    active.renderer.current.closeRoomModal();
+    expect(active.renderer.current.pendingRoomExitRef.current).toBeNull();
+  });
+
+  it('does not let a late exit acknowledgement clear a newer exit from the same room', () => {
+    const { socket, socketRef, renderer } = setup();
+    renderer.current.closeRoomModal({ retainExitIntent: true });
+    const oldAck = leaveAck(socket);
+    const replacement = fakeSocket();
+    socketRef.current = replacement;
+    renderer.current.setRoomModal({ roomId: 'TOE022-A' });
+    renderer.flush();
+    renderer.current.closeRoomModal({ retainExitIntent: true });
+    const newerExit = renderer.current.pendingRoomExitRef.current;
+    oldAck({ ok: true });
+    expect(renderer.current.pendingRoomExitRef.current).toBe(newerExit);
+    expect(replacement.disconnect).not.toHaveBeenCalled();
+  });
+
+  it.each(['create', 'join', 'lobby'])('releases loading when closing online options during a pending %s request', action => {
+    const { socket, socketRef, renderer } = setup(fakeSocket(), null);
+    renderer.current.setOnlineOptionsModal(true);
+    renderer.current.setJoinRoomInput('ABC123');
+    renderer.flush();
+    if (action === 'create') renderer.current.handleCreateRoom();
+    else if (action === 'join') renderer.current.handleJoinRoom();
+    else renderer.current.handleJoinLobbyRoom('ABC123');
+    renderer.flush();
+    expect(renderer.current.multiLoading).toBe(true);
+
+    renderer.current.closeOnlineOptions();
+    renderer.flush();
+    expect(renderer.current.onlineOptionsModal).toBe(false);
+    expect(renderer.current.multiLoading).toBe(false);
+    expect(socketRef.current).toBeNull();
+    expect(socket.disconnect).toHaveBeenCalledOnce();
+  });
+
   it('captures the room before clearing the modal and waits for successful acknowledgement', () => {
     const { socket, socketRef, renderer } = setup();
 

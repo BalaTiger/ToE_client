@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { useMultiplayerSessionReconnect } from './useMultiplayerUiSession';
 
-const hooks = vi.hoisted(() => ({ effect: null }));
+const hooks = vi.hoisted(() => ({ effect: null, refs: [], cursor: 0 }));
 vi.mock('react', () => ({
-  useRef: value => ({ current: value }),
+  useRef: value => (hooks.refs[hooks.cursor++] ||= { current: value }),
   useEffect: effect => { hooks.effect = effect; },
   useCallback: callback => callback,
 }));
@@ -21,11 +21,11 @@ function eventTarget() {
   return {
     addEventListener: target.addEventListener.bind(target),
     removeEventListener: target.removeEventListener.bind(target),
-    dispatch: name => target.dispatchEvent(new Event(name)),
+    dispatch: (name, fields = {}) => target.dispatchEvent(Object.assign(new Event(name), fields)),
   };
 }
 
-function setup() {
+function setup({ probeReply = true } = {}) {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-10-15T00:00:00Z'));
   const document = { ...eventTarget(), visibilityState: 'visible' };
@@ -37,7 +37,10 @@ function setup() {
     connected: true,
     on: vi.fn((event, fn) => handlers.set(event, fn)),
     off: vi.fn((event, fn) => { if (handlers.get(event) === fn) handlers.delete(event); }),
-    emit: vi.fn(),
+    emit: vi.fn((event, callback) => {
+      if (event === 'heartbeatPong' && probeReply) callback(null, { ok: true });
+    }),
+    timeout: vi.fn(function () { return this; }),
     disconnect: vi.fn(),
     drop() { this.connected = false; handlers.get('disconnect')?.('transport close'); },
   };
@@ -53,13 +56,150 @@ function setup() {
     identityTokenRef: { current: 'token' },
     identityToken: 'token',
   };
-  // eslint-disable-next-line react-hooks/rules-of-hooks -- Execute the production effect and its browser/socket events.
-  useMultiplayerSessionReconnect(args);
-  cleanup = hooks.effect();
-  return { args, socket, document, window, handlers };
+  hooks.refs = [];
+  const render = () => {
+    cleanup?.();
+    hooks.cursor = 0;
+    // eslint-disable-next-line react-hooks/rules-of-hooks -- Execute the production effect and its browser/socket events.
+    useMultiplayerSessionReconnect(args);
+    cleanup = hooks.effect();
+  };
+  render();
+  return { args, socket, document, window, handlers, render };
 }
 
 describe('multiplayer reconnect browser lifecycle', () => {
+  it('revalidates a connected socket after a hidden interval even if the transport timeout was suspended', async () => {
+    const { args, socket, document, window } = setup({ probeReply: false });
+    await vi.advanceTimersByTimeAsync(0);
+    document.visibilityState = 'hidden';
+    document.dispatch('visibilitychange');
+    vi.setSystemTime(Date.now() + 60_000);
+    document.visibilityState = 'visible';
+    document.dispatch('visibilitychange');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.connected).toBe(true);
+    expect(socket.emit).toHaveBeenCalledExactlyOnceWith('heartbeatPong', expect.any(Function));
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    document.dispatch('visibilitychange');
+    window.dispatch('pageshow');
+    window.dispatch('online');
+    await vi.advanceTimersByTimeAsync(1999);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(args.connectSocket).toHaveBeenCalledOnce();
+  });
+
+  it('keeps a healthy waiting guest on the same socket after background resume', async () => {
+    const { args, socket, document } = setup();
+    document.visibilityState = 'hidden';
+    document.dispatch('visibilitychange');
+    document.visibilityState = 'visible';
+    document.dispatch('visibilitychange');
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(socket.emit).toHaveBeenCalledExactlyOnceWith('heartbeatPong', expect.any(Function));
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('requests a replacement that preserves the guest seat when a healthy ACK takes 2100 ms', async () => {
+    const { args, socket, window } = setup({ probeReply: false });
+    socket.emit.mockImplementation((event, ack) => {
+      if (event === 'heartbeatPong') setTimeout(() => ack(null, { ok: true }), 2100);
+    });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(args.connectSocket).toHaveBeenCalledWith(expect.any(Function), {
+      silent: true, preserveCurrentSocket: true,
+    });
+    await vi.advanceTimersByTimeAsync(100);
+    expect(args.connectSocket).toHaveBeenCalledOnce();
+    expect(socket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('retains a failed probe while replacing the socket and retries if the old socket is restored', async () => {
+    const { args, socket, window, render } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    args.multiLoading = true;
+    args.socketRef.current = { connected: false, on: vi.fn(), off: vi.fn() };
+    render();
+    await vi.advanceTimersByTimeAsync(5000);
+    args.multiLoading = false;
+    args.socketRef.current = socket;
+    render();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(args.connectSocket).toHaveBeenCalledTimes(2);
+    expect(socket.emit).toHaveBeenCalledOnce();
+  });
+
+  it('does not accept a previous background interval ACK ahead of the suspended probe timer', async () => {
+    const { args, socket, window, document } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(0);
+    document.visibilityState = 'hidden';
+    document.dispatch('visibilitychange');
+    vi.setSystemTime(Date.now() + 60_000);
+    socket.emit.mock.calls[0][1](null, { ok: true });
+    document.visibilityState = 'visible';
+    document.dispatch('visibilitychange');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(args.connectSocket).toHaveBeenCalledExactlyOnceWith(expect.any(Function), {
+      silent: true, preserveCurrentSocket: true,
+    });
+  });
+
+  it('does not extend an unanswered probe across renders or trust it after moving to another socket', async () => {
+    const { args, socket, window, render } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(1000);
+    render();
+    await vi.advanceTimersByTimeAsync(999);
+    expect(socket.emit).toHaveBeenCalledOnce();
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(args.connectSocket).toHaveBeenCalledOnce();
+    const delayedAck = socket.emit.mock.calls[0][1];
+    args.socketRef.current = { connected: true, on: vi.fn(), off: vi.fn() };
+    delayedAck(null, { ok: true });
+    render();
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(args.connectSocket).toHaveBeenCalledOnce();
+  });
+
+  it.each([null, { roomId: 'room-b' }])('discards a resume probe after leaving its room: %j', async room => {
+    const { args, socket, window } = setup({ probeReply: false });
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(0);
+    args.roomModalRef.current = room;
+    socket.emit.mock.calls[0][1](new Error('late timeout'));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+  });
+
+  it('retains a persisted pageshow request until the page actually becomes visible', async () => {
+    const { args, socket, document, window } = setup();
+    await vi.advanceTimersByTimeAsync(0);
+    document.visibilityState = 'hidden';
+    window.dispatch('pagehide');
+    window.dispatch('pageshow', { persisted: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+    document.visibilityState = 'visible';
+    document.dispatch('visibilitychange');
+    await vi.advanceTimersByTimeAsync(0);
+    expect(socket.emit).toHaveBeenCalledExactlyOnceWith('heartbeatPong', expect.any(Function));
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+  });
+
+  it('does not replace a healthy visible connection on an ordinary pageshow', async () => {
+    const { args, window } = setup();
+    window.dispatch('pageshow');
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(args.connectSocket).not.toHaveBeenCalled();
+  });
+
   it('reconnects a waiting room after a transport drop without an online event or rerender', async () => {
     const { args, socket } = setup();
     await vi.advanceTimersByTimeAsync(0);

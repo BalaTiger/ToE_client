@@ -24,6 +24,7 @@ export function registerMultiplayerSocketHandlers({
   setOnlineOptionsModal,
   setRoomModal,
   leavingRoomRef,
+  pendingRoomExitRef,
   setLobbyLoading,
   setLobbyRooms,
   addToast,
@@ -63,10 +64,12 @@ export function registerMultiplayerSocketHandlers({
   discardPileRef,
   setServerAnnouncement,
   silentConnectionErrors = false,
+  isConnectionActive = () => true,
 }) {
   function onCurrentSocket(event, handler) {
     socket.on(event, (...args) => {
       if (socketRef.current !== socket) return;
+      if (!isConnectionActive()) return;
       handler(...args);
     });
   }
@@ -84,7 +87,7 @@ export function registerMultiplayerSocketHandlers({
   }
 
   onCurrentSocket('connect_error', (err) => {
-    cleanupConnection();
+    cleanupConnection(false);
     setMultiLoading(false);
     console.error('[multiplayer connect_error]', serverUrl, socketPath, err?.message || err);
     if (!silentConnectionErrors) setConnErrModal(true);
@@ -103,13 +106,19 @@ export function registerMultiplayerSocketHandlers({
     } catch { /* ignore */ }
   });
 
-  onCurrentSocket('userInfo', ({ username, isSpecialName, wasForceReset, waitingRoomExpired, roomRestored, matchRestored }) => {
+  onCurrentSocket('userInfo', ({ username, isSpecialName, wasForceReset, waitingRoomExpired, roomRestored, matchRestored, waitingRoomExitResult }) => {
     setPlayerUsername(username);
     setPlayerUsernameSpecial(!!isSpecialName);
     setRenameInput(username);
     cleanupConnection();
     setMultiLoading(false);
+    const pendingExit = pendingRoomExitRef?.current;
+    if (pendingExit?.socket === socket && waitingRoomExitResult?.roomId === pendingExit.roomId
+      && (waitingRoomExitResult.ok || waitingRoomExitResult.reason === 'room_in_game')) {
+      pendingRoomExitRef.current = null;
+    }
     if (leavingRoomRef.current) return;
+    if (waitingRoomExitResult) setOnlineOptionsModal(!roomRestored && !matchRestored);
     if (waitingRoomExpired) {
       setRoomModal(null);
       setOnlineOptionsModal(true);
@@ -184,6 +193,7 @@ export function registerMultiplayerSocketHandlers({
   });
 
   onCurrentSocket('roomClosed', ({ reason }) => {
+    if (leavingRoomRef.current) return;
     setRoomModal(null);
     setOnlineOptionsModal(true);
     addToast(reason || '房间已失效，请重新创建房间。');
@@ -395,7 +405,9 @@ export function registerMultiplayerSocketHandlers({
     if (!hasMatchView) addToast('原对局结束前，当前身份不能创建或加入其他房间；可返回主界面。');
   });
 
-  onCurrentSocket('disconnect', () => {
+  onCurrentSocket('disconnect', reason => {
+    cleanupConnection(reason === 'io client disconnect');
+    setMultiLoading(false);
     if (isMultiplayerRef.current) setIsDisconnected(true);
   });
 

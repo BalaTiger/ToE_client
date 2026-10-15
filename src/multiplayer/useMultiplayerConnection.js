@@ -15,8 +15,9 @@ export function useMultiplayerConnection({
 }) {
   const connTimeoutRef = useRef(null);
   const connectingRef = useRef(false);
+  const cancelAttemptRef = useRef(null);
 
-  async function connectSocket(onConnected, { silent = false } = {}) {
+  async function connectSocket(onConnected, { silent = false, preserveCurrentSocket = false } = {}) {
     if (isArtifact) {
       if (!silent) addToast('联机功能在预览环境中不可用，请部署到服务器后使用');
       return;
@@ -24,41 +25,72 @@ export function useMultiplayerConnection({
     if (multiLoading || connectingRef.current) return;
     connectingRef.current = true;
     setMultiLoading(true);
+    let preservedSocket = null;
     if (socketRef.current) {
-      socketRef.current.disconnect();
+      const previousSocket = socketRef.current;
       socketRef.current = null;
+      if (preserveCurrentSocket) preservedSocket = previousSocket;
+      else previousSocket.disconnect();
     }
     if (connTimeoutRef.current) {
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
     }
 
+    const deadline = Date.now() + 5000;
+    let pending = true;
     let expired = false;
-    connTimeoutRef.current = setTimeout(() => {
+    function settlePreviousConnection(success) {
+      if (!preservedSocket) return;
+      const previous = preservedSocket;
+      preservedSocket = null;
+      if (success) previous.disconnect();
+      else socketRef.current = previous.connected ? previous : null;
+    }
+    function expireConnection(showError = true) {
+      if (expired) return;
       expired = true;
+      clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
       if (socketRef.current) {
-        socketRef.current.disconnect();
+        const socket = socketRef.current;
         socketRef.current = null;
+        socket.disconnect();
       }
+      settlePreviousConnection(false);
+      cancelAttemptRef.current = null;
       connectingRef.current = false;
       setMultiLoading(false);
-      if (!silent) setConnErrModal(true);
-    }, 5000);
+      if (showError && !silent) setConnErrModal(true);
+    }
+    function isConnectionActive() {
+      if (pending && Date.now() >= deadline) expireConnection();
+      return !expired;
+    }
+    connTimeoutRef.current = setTimeout(expireConnection, 5000);
+    cancelAttemptRef.current = () => {
+      if (!socketRef.current?.connected) return expireConnection(false);
+      // Keep the connected transport available for the caller's leaveRoom acknowledgement.
+      expired = true;
+      cleanupConnection();
+      setMultiLoading(false);
+    };
 
     let ioFn;
     try {
       ioFn = await loadSocketIO();
     } catch {
-      if (expired) return;
+      if (!isConnectionActive()) return;
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
+      settlePreviousConnection(false);
+      cancelAttemptRef.current = null;
       connectingRef.current = false;
       setMultiLoading(false);
       if (!silent) addToast('网络加载失败，请检查连接后重试');
       return;
     }
-    if (expired) return;
+    if (!isConnectionActive()) return;
 
     const socket = ioFn(serverUrl, {
       path: socketPath,
@@ -67,9 +99,12 @@ export function useMultiplayerConnection({
     });
     socketRef.current = socket;
 
-    function cleanupConnection() {
+    function cleanupConnection(success = true) {
+      pending = false;
       clearTimeout(connTimeoutRef.current);
       connTimeoutRef.current = null;
+      settlePreviousConnection(success);
+      cancelAttemptRef.current = null;
       connectingRef.current = false;
     }
 
@@ -80,6 +115,7 @@ export function useMultiplayerConnection({
       serverUrl,
       socketPath,
       cleanupConnection,
+      isConnectionActive,
       onConnected,
       setMultiLoading,
       setConnErrModal,
@@ -88,5 +124,6 @@ export function useMultiplayerConnection({
     });
   }
 
-  return { connectSocket };
+  const cancelConnection = () => cancelAttemptRef.current?.();
+  return { connectSocket, cancelConnection };
 }

@@ -98,11 +98,31 @@ function makeDeps(overrides = {}) {
 }
 
 describe('registerMultiplayerSocketHandlers', () => {
+  it.each([{ ok: true }, { ok: false, reason: 'room_in_game' }])('settles a replayed waiting-room exit after server confirmation: %j', result => {
+    const { socket, deps } = makeDeps();
+    deps.pendingRoomExitRef = { current: { roomId: 'old-room', socket } };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', waitingRoomExitResult: { roomId: 'old-room', ...result } });
+    expect(deps.pendingRoomExitRef.current).toBeNull();
+    expect(deps.setOnlineOptionsModal).toHaveBeenCalledWith(true);
+  });
+
+  it('keeps a newer exit intent when a previous request confirms the same room', () => {
+    const { socket, deps } = makeDeps({ leavingRoomRef: { current: true } });
+    const pendingExit = { roomId: 'old-room' };
+    deps.pendingRoomExitRef = { current: pendingExit };
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'me', waitingRoomExitResult: { roomId: 'old-room', ok: true } });
+    expect(deps.pendingRoomExitRef.current).toBe(pendingExit);
+    expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['connect', undefined],
     ['connect_error', new Error('late failure')],
     ['uuidAssigned', { uuid: 'old-id', identityToken: 'old-token' }],
     ['userInfo', { username: 'old-name' }],
+    ['roomCreated', { roomId: 'old-room', players: [] }],
     ['roomUpdated', { roomId: 'old-room', players: [] }],
     ['gameStart', { roomId: 'old-room', players: [{ uuid: 'u1' }, { uuid: 'u2' }] }],
     ['matchRestored', { roomId: 'old-room', playerIndex: 1, players: [{ uuid: 'u1' }, { uuid: 'u2' }],
@@ -138,6 +158,31 @@ describe('registerMultiplayerSocketHandlers', () => {
     expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
     expect(deps.socketRef.current).toBeNull();
     expect(socket.disconnect).toHaveBeenCalledOnce();
+  });
+
+  it('ignores an event after the current connection handshake deadline has expired', () => {
+    const { socket, deps } = makeDeps({ isConnectionActive: vi.fn(() => false) });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('userInfo', { username: 'late-name' });
+    expect(deps.setPlayerUsername).not.toHaveBeenCalled();
+    expect(deps.cleanupConnection).not.toHaveBeenCalled();
+  });
+
+  it('releases an unfinished handshake when its current socket disconnects', () => {
+    const { socket, deps } = makeDeps();
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('disconnect');
+    expect(deps.cleanupConnection).toHaveBeenCalledOnce();
+    expect(deps.setMultiLoading).toHaveBeenCalledWith(false);
+  });
+
+  it('does not reopen online options for a room closure arriving during the exit acknowledgement window', () => {
+    const { socket, deps } = makeDeps({ leavingRoomRef: { current: true } });
+    registerMultiplayerSocketHandlers(deps);
+    socket.trigger('roomClosed', { reason: 'Room expired while leaving' });
+    expect(deps.setOnlineOptionsModal).not.toHaveBeenCalled();
+    expect(deps.setRoomModal).not.toHaveBeenCalled();
+    expect(deps.addToast).not.toHaveBeenCalled();
   });
 
   it.each(['gameStart', 'matchRestored'])('ignores %s while waiting for the room exit acknowledgement', event => {

@@ -27,7 +27,7 @@ export function getStoredMultiplayerIdentity() {
 const RESERVED_ROLE_NAMES = new Set(['寻宝者', '追猎者', '邪祀者']);
 const RESERVED_ROLE_NAME_MESSAGE = '与游戏身份重复，请换一个名字';
 
-export function useMultiplayerLobby({ socketRef }) {
+export function useMultiplayerLobby({ socketRef, cancelConnection }) {
   const [playerUUID, setPlayerUUID] = useState(() => getStoredMultiplayerIdentity().uuid);
   const playerUUIDRef = useSyncedRef(playerUUID);
   const [identityToken, setIdentityToken] = useState(() => getStoredMultiplayerIdentity().identityToken);
@@ -38,6 +38,7 @@ export function useMultiplayerLobby({ socketRef }) {
   const roomModalRef = useSyncedRef(roomModal);
   const leavingRoomRef = useRef(false);
   const roomExitSocketRef = useRef(null);
+  const pendingRoomExitRef = useRef(null);
   const [connErrModal, setConnErrModal] = useState(false);
   const [onlineOptionsModal, setOnlineOptionsModal] = useState(false);
   const [playerUsername, setPlayerUsername] = useState('');
@@ -95,7 +96,9 @@ export function useMultiplayerLobby({ socketRef }) {
   }
 
   function closeOnlineOptions() {
+    cancelConnection?.();
     setOnlineOptionsModal(false);
+    setMultiLoading(false);
     if (renameCdTimerRef.current) {
       clearTimeout(renameCdTimerRef.current);
       renameCdTimerRef.current = null;
@@ -179,12 +182,15 @@ export function useMultiplayerLobby({ socketRef }) {
     socketRef.current.emit('randomUsername', { uuid: playerUUID });
   }
 
-  function closeRoomModal() {
+  function closeRoomModal({ retainExitIntent = false } = {}) {
+    cancelConnection?.();
     const socket = socketRef.current;
     if (socket && roomExitSocketRef.current === socket) return;
     // Capture membership before clearing the modal; later calls must not
     // disconnect this socket before the server acknowledges its room exit.
     const roomId = roomModalRef.current?.roomId;
+    const exitIntent = retainExitIntent && roomId ? { roomId } : null;
+    if (exitIntent) pendingRoomExitRef.current = exitIntent;
     leavingRoomRef.current = true;
     setRoomModal(null);
     roomModalRef.current = null;
@@ -211,7 +217,11 @@ export function useMultiplayerLobby({ socketRef }) {
     };
 
     const fallbackTimer = setTimeout(finishOnce, 1200);
-    socket.emit('leaveRoom', { uuid: playerUUID, roomId }, () => {
+    socket.emit('leaveRoom', { uuid: playerUUID, roomId }, result => {
+      if (exitIntent && pendingRoomExitRef.current === exitIntent
+        && (result?.ok || result?.reason === 'room_in_game')) {
+        pendingRoomExitRef.current = null;
+      }
       clearTimeout(fallbackTimer);
       finishOnce();
     });
@@ -232,6 +242,7 @@ export function useMultiplayerLobby({ socketRef }) {
     setRoomModal,
     roomModalRef,
     leavingRoomRef,
+    pendingRoomExitRef,
     connErrModal,
     setConnErrModal,
     onlineOptionsModal,
