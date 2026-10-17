@@ -103,8 +103,8 @@ export function getRandomHandCardIndex(hand = [], random = Math.random) {
 export function isLocalCaveDuelCardDecisionPhase(state) {
   if (!state || !['CAVE_DUEL_SELECT_CARD', 'CAVE_DUEL_WAIT_REVEAL'].includes(state.phase)) return false;
   const ad = state.abilityData || {};
-  if (isLocalSeatIndex(ad.caveDuelSource)) return !ad.sourceCard;
-  if (isLocalSeatIndex(ad.caveDuelTarget)) return !ad.targetCard;
+  if (isLocalSeatIndex(ad.caveDuelSource)) return !ad.sourceCard && !ad.sourceCardChosen;
+  if (isLocalSeatIndex(ad.caveDuelTarget)) return !ad.targetCard && !ad.targetCardChosen;
   return false;
 }
 

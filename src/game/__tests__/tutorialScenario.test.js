@@ -2,8 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { isWinHand } from '../coreUtils';
 import { applyTutorialStepState, createTutorialScenario, getTutorialStep, nextTutorialStepAfterAction, shouldAllowTutorialAction, TUTORIAL_FLOW } from '../tutorialScenario';
 import { cardsHuntMatch } from '../aiTurn';
+import { advanceGodEncounter, isTwoGodEncountersPerSkullEnabled } from '../balancePatches';
 
 describe('tutorial scenarios', () => {
+  it('teaches encounter-based skull counts even when the player never accepts faith', () => {
+    const player = { godEncounters: 0, godEncounterCount: 0, hasBelievedGod: false };
+    advanceGodEncounter(player);
+    advanceGodEncounter(player);
+    expect(player.hasBelievedGod).toBe(false);
+    const narration = getTutorialStep(TUTORIAL_FLOW.CULTIST_GOD_STATUS_MARKERS).body[0];
+    if (isTwoGodEncountersPerSkullEnabled()) {
+      expect(player.godEncounters).toBe(1);
+      expect(narration).toContain('每遭遇两次邪神');
+    } else {
+      expect(player.godEncounters).toBe(2);
+      expect(narration).toContain('遭遇邪神的次数');
+    }
+    expect(narration).not.toContain('[信仰]邪神的次数');
+  });
   it('treasure scenario is one swap away from a complete treasure hand', () => {
     const gs = createTutorialScenario('treasure');
     const player = gs.players[0];

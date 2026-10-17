@@ -46,6 +46,18 @@ afterEach(() => {
 });
 
 describe('multiplayer connection attempt lifetime', () => {
+  it('confirmed in-game exit sends the current match identity before disconnecting', () => {
+    const socket = { connected: true, emit: vi.fn(), disconnect: vi.fn() };
+    const lobby = useMultiplayerLobby({ socketRef: { current: socket } });
+    lobby.roomModalRef.current = { roomId: 'active-room', inGame: true, matchId: 'current-match' };
+    lobby.closeRoomModal();
+    expect(socket.emit).toHaveBeenCalledWith('leaveRoom', expect.objectContaining({
+      roomId: 'active-room', abandonMatch: true, matchId: 'current-match',
+    }), expect.any(Function));
+    expect(socket.disconnect).not.toHaveBeenCalled();
+    socket.emit.mock.calls[0][2]({ ok: true });
+    expect(socket.disconnect).toHaveBeenCalledTimes(1);
+  });
   it('isolates identity, old events, and deadlines through ten replacement attempts', async () => {
     const actual = await vi.importActual('./registerMultiplayerSocketHandlers');
     registerMultiplayerSocketHandlers.mockImplementation(actual.registerMultiplayerSocketHandlers);

@@ -2023,7 +2023,8 @@ function resolveNextTurnState(gs, opts = {}) {
       if (rSlime.drawnCard) {
         if (rSlime.reshuffleLog) { L.push(rSlime.reshuffleLog); drawLogs.push(rSlime.reshuffleLog); }
         if (slimePop) drawLogs.push(...slimePop.msgs);
-        const msg = `【无定形体】你额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
+        const slimeDrawer = gs._isMP ? `${P[0].name} ` : '你';
+        const msg = `【无定形体】${slimeDrawer}额外摸到 ${drawCardDecisionText(rSlime.drawnCard)}`;
         L.push(msg); drawLogs.push(msg);
         appendTurnDrawVisualEvents(turnDrawVisualEvents, {
           playerIdx: 0,

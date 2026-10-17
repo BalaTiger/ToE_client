@@ -199,6 +199,9 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
     // Capture membership before clearing the modal; later calls must not
     // disconnect this socket before the server acknowledges its room exit.
     const roomId = roomModalRef.current?.roomId;
+    const matchExit = roomModalRef.current?.inGame && roomModalRef.current?.matchId
+      ? { abandonMatch: true, matchId: roomModalRef.current.matchId }
+      : {};
     const exitIntent = retainExitIntent && roomId ? { roomId } : null;
     if (exitIntent) pendingRoomExitRef.current = exitIntent;
     leavingRoomRef.current = true;
@@ -227,7 +230,7 @@ export function useMultiplayerLobby({ socketRef, cancelConnection }) {
     };
 
     const fallbackTimer = setTimeout(finishOnce, 1200);
-    socket.emit('leaveRoom', { uuid: playerUUID, roomId }, result => {
+    socket.emit('leaveRoom', { uuid: playerUUID, roomId, ...matchExit }, result => {
       if (exitIntent && pendingRoomExitRef.current === exitIntent
         && (result?.ok || result?.reason === 'room_in_game')) {
         pendingRoomExitRef.current = null;

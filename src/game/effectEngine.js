@@ -534,7 +534,9 @@ function handleInspection(playerIndex, gs) {
         players: P,
         events: [{ targetIdx: playerIndex, gainSan: drawnCard.value, source: drawnCard.name || 'SAN检定' }],
       });
-      L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
+      if (!P[playerIndex].isDead) {
+        L.push(`${P[playerIndex].name} 超人意志，恢复 ${drawnCard.value} SAN`);
+      }
       break;
     }
     case 'drawCard': {

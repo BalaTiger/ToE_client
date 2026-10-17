@@ -11,6 +11,7 @@ import {
 } from '../visualEventTransactionCompiler';
 import { createAnimTransactionEvent, createTsathogguaSlimePopEvent, getVisualEvents, VISUAL_EVENT } from '../visualEvents';
 import { getDecisionContext } from '../decisionContext';
+import { normalizeLogLineForViewer } from '../logPerspective';
 
 const clone = value => JSON.parse(JSON.stringify(value));
 const playerIds = players => players.map(player => player.id);
@@ -117,6 +118,18 @@ function expectPrivateHandIdentity(action, previous, viewer) {
 }
 
 describe('TOE034 slime projection and event ownership', () => {
+  it('authors a local-seat extra draw with its canonical multiplayer owner for every viewer', () => {
+    const raw = startNextTurn(beforeSlimeTurn(2));
+    const owner = raw.players[0].name;
+    const message = raw.log.find(line => line.includes('额外摸到'));
+    expect(message).toBe(`【无定形体】${owner} 额外摸到 [D1] 钻地魔虫`);
+    for (const viewer of [0, 1, 2]) {
+      const myName = raw.players[viewer].name;
+      expect(normalizeLogLineForViewer(message, {
+        isMultiplayer: true, turnOwner: owner, myName, playerNames: raw.players.map(player => player.name),
+      })).toBe(`【无定形体】${viewer === 0 ? '你' : owner} 额外摸到 [D1] 钻地魔虫`);
+    }
+  });
   it('derotates rule-produced standalone snapshots into the same canonical order as the state', () => {
     const { raw, previous } = makePacket();
     const event = raw._visualEvents.find(event => event.type === VISUAL_EVENT.TSG_SLIME_POP);

@@ -510,6 +510,7 @@ function resolveMpAiTakeoverDecision(
     if (
       takeoverIdx === abilityData.caveDuelSource
       && !abilityData.sourceCard
+      && !abilityData.sourceCardChosen
     ) {
       abilityData.sourceCardIndex = getBestCaveDuelCardIndex(
         sourcePlayer.hand,
@@ -522,6 +523,7 @@ function resolveMpAiTakeoverDecision(
     if (
       takeoverIdx === abilityData.caveDuelTarget
       && !abilityData.targetCard
+      && !abilityData.targetCardChosen
     ) {
       abilityData.targetCardIndex = getBestCaveDuelCardIndex(
         targetPlayer.hand,
@@ -531,7 +533,7 @@ function resolveMpAiTakeoverDecision(
         abilityData.targetCardIndex
       ];
     }
-    if (!abilityData.sourceCard || !abilityData.targetCard) {
+    if ((sourceState._isMP && abilityData.caveDuelId) || !abilityData.sourceCard || !abilityData.targetCard) {
       return {
         ...sourceState,
         players,

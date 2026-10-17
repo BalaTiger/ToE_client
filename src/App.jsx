@@ -1,3 +1,4 @@
+import { claimReadyCaveDuel } from './multiplayer/multiplayerCaveDuel';
 import React, { lazy, Suspense, useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import { NyaBorrowModal, TreasureDodgeModal, PeekHandModal, TortoiseOracleModal, FullLogModal } from './components/modals';
 import { DecipherStoneCarvingOverlay } from './components/modals/DecipherStoneCarvingOverlay';
@@ -772,6 +773,7 @@ export default function Game(){
   const mpTurnExpiredRef=useRef(false); // 回合倒计时归零后保持到自动结束真正执行，避免动作动画期间丢失
   const consumedVisualEventIdsRef=useRef(new Set()); // 联机视觉事件去重，避免重复同步包重播旧动画
   const endTurnSeqRef=useRef(null); // Phase C：当前回合结束事件序列 {events,cursor}。回合结束严格串行，故全局唯一；存于 ref 而非 state，跨决策重建不丢、不入联机广播。
+  const claimedCaveDuelsRef=useRef(new Set());
   const gameEndSentRef=useRef(false);      // 防止 gameEnd 重复发送
   const gameOverPresentationFrozenRef=useRef(false); // 终局展示完成后拒绝旧对局同步包回灌
   const latestGsRef=useRef(null); // always mirrors latest committed gs for callbacks reading stale closures
@@ -1456,6 +1458,15 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[roleRevealAnim,anim,animExiting,gs,roomModal,playerUUID]);
 
+  useEffect(()=>{
+    if(anim||animExiting||roleRevealAnim||animQueueRef.current.length||pendingGsRef.current
+      ||pendingMpRawQueueRef.current.length||pendingMpLatestStateRawRef.current)return;
+    if(!claimReadyCaveDuel(gs,playerUUID,claimedCaveDuelsRef.current,socketRef.current?.connected))return;
+    const ad=gs.abilityData;
+    executeCaveDuel(copyPlayers(gs.players),ad.caveDuelSource,ad.caveDuelTarget,
+      ad.sourceCardIndex,ad.targetCardIndex,ad.sourceCard,ad.targetCard,gs);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,playerUUID,anim,animExiting,roleRevealAnim]);
   const latestHoundsInspectionSeq=useMemo(()=>{
     const events=(gs?._visualEvents||[]).filter(event=>event?.type===VISUAL_EVENT.INSPECTION);
     return events
@@ -4084,6 +4095,14 @@ export default function Game(){
       consumedVisualEventIdsRef.current,
       'tsg turn-start draw'
     );
+    const playTsgTurnStartDrawQueue=(queue,state,callback,commitState=state)=>{
+      const meta=tsgTurnStartDrawQueueMeta(state,queue);
+      if(state?._isMP)broadcastAnimTransaction(state,queue,{
+        context:'tsgTurnStartDraw',barrier:callback?'continuation':'decision',
+        beforePlayers:baseGsAfterDecision.players,beforeDiscard:baseGsAfterDecision.discard,
+      });
+      triggerAnimQueue(queue,commitState,callback,meta);
+    };
     let P=copyPlayers(baseGsAfterDecision.players),D=[...baseGsAfterDecision.deck],Disc=[...baseGsAfterDecision.discard],L=[...baseGsAfterDecision.log];
     const abilityData=baseGsAfterDecision.abilityData||{};
     const turnOwner=Number.isInteger(abilityData._turnOwner)
@@ -4095,6 +4114,7 @@ export default function Game(){
           :0;
     const drawerIdx=P[turnOwner]?turnOwner:0;
     const drawerName=localDisplayName(drawerIdx,P[drawerIdx]?.name||'该角色');
+    const drawerLogName=baseGsAfterDecision._isMP?(P[drawerIdx]?.name||'该角色'):drawerName;
     const isAiDrawer=isAiSeat(baseGsAfterDecision,drawerIdx)&&!baseGsAfterDecision._isMP;
     const extraDrawReady=!!abilityData._tsgExtraDrawReady;
     if(!extraDrawReady){
@@ -4122,7 +4142,7 @@ export default function Game(){
           statePatchStep({players:P,log:L,abilityData:cleanedAbilityData}),
           {type:'TURN_BOUNDARY_PAUSE',durationMs:160},
         ];
-        triggerAnimQueue(popQueue,null,()=>_tsgContinueTurnStartDraw(poppedGs),tsgTurnStartDrawQueueMeta(poppedGs,popQueue));
+        playTsgTurnStartDrawQueue(popQueue,poppedGs,()=>_tsgContinueTurnStartDraw(poppedGs),null);
         return;
       }
     }
@@ -4172,7 +4192,7 @@ export default function Game(){
     const drawLogs=[];
     const statLogs=[];
     if(res.reshuffleLog)drawLogs.push(res.reshuffleLog);
-    if(res.drawnCard&&!res.kept)drawLogs.push(continuingSlime?`【无定形体】${drawerName}${drawerName==='你'?'':' '}额外摸到 ${drawCardDecisionText(res.drawnCard)}`:`${drawerName} 摸到 ${drawCardDecisionText(res.drawnCard)}`);
+    if(res.drawnCard&&!res.kept)drawLogs.push(continuingSlime?`【无定形体】${drawerLogName}${drawerLogName==='你'?'':' '}额外摸到 ${drawCardDecisionText(res.drawnCard)}`:`${drawerLogName} 摸到 ${drawCardDecisionText(res.drawnCard)}`);
     if(res.effectMsgs?.length){
       if(res.needGodChoice||res.pendingAiGodChoice||res.statePatch?._pendingAiGodChoice){
         const split=splitGodEncounterReplayLogs(res.effectMsgs);
@@ -4266,21 +4286,21 @@ export default function Game(){
         :{godCard:res.drawnCard,drawerIdx,godEncounterCost:res.godEncounterCost};
       const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase,abilityData:{...godAbilityData,...continuationAbility},drawReveal:null,selectedCard:null,_drawnCard:res.drawnCard};
       const queue=buildResolvedDrawQueue(newGs);
-      triggerAnimQueue(queue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
+      playTsgTurnStartDrawQueue(queue,newGs);
       return;
     }
     const win=hasEffectDecisionState(res.statePatch)?null:checkWin(P,baseGsAfterDecision._isMP);
     if(win){
       const newGs={...baseMeta,gameOver:win,phase:'ACTION',drawReveal:null,selectedCard:null,abilityData:{},...(res.statePatch||{}),_visualEvents:continuationVisualEvents};
       const queue=buildResolvedDrawQueue(newGs);
-      triggerAnimQueue(queue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
+      playTsgTurnStartDrawQueue(queue,newGs);
       return;
     }
     if(res.discardedDrawnCard){
       const finalPhase=isAiDrawer?'AI_TURN':'ACTION';
       const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:continuationAbility};
       const queue=buildResolvedDrawQueue(newGs,{discarded:true});
-      triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
+      playTsgTurnStartDrawQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined);
       return;
     }
     if(res.kept||hasEffectDecisionState(res.statePatch)){
@@ -4291,12 +4311,12 @@ export default function Game(){
       const finalAbilityData=pendingAiGodChoice?{...pendingAiGodChoice}:decisionState.abilityData;
       const newGs={...baseMeta,...(res.statePatch||{}),_visualEvents:continuationVisualEvents,phase:finalPhase,drawReveal:null,selectedCard:null,abilityData:{...finalAbilityData,...continuationAbility}};
       const queue=buildResolvedDrawQueue(newGs,{discarded:false});
-      triggerAnimQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined,tsgTurnStartDrawQueueMeta(newGs,queue));
+      playTsgTurnStartDrawQueue(queue,newGs,shouldContinueAfterResolvedSlimeDraw(finalPhase)?()=>_tsgContinueTurnStartDraw(newGs):undefined);
       return;
     }
     const newGs={...baseMeta,phase:'DRAW_REVEAL',drawReveal:{card:res.drawnCard,msgs:res.effectMsgs,needsDecision:!!res.needsDecision,forcedKeep:!!res.forcedKeep,drawerIdx,drawerName:P[drawerIdx].name,sourcePile:res.sourcePile,fromTsathogguaSlime:!!continuingSlime},selectedCard:null,abilityData:continuationAbility};
-    const revealQueue=[{type:'DRAW_CARD',card:res.drawnCard,triggerName:drawerName,targetPid:drawerIdx,msgs:drawLogs}];
-    triggerAnimQueue(revealQueue,newGs,undefined,tsgTurnStartDrawQueueMeta(newGs,revealQueue));
+    const revealQueue=buildResolvedDrawQueue(newGs);
+    playTsgTurnStartDrawQueue(revealQueue,newGs);
   }
 
   function _cthContinueRestDraws(baseGsAfterDecision){
@@ -5941,7 +5961,7 @@ export default function Game(){
   }
 
 
-  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false}){
+  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false,caveDuelResolutionId=null}){
     const pendingIncome=nextGs?.abilityData?.pendingZoneIncome;
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.pendingInspectionContinuation?.targets?.length){
@@ -6035,7 +6055,11 @@ export default function Game(){
     };
     // Publish the effect and deferred income together, after the final queue
     // exists. Observers must not resume the turn between these two segments.
-    if(pendingIncome&&nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
+    if(caveDuelResolutionId&&nextGs._isMP&&queue.length)broadcastAnimTransaction({...nextGs,_mpCaveDuelResolutionId:caveDuelResolutionId},queue,{
+      context:'caveDuel',barrier:'decision',msgs:nextGs.log.slice(gs.log.length),
+      beforePlayers:gs.players,beforeDiscard:gs.discard,
+    });
+    else if(pendingIncome&&nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
       context:'zoneEffectIncome',barrier:continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION?'decision':'continuation',
       msgs:nextGs.log.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
@@ -6489,6 +6513,7 @@ export default function Game(){
     const duelAnim={type:'CAVE_DUEL',sourceIdx:caveDuelSource,targetIdx:ti,sourceCard,targetCard,winnerIdx,msgs:L.slice(-1)};
     finishTargetContinuation({
       queue:[duelAnim],
+      caveDuelResolutionId:gs._isMP?gs.abilityData?.caveDuelId:null,
       nextGs,
       continueRest:!!gs.abilityData?.fromRest,
     });
@@ -6517,6 +6542,15 @@ export default function Game(){
         : {targetCardIndex:resolvedCardIndex,targetCard:playerCard}),
     };
 
+    if(gs._isMP){
+      // The server locks one choice per seat and reveals only after both commit.
+      if(!gs.abilityData.caveDuelId||gs.abilityData.caveDuelReady
+        ||gs.abilityData[selectingSource?'sourceCardChosen':'targetCardChosen']
+        ||gs.abilityData[selectingSource?'sourceCard':'targetCard'])return;
+      const waitGs={...gs,abilityData:ad};
+      if(broadcastMpStateBeforeLocalReplay(waitGs))setGs(waitGs);
+      return;
+    }
     if(ad.sourceCard&&ad.targetCard){
       executeCaveDuel(
         P,

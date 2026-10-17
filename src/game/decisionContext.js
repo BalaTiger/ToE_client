@@ -98,8 +98,8 @@ export function getDecisionOwnerSeats(gs) {
     case 'CAVE_DUEL_SELECT_CARD':
     case 'CAVE_DUEL_WAIT_REVEAL':
       return uniqueSeats([
-        !ad.sourceCard ? ad.caveDuelSource : null,
-        !ad.targetCard ? ad.caveDuelTarget : null,
+        !ad.sourceCard && !ad.sourceCardChosen ? ad.caveDuelSource : null,
+        !ad.targetCard && !ad.targetCardChosen ? ad.caveDuelTarget : null,
       ]);
     case 'PLAYER_REVEAL_FOR_HUNT':
       return [0];
