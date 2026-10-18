@@ -1228,6 +1228,17 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       statEventSeq,
       statEventLogs: damageLogs,
     });
+    // The HP half (including rope reactions) may defeat the holder before SAN
+    // loss runs. Keep the authored message consistent with the settled events.
+    if (P[next].isDead && !damage.statEvents.some(event => event.target === next
+      && (event.type === 'SAN_LOSS' || event.type === 'HP_SAN_LOSS'))) {
+      const settledLog = `【黑山羊幼仔】${P[next].name} 失去 ${bgyCount} HP（死亡后取消 SAN 损失）`;
+      const replaceDamageLog = line => line === damageLog ? settledLog : line;
+      damageLogs.splice(0, damageLogs.length, ...damageLogs.map(replaceDamageLog));
+      damage.logs = damage.logs.map(replaceDamageLog);
+      damage.statEvents = damage.statEvents.map(event => event.logHint === damageLog
+        ? { ...event, logHint: settledLog } : event);
+    }
     L.push(...damageLogs);
     // Damage already owns the ordered rope-break/defeat reactions. Rebuilding
     // from final stats loses the consumed reaction timeline and its messages.

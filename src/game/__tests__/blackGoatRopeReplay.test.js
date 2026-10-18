@@ -11,6 +11,29 @@ import { consumeVisualLogEntries } from '../visualEventLogs';
 import { makeBlankZoneCard, makeGs, makePlayer, makeStandardPlayers } from './factory';
 
 describe('black goat turn-start rope reaction', () => {
+  it('does not claim cancelled SAN loss in the canonical packet or any remote replay', () => {
+    const players = [
+      makePlayer({ name: 'Hunter', role: '追猎者' }),
+      makePlayer({ name: 'Victim', role: '邪祀者', hp: 2, hand: [createBlackGoatYoungCard()] }),
+      makePlayer({ name: 'Observer', role: '追猎者' }),
+    ];
+    addDamageLink(players, 0, 1, { expiryOwner: 0 });
+    const before = makeGs({ players, currentTurn: 0, _isMP: true, deck: [makeBlankZoneCard()] });
+    const next = startNextTurn(before);
+    expect(next.players[1]).toMatchObject({ hp: 0, san: 10, isDead: true });
+    const expected = '【黑山羊幼仔】Victim 失去 1 HP（死亡后取消 SAN 损失）';
+    for (const viewer of [0, 1, 2]) {
+      const rotated = rotateGsForViewer(JSON.parse(JSON.stringify(next)), viewer);
+      const action = buildMpRemoteReplayAction({ rotated,
+        previousGs: rotateGsForViewer(before, viewer), roleRevealed: true });
+      const consumed = new Set();
+      const lines = prepareAnimQueueLogs([action.anim, ...(action.queue || [])].filter(Boolean), rotated)
+        .flatMap(step => consumeVisualLogEntries(step.logEntries, consumed));
+      expect(lines.filter(line => line.startsWith('【黑山羊幼仔】'))).toEqual([expected]);
+      expect(lines.some(line => line.includes('失去 1 HP 和 1 SAN'))).toBe(false);
+    }
+  });
+
   it.each([
     { actor: 0, rope: true }, { actor: 1, rope: true },
     { actor: 0, rope: false }, { actor: 1, rope: false },
@@ -28,6 +51,8 @@ describe('black goat turn-start rope reaction', () => {
     const deathLine = `☠ ${players[actor].name}（${players[actor].role}）倒下了！`;
     const destructionLine = `${players[actor].name} 的 1 张衍生牌被销毁`;
     expect(next.players[actor]).toMatchObject({ hp: 0, san: 10, isDead: true, hand: [] });
+    expect(next.log).toContain(`【黑山羊幼仔】${players[actor].name} 失去 1 HP（死亡后取消 SAN 损失）`);
+    expect(next.log.some(line => line.includes('失去 1 HP 和 1 SAN'))).toBe(false);
     expect(batches.flat()).toEqual(next.log);
     const deathIndex = queue.findIndex(step => step.type === 'GUILLOTINE');
     const discardIndex = queue.findIndex(step => step.type === 'DISCARD' && step.deathSettlementStep);
