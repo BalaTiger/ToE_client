@@ -1,7 +1,7 @@
 import { StrictMode, lazy, Suspense } from 'react'
 import { createRoot } from 'react-dom/client'
 import './index.css'
-import App from './App.jsx'
+import AuthorityApp from './authority/AuthorityApp.jsx'
 import { buildPublicUrl } from './utils/url'
 import { UiAppearanceProvider } from './ui/UiAppearance.jsx'
 import { mountMobileLandscape } from './ui/mobileLandscape.js'
@@ -19,7 +19,8 @@ if (!mobileLandscapeHost) mountGameLayers();
 if (!mobileLandscapeHost) createRoot(document.getElementById('root')).render(
   <StrictMode>
     <UiAppearanceProvider>
-      {VisualGallery ? <Suspense fallback={null}><VisualGallery /></Suspense> : <App />}
+      {VisualGallery ? <Suspense fallback={null}><VisualGallery /></Suspense>
+        : <AuthorityApp />}
     </UiAppearanceProvider>
   </StrictMode>,
 )

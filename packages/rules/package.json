@@ -1,0 +1,10 @@
+{
+  "name": "@toe/rules",
+  "version": "1.0.0",
+  "type": "module",
+  "private": true,
+  "exports": {
+    ".": "./src/index.js",
+    "./runtime": "./src/runtime.js"
+  }
+}

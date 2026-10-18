@@ -14,7 +14,8 @@ function createWorker() {
       if (!stores.has(name)) stores.set(name, new Map());
       const store = stores.get(name);
       return {
-        async put(request, response) { store.set(key(request), response); },
+        async put(request, response) { store.set(key(request), response.clone()); },
+        async match(request) { return store.get(key(request))?.clone(); },
         async delete(request) { return store.delete(key(request)); },
       };
     },
@@ -22,7 +23,7 @@ function createWorker() {
     async delete(name) { return stores.delete(name); },
     async match(request) {
       for (const store of stores.values()) {
-        if (store.has(key(request))) return store.get(key(request));
+        if (store.has(key(request))) return store.get(key(request)).clone();
       }
     },
   };
@@ -59,7 +60,7 @@ function createWorker() {
       const pending = [];
       let response;
       listeners[name]({
-        request: path ? (path instanceof Request ? path : new Request(key(path))) : undefined,
+        request: path ? (typeof path === 'object' ? path : new Request(key(path))) : undefined,
         waitUntil: promise => pending.push(promise),
         respondWith: promise => { response = promise; },
       });
@@ -71,6 +72,33 @@ function createWorker() {
 }
 
 describe('service worker resource loading', () => {
+  it('prepares every built script/style referenced by the shell, without caching private API requests', async () => {
+    const worker = createWorker(), fallback = worker.fetch.getMockImplementation();
+    const html = '<script type="module" src="/assets/main.js"></script><link rel="modulepreload" href="/assets/chunk.js"><link rel="stylesheet" href="/assets/main.css">';
+    worker.fetch.mockImplementation(request => new URL(typeof request === 'string' ? request : request.url, origin).pathname === '/index.html'
+      ? Promise.resolve(new Response(html, { headers: { 'content-type': 'text/html' } })) : fallback(request));
+    await worker.dispatch('install');
+    for (const name of ['/assets/main.js', '/assets/chunk.js', '/assets/main.css']) expect(await worker.caches.match(name)).toBeDefined();
+    expect(await worker.dispatch('fetch', new Request(`${origin}/v2/identity`))).toBeUndefined();
+    expect(await worker.caches.match('/v2/identity')).toBeUndefined();
+  });
+  it('upgrading never prepares the stale entry from an older static cache', async () => {
+    const worker = createWorker();
+    const old = await worker.caches.open('toe-static-old');
+    await old.put('/index.html', new Response('<script src="/assets/stale.js"></script>'));
+    await worker.dispatch('install');
+    expect(worker.fetch.mock.calls.some(([request]) => String(request).includes('stale.js'))).toBe(false);
+  });
+  it('serves the latest cached navigation shell and scripts after the origin becomes unreachable', async () => {
+    const worker = createWorker(), fallback = worker.fetch.getMockImplementation();
+    const html = '<script type="module" src="/assets/current.js"></script>';
+    worker.fetch.mockImplementation(request => new URL(typeof request === 'string' ? request : request.url, origin).pathname === '/'
+      ? Promise.resolve(new Response(html, { headers: { 'content-type': 'text/html' } })) : fallback(request));
+    await worker.dispatch('fetch', { url: origin + '/', method: 'GET', mode: 'navigate' });
+    worker.fetch.mockRejectedValue(new TypeError('Origin disconnected'));
+    expect(await (await worker.dispatch('fetch', { url: origin + '/', method: 'GET', mode: 'navigate' })).text()).toBe(html);
+    expect((await worker.dispatch('fetch', '/assets/current.js')).headers.get('content-type')).toBe('text/javascript');
+  });
   it('installs only the small app shell without forced downloads of manifest assets', async () => {
     const worker = createWorker();
     await worker.dispatch('install');

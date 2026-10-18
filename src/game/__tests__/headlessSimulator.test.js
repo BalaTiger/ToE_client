@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import * as aiTurn from '../aiTurn';
+import * as aiTurn from '../../../packages/rules/src/game/aiTurn.js';
 import {
   advanceHeadlessGame,
   createHeadlessGame,

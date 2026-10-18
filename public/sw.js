@@ -51,6 +51,31 @@ async function putIfOk(cache, request) {
   }
 }
 
+function appAssets(html) {
+  return [...new Set([...html.matchAll(/\b(?:src|href)\s*=\s*["']([^"']+)["']/g)]
+    .map(match => new URL(match[1], self.location.origin))
+    .filter(url => url.origin === self.location.origin && url.pathname.startsWith('/assets/'))
+    .map(url => url.href))];
+}
+
+async function cacheAppAssets(cache, response) {
+  const assets = appAssets(await response.clone().text());
+  await Promise.all(assets.map(async url => {
+    const result = await fetchAsset(url);
+    if (!isValidAssetResponse(url, result)) throw new Error('Incomplete offline app shell');
+    await cache.put(url, result);
+  }));
+}
+
+async function offlineReady() {
+  const runtime = await caches.open(RUNTIME_CACHE);
+  const html = await runtime.match('/index.html') || await caches.match('/index.html');
+  if (!html || !html.ok) return false;
+  const assets = appAssets(await html.clone().text());
+  const responses = await Promise.all(assets.map(url => caches.match(url)));
+  return assets.length > 0 && responses.every((response, index) => response && isValidAssetResponse(assets[index], response));
+}
+
 self.addEventListener('install', event => {
   event.waitUntil((async () => {
     const manifest = await fetchManifest();
@@ -63,6 +88,11 @@ self.addEventListener('install', event => {
       '/fonts/fonts.css',
     ];
     await Promise.allSettled(corePaths.map(path => putIfOk(cache, path)));
+    const html = await cache.match('/index.html');
+    if (!html) throw new Error('Missing offline entry');
+    await cacheAppAssets(cache, html);
+    const runtime = await caches.open(RUNTIME_CACHE);
+    await runtime.put('/index.html', html.clone()); await runtime.put('/', html.clone());
     self.skipWaiting();
   })());
 });
@@ -80,7 +110,9 @@ self.addEventListener('activate', event => {
         )
         .map(key => caches.delete(key)));
     }
-    self.clients.claim();
+    await self.clients.claim();
+    const ready = await offlineReady();
+    for (const client of await self.clients.matchAll?.() || []) client.postMessage({ type: 'toe:offline-ready', ready });
   })());
 });
 
@@ -99,6 +131,30 @@ function shouldCache(request) {
 
 self.addEventListener('fetch', event => {
   const { request } = event;
+  const url = new URL(request.url);
+  if (url.origin === self.location.origin && request.method === 'GET' && request.mode === 'navigate'
+    && ['/', '/index.html'].includes(url.pathname)) {
+    event.respondWith((async () => {
+      try {
+        const response = await fetch(request);
+        if (response.ok && (response.headers.get('content-type') || '').includes('text/html')) {
+          const cache = await caches.open(RUNTIME_CACHE);
+          const copy = response.clone();
+          event.waitUntil((async () => {
+            await cacheAppAssets(cache, copy);
+            await cache.put('/index.html', copy.clone()); await cache.put('/', copy);
+          })());
+        }
+        return response;
+      } catch (error) {
+        const runtime = await caches.open(RUNTIME_CACHE);
+        const cached = await runtime.match('/index.html') || await caches.match('/index.html');
+        if (cached) return cached;
+        throw error;
+      }
+    })());
+    return;
+  }
   if (!shouldCache(request)) return;
   event.respondWith((async () => {
     const cached = await caches.match(request);
@@ -117,4 +173,9 @@ self.addEventListener('fetch', event => {
     }
     return response;
   })());
+});
+
+self.addEventListener('message', event => {
+  if (event.data?.type === 'toe:offline-status') event.waitUntil(offlineReady().then(ready =>
+    event.source?.postMessage({ type: 'toe:offline-ready', ready })));
 });

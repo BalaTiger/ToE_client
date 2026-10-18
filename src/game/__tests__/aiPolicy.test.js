@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
+import { ruleRandom } from '../../../packages/rules/src/runtime.js';
 import { chooseAiAction, createAiObservationState, evaluateAiState } from '../aiPolicy';
 import { runAiPreview } from '../aiPreviewRuntime';
 import { ensureStatEventId } from '../statEventIdentity';
@@ -46,7 +47,7 @@ describe('shared AI policy', () => {
       const beforeCard = createBlackGoatYoungCard();
       const beforeStat = ensureStatEventId({ type: 'HP_LOSS' });
       expect(() => runAiPreview(() => {
-        Math.random(); createBlackGoatYoungCard(); ensureStatEventId({ type: 'HP_LOSS' });
+        ruleRandom(); createBlackGoatYoungCard(); ensureStatEventId({ type: 'HP_LOSS' });
         throw new Error('preview failure');
       })).toThrow('preview failure');
       expect(random).not.toHaveBeenCalled();
