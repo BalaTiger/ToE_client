@@ -1,16 +1,13 @@
 import React from 'react';
 import { getFontZoomCompensate } from '../../utils/scale';
+import './battle-phase-bar.css';
 
 function TimerText({ label, seconds, color }) {
   return (
-    <div className="toe-phase-timer" style={{
-      fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
-      fontSize: 11,
-      color,
-      letterSpacing: 1,
-      flexShrink: 0,
-    }}>
-      ⏱ {label ? `${label} ` : ''}{seconds}s
+    <div className="toe-phase-timer" aria-label={`${label}剩余 ${seconds} 秒`} style={{ color }}>
+      <span aria-hidden="true">⏱</span>
+      <span>{label}</span>
+      <span className="toe-phase-timer-value">{seconds}<span aria-hidden="true">s</span></span>
     </div>
   );
 }
@@ -45,8 +42,21 @@ export function BattlePhaseBar({
     muted,
   } = colors;
   const fontZoom = getFontZoomCompensate(scaleRatio);
+  const timers = [
+    { label: '抉择', seconds: mpCthSec, active: isMpCthDecisionPhase, color: mpCthSec <= 5 ? warning : mpCthSec <= 10 ? caution : active },
+    { label: '回合', seconds: mpTurnSec, active: myTurn && phase !== 'AI_TURN' && phase !== 'HUNT_WAIT_REVEAL' && !isMpCthDecisionPhase && !isLocalMpDecisionActive, color: mpTurnSec <= 10 ? warning : mpTurnSec <= 20 ? caution : safe },
+    { label: '弃牌', seconds: mpDiscardSec, active: phase === 'DISCARD_PHASE' && !isDiscardPhaseResolving && !isBlocked, color: mpDiscardSec <= 5 ? warning : caution },
+    { label: '亮牌', seconds: mpHuntSec, active: phase === 'HUNT_WAIT_REVEAL', color: mpHuntSec <= 5 ? warning : mpHuntSec <= 10 ? caution : active },
+    { label: '选择', seconds: mpDecisionSec, active: isLocalMpDecisionActive, color: mpDecisionSec <= 5 ? warning : mpDecisionSec <= 10 ? caution : active },
+  ].filter(timer => isMultiplayer && !isSpectating && timer.active && Number.isFinite(timer.seconds));
 
   return (
+    <div className="toe-phase-status">
+      {timers.length > 0 && (
+        <div className="toe-phase-timers" aria-label="联机倒计时">
+          {timers.map(timer => <TimerText key={timer.label} {...timer} />)}
+        </div>
+      )}
     <div className="toe-battle-panel toe-phase-bar" data-phase-warning={!!isPhaseWarningText && !isSpectating} style={{
       backgroundColor: 'var(--toe-panel,#120900)',
       border: `1px solid ${myTurn && !['AI_TURN'].includes(phase) ? 'var(--toe-line,#5a3010)' : 'var(--toe-line-dim,#2a1a08)'}`,
@@ -60,6 +70,8 @@ export function BattlePhaseBar({
     }}>
       <div style={{
         flex: 1,
+        minWidth: 0,
+        overflowWrap: 'anywhere',
         fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",
         color: isPhaseWarningText && !isSpectating ? warning : displayPhaseLabel ? active : muted,
         fontSize: baseFontSizes.body,
@@ -72,21 +84,7 @@ export function BattlePhaseBar({
           </div>
         )}
       </div>
-      {isMultiplayer && !isSpectating && mpCthSec !== null && isMpCthDecisionPhase && (
-        <TimerText label="抉择" seconds={mpCthSec} color={mpCthSec <= 5 ? warning : mpCthSec <= 10 ? caution : active} />
-      )}
-      {isMultiplayer && !isSpectating && mpTurnSec !== null && myTurn && phase !== 'AI_TURN' && phase !== 'HUNT_WAIT_REVEAL' && !isMpCthDecisionPhase && !isLocalMpDecisionActive && (
-        <TimerText seconds={mpTurnSec} color={mpTurnSec <= 10 ? warning : mpTurnSec <= 20 ? caution : safe} />
-      )}
-      {isMultiplayer && !isSpectating && mpDiscardSec !== null && phase === 'DISCARD_PHASE' && !isDiscardPhaseResolving && !isBlocked && (
-        <TimerText label="弃牌" seconds={mpDiscardSec} color={mpDiscardSec <= 5 ? warning : caution} />
-      )}
-      {isMultiplayer && !isSpectating && mpHuntSec !== null && phase === 'HUNT_WAIT_REVEAL' && (
-        <TimerText label="亮牌" seconds={mpHuntSec} color={mpHuntSec <= 5 ? warning : mpHuntSec <= 10 ? caution : active} />
-      )}
-      {isMultiplayer && !isSpectating && mpDecisionSec !== null && isLocalMpDecisionActive && (
-        <TimerText label="选择" seconds={mpDecisionSec} color={mpDecisionSec <= 5 ? warning : mpDecisionSec <= 10 ? caution : active} />
-      )}
+    </div>
     </div>
   );
 }

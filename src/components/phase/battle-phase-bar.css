@@ -1,0 +1,49 @@
+.toe-phase-status {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+.toe-phase-timers {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px 6px;
+  min-width: 0;
+}
+.toe-phase-status > .toe-phase-timers > .toe-phase-timer {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 3px;
+  border: 0;
+  padding: 0 4px;
+  background: var(--toe-panel, #120900);
+  font-family: var(--toe-coastal-panel-font, var(--toe-ui-font, serif));
+  font-size: calc(11px * var(--toe-action-scale, 1));
+  font-variant-numeric: tabular-nums;
+  letter-spacing: .25px;
+  line-height: 1.4;
+  white-space: nowrap;
+}
+.toe-phase-timer-value {
+  display: inline-block;
+  min-width: 3ch;
+  text-align: right;
+}
+.toe-phase-status > .toe-phase-bar {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+.toe-hand-area[data-hand-composition='coastal'] .toe-phase-timers {
+  position: absolute;
+  inset-inline: 12px;
+  top: 3px;
+  z-index: 1;
+}
+.toe-hand-area[data-hand-composition='coastal'] .toe-phase-timer {
+  font-size: calc(9px * var(--toe-action-scale, 1));
+  line-height: 1.2;
+}
