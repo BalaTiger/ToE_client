@@ -17,6 +17,22 @@ const dependencies = {
   resolveCaveDuelState: vi.fn(),
 };
 
+describe('private swap give-card abandonment',()=>{
+ it.each([false,true])('returns the one taken card before ending the turn (dead target=%s)',dead=>{
+  const own=makeZoneCard('A3',0,{id:'kept-own'}),taken=makeZoneCard('C1',0,{id:'taken-private'}),other=makeZoneCard('B2');
+  const state=makeGs({_isMP:true,_mpMatchId:'swap',currentTurn:1,_turnKey:1,phase:'SWAP_GIVE_CARD',skillUsed:true,
+   players:[makePlayer({role:ROLE_CULTIST,isDead:true,hp:0,hand:[]}),makePlayer({role:ROLE_TREASURE,hand:[own,taken]}),makePlayer({role:ROLE_HUNTER,isDead:dead,hp:dead?0:10,hand:dead?[]:[other]})],
+   abilityData:{swapTi:2,takenCard:taken},deck:[makeZoneCard('A2')],_visualEvents:[]});
+  const next=resolveMpAiTakeoverState(state,1,dependencies);
+  expect(next.players[1].hand.map(c=>c.id)).toEqual(['kept-own']);
+  expect(next.players[2].hand.filter(c=>c.id===taken.id)).toHaveLength(dead?0:1);
+  expect(next.discard.filter(c=>c.id===taken.id)).toHaveLength(dead?1:0);
+  expect(next.abilityData?.takenCard).toBeUndefined();
+  expect(next._visualEvents.some(e=>e.effect==='swapAbandonReturn'&&e.faceUp===false)).toBe(true);
+  expect(state.players[1].hand).toHaveLength(2);
+ });
+});
+
 describe('multiplayer AI takeover decisions', () => {
   it('finishes the last bury choice before receiving the pending card', () => {
     const card = makeZoneCard('A4', 0, { type: 'buryAlive', id: 'pending-bury' });

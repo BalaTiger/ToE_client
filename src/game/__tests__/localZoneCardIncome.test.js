@@ -167,7 +167,12 @@ describe('local zone effect decisions finish before card income', () => {
     context.handleDrawKeepResolved();
     complete();
     broadcasts.length = 0;
-    if (type === 'buryAlive') context.resolveSharedBuryAlive(context.gs, true);
+    if (type === 'buryAlive') {
+      context.playerUUIDRef={current:'resolver'};
+      context.gs.abilityData={...context.gs.abilityData,buryAliveId:'server-decision',buryAliveReady:true,buryAliveResolverUuid:'resolver',
+        buryAliveChoices:context.gs.players.map((p,i)=>context.gs.abilityData.targets.includes(i)?{cardId:p.hand[0].id,cardIndex:0}:null)};
+      context.resolveSharedBuryAlive(context.gs, false);
+    }
     else await context.igniteTorchDiscardCard(0);
 
     expect(broadcasts).toHaveLength(1);

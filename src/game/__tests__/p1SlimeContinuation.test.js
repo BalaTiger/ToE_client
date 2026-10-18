@@ -168,3 +168,28 @@ describe('multiplayer deferred bewitch income identity',()=>{
     expect(result.queue.flatMap(step=>step.msgs||[]).some(line=>line.startsWith('recipient 收入了'))).toBe(true);
   });
 });
+describe('death inside a deferred skill/slime continuation',()=>{
+ it('discards a dead drawer income and cancels remaining extra draws before advancing',()=>{
+  const players=makeStandardPlayers(3,[{role:'寻宝者',isDead:true,hp:0,hand:[]},{role:'追猎者',hand:[createTsathogguaSlimeCard()]},{role:'邪祀者'}]);
+  const card=makeZoneCard('A4',0,{id:'dead-drawer-income',name:'空谷传音'});
+  const initial=makeGs({players,currentTurn:0,_isMP:true,phase:'TSG_SLIME_BALANCE',_visualEvents:[],deck:[makeZoneCard('C2')],
+   abilityData:{type:'tsgSlimeBalance',targetIdx:1,_turnOwner:0,continueTurnStartDraw:true,fromTsathogguaSlime:true,pendingZoneIncome:{card,ownerId:players[0].id}}});
+  const {context,submissions,complete}=bindHandlers(initial);
+  context._tsgContinueTurnStartDraw=vi.fn();context.applyNextTurnGs=vi.fn(state=>{context.gs=state;});
+  context.resolveTsathogguaSlimeBalance(false);
+  const packet=context.broadcastAnimTransaction.mock.calls.at(-1)[0];
+  expect(packet.players.every(p=>!p.hand.some(c=>c.id===card.id))).toBe(true);
+  expect(packet.discard.filter(c=>c.id===card.id)).toHaveLength(1);
+  expect(submissions.at(-1).queue.some(step=>step.type==='CARD_TRANSFER'&&step.dest==='discard')).toBe(true);
+  complete();expect(context._tsgContinueTurnStartDraw).not.toHaveBeenCalled();
+  expect(context.applyNextTurnGs).toHaveBeenCalledOnce();expect(context.gs.currentTurn).toBe(1);
+ });
+ it('a dead response target cannot consume another seat slime or redirect its income',()=>{
+  const players=makeStandardPlayers(3,[{role:'寻宝者',hand:[]},{role:'追猎者',isDead:true,hp:0,hand:[]},{role:'邪祀者',hand:[createTsathogguaSlimeCard()]}]);
+  const card=makeZoneCard('A4',0,{id:'live-income',name:'空谷传音'});
+  const initial=makeGs({players,currentTurn:0,_isMP:true,phase:'TSG_SLIME_BALANCE',_visualEvents:[],abilityData:{type:'tsgSlimeBalance',targetIdx:1,_turnOwner:0,pendingZoneIncome:{card,ownerId:players[0].id}}});
+  const {context,submissions}=bindHandlers(initial);context.resolveTsathogguaSlimeBalance(true);
+  const final=submissions.at(-1).nextState;expect(final.players[0].hand.filter(c=>c.id===card.id)).toHaveLength(1);
+  expect(final.players[2].hand.some(game.isTsathogguaSlime)).toBe(true);expect(final.players[1].hand).toHaveLength(0);
+ });
+});

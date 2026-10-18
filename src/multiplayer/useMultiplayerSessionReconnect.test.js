@@ -125,10 +125,10 @@ describe('multiplayer reconnect browser lifecycle', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('keeps one listener per target through ten disconnects and foreground resumes', async () => {
+  it('keeps one listener per target through one hundred disconnects and foreground resumes', async () => {
     const { args, document, window, render } = setup();
     const retired = [];
-    for (let round = 1; round <= 10; round++) {
+    for (let round = 1; round <= 100; round++) {
       const previous = args.socketRef.current;
       previous.drop();
       await vi.advanceTimersByTimeAsync(0);

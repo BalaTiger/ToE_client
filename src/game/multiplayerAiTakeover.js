@@ -367,6 +367,29 @@ function resolveMpAiTakeoverDecision(
   if (sourceState.phase === 'BURY_ALIVE_SELECT') {
     return resolveTakeoverBury(sourceState, takeoverIdx);
   }
+  if (sourceState.phase === 'SWAP_GIVE_CARD' && sourceState.currentTurn === takeoverIdx) {
+    const ad = sourceState.abilityData || {};
+    const players = copyPlayers(sourceState.players);
+    const actor = players[takeoverIdx], target = players[ad.swapTi];
+    const index = actor?.hand?.findIndex(card => card.id === ad.takenCard?.id) ?? -1;
+    // An obscured or incomplete checkpoint cannot safely finish this decision.
+    if (!target || index < 0) return sourceState;
+    const [card] = actor.hand.splice(index, 1);
+    const discard = [...(sourceState.discard || [])];
+    if (target.isDead) discard.push(card);
+    else target.hand.push(card);
+    const message = `(AI接管) ${sourceState.players[takeoverIdx].name} 放弃掉包，归还暗抽牌${target.isDead ? '至弃牌堆' : ''}`;
+    const event = createCardMoveVisualEvent({ from: { zone: 'hand', playerIdx: takeoverIdx },
+      to: target.isDead ? { zone: 'discard' } : { zone: 'hand', playerIdx: ad.swapTi },
+      cards: [card], faceUp: false, effect: 'swapAbandonReturn', msgs: [message],
+      playersBefore: sourceState.players, playersAfter: players,
+      discardBefore: sourceState.discard || [], discardAfter: discard });
+    const cancelled = { ...sourceState, players, discard, phase: 'ACTION', abilityData: {},
+      _mpPrivateSwapWaiting: undefined, log: [...(sourceState.log || []), message],
+      _visualEvents: [...(sourceState._visualEvents || []), event] };
+    const next = finishMpAiTakeoverTurn(cancelled, sourceState, takeoverIdx, getHandLimitForPlayer);
+    return { ...next, _visualEvents: [event, ...(next._visualEvents || []).filter(candidate => candidate.id !== event.id)] };
+  }
   if (sourceState.players?.[takeoverIdx]?.isDead
     && (!sourceState.abilityData?.pendingZoneIncome || ['ACTION', 'AI_TURN'].includes(sourceState.phase))) {
     if (sourceState.abilityData?.pendingZoneIncome) {

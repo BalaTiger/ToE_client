@@ -929,7 +929,16 @@ export default function Game(){
       pendingMpAiTakeoverRef.current=payload;
       return;
     }
-    const sourceGs=latest||(payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):null);
+    const waitingPrivateSwap=latest?._mpPrivateSwapWaiting
+      &&['SWAP_STEAL_CARD','SWAP_GIVE_CARD'].includes(latest.phase);
+    const restoredSwap=waitingPrivateSwap&&payload.gs
+      ?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):null;
+    const resumesPrivateSwap=restoredSwap&&!restoredSwap._mpPrivateSwapWaiting
+      &&restoredSwap._mpMatchId===latest._mpMatchId&&restoredSwap._turnKey===latest._turnKey
+      &&restoredSwap.currentTurn===latest.currentTurn
+      &&['SWAP_STEAL_CARD','SWAP_GIVE_CARD'].includes(restoredSwap.phase);
+    if(waitingPrivateSwap&&!resumesPrivateSwap)return;
+    const sourceGs=resumesPrivateSwap?restoredSwap:(latest||(payload.gs?rotateGsForViewer(payload.gs,myPlayerIndexRef.current):null));
     if(isResolvedMpHuntWaitState(sourceGs,completedMpHuntRevealPromptIdsRef.current))return;
     const takeoverIdx=rotateRawSeatIndex(payload.playerIndex,sourceGs);
     const nextGs=resolveMpAiTakeoverState(sourceGs,takeoverIdx,{
@@ -2981,8 +2990,18 @@ export default function Game(){
 
   useEffect(()=>{
     if(!gs||gs.phase!=='BURY_ALIVE_SELECT'||!isMultiplayerGame(gs)||gs.gameOver||anim||animExiting||showTutorial||softGuidePauseActive)return;
+    if(animQueueRef.current.length||pendingGsRef.current)return;
     const ad=gs.abilityData||{};
-    if(!Array.isArray(ad.buryAliveChoices)||!isLocalSeatIndex(ad.source))return;
+    if(!Array.isArray(ad.buryAliveChoices))return;
+    if(!ad.buryAliveId)return;
+    const ownsWindow=ad.buryAliveResolverUuid===playerUUIDRef.current;
+    if(!ad.buryAliveReady&&(ownsWindow||(ad.targets||[]).some(isLocalSeatIndex))
+      &&!(ad.buryAliveOpenedUuids||[]).includes(playerUUIDRef.current)){
+      socketRef.current?.emit('mpStateSync',{roomId:roomModal?.roomId,matchId:gs._mpMatchId,gs:derotateGs(gs,myPlayerIndexRef.current),buryAliveOpen:true});
+      return;
+    }
+    if(!ownsWindow)return;
+    if(!ad.buryAliveReady&&ad.buryAliveDeadline!=null&&Date.now()>=ad.buryAliveDeadline){resolveSharedBuryAlive(gs,true);return;}
     const choices=[...ad.buryAliveChoices];
     let changed=false;
     (ad.targets||[]).forEach(targetIdx=>{
@@ -2996,6 +3015,7 @@ export default function Game(){
       setGs(nextGs);
       return;
     }
+    if(!ad.buryAliveReady&&ad.buryAliveDeadline==null)return;
     resolveSharedBuryAlive(gs,false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs,anim,animExiting,showTutorial,softGuidePauseActive]);
@@ -3291,7 +3311,7 @@ export default function Game(){
   function performMpDecisionTimeout(){
     if(!gs||isBlocked)return;
     if(gs.phase==='BURY_ALIVE_SELECT'&&Array.isArray(gs.abilityData?.buryAliveChoices)){
-      if(isLocalSeatIndex(gs.abilityData?.source))resolveSharedBuryAlive(gs,true);
+      if(gs.abilityData?.buryAliveId?gs.abilityData.buryAliveResolverUuid===playerUUIDRef.current:isLocalSeatIndex(gs.abilityData?.source))return resolveSharedBuryAlive(gs,true);
       return;
     }
     if(!isLocalMpDecisionPhase(gs))return;
@@ -3386,7 +3406,7 @@ export default function Game(){
     &&!animExiting
     &&animQueueRef.current.length===0
     &&!pendingGsRef.current
-    &&(isLocalSeatIndex(gs.abilityData.source)||(gs.abilityData.targets||[]).some(isLocalSeatIndex));
+    &&(gs.abilityData.buryAliveResolverUuid===playerUUIDRef.current||isLocalSeatIndex(gs.abilityData.source)||(gs.abilityData.targets||[]).some(isLocalSeatIndex));
   const isMpDecisionTimerActive=isLocalMpDecisionActive||isSharedBuryAliveDecisionActive;
   const pendingGsForTurnTimer=pendingGsRef.current;
   const isMpTurnTimerSuspended=!!(roleRevealAnim||anim||animExiting||animQueueRef.current.length>0||pendingGsForTurnTimer);
@@ -5971,7 +5991,7 @@ export default function Game(){
   }
 
 
-  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false,caveDuelResolutionId=null}){
+  function finishTargetContinuation({queue=[],nextGs,continueRest=false,continueTurnStartDraw=false,caveDuelResolutionId=null,sharedBuryResolutionId=null}){
     const pendingIncome=nextGs?.abilityData?.pendingZoneIncome;
     queue=mergeApophisTargetQueue(queue,gs,nextGs);
     if((nextGs?.phase==='ACTION'||nextGs?.phase==='AI_TURN')&&nextGs?.abilityData?.pendingInspectionContinuation?.targets?.length){
@@ -6066,10 +6086,11 @@ export default function Game(){
     };
     // Publish the effect and deferred income together, after the final queue
     // exists. Observers must not resume the turn between these two segments.
-    if(caveDuelResolutionId&&nextGs._isMP&&queue.length)broadcastAnimTransaction({...nextGs,_mpCaveDuelResolutionId:caveDuelResolutionId},queue,{
-      context:'caveDuel',barrier:'decision',msgs:nextGs.log.slice(gs.log.length),
+    if((caveDuelResolutionId||sharedBuryResolutionId)&&nextGs._isMP&&queue.length)broadcastAnimTransaction({...nextGs,...(caveDuelResolutionId?{_mpCaveDuelResolutionId:caveDuelResolutionId}:{_mpBuryAliveResolutionId:sharedBuryResolutionId})},queue,{
+      context:caveDuelResolutionId?'caveDuel':'buryAlive',barrier:sharedBuryResolutionId&&['ACTION','AI_TURN'].includes(nextGs.phase)?'continuation':'decision',msgs:nextGs.log.slice(gs.log.length),
       beforePlayers:gs.players,beforeDiscard:gs.discard,
     });
+    else if(sharedBuryResolutionId&&nextGs._isMP)broadcastMpStateBeforeLocalReplay({...nextGs,_mpBuryAliveResolutionId:sharedBuryResolutionId});
     else if(pendingIncome&&nextGs._isMP&&queue.length)broadcastAnimTransaction(nextGs,queue,{
       context:'zoneEffectIncome',barrier:continuationRoute===TARGET_CONTINUATION_ROUTE.DECISION?'decision':'continuation',
       msgs:nextGs.log.slice(gs.log.length),beforePlayers:gs.players,beforeDiscard:gs.discard,
@@ -7396,7 +7417,11 @@ export default function Game(){
     :null;
 
   function buryAliveSelectCard(cardIndex, allowAi=false){
-    const abilityData=gs.abilityData||{};
+    const state=gs._isMP&&Array.isArray(gs.abilityData?.buryAliveChoices)?(latestGsRef.current||gs):gs;
+    if(gs._isMP&&Array.isArray(gs.abilityData?.buryAliveChoices)
+      &&(state.phase!=='BURY_ALIVE_SELECT'||state.abilityData?.buryAliveId!==gs.abilityData?.buryAliveId
+        ||pendingGsRef.current||animQueueRef.current.length))return;
+    const abilityData=state.abilityData||{};
     const targets=abilityData.targets||[];
     const choices=Array.isArray(abilityData.buryAliveChoices)?abilityData.buryAliveChoices:null;
     const actorIdx=choices
@@ -7404,13 +7429,19 @@ export default function Game(){
       :targets[abilityData.targetIndex||0];
     if((!isLocalSeatIndex(actorIdx)&&!allowAi)||cardIndex<0)return;
     if(choices){
-      const buriedCard=gs.players?.[actorIdx]?.hand?.[cardIndex];
+      const buriedCard=state.players?.[actorIdx]?.hand?.[cardIndex];
       if(!buriedCard)return;
       const nextChoices=[...choices];
       nextChoices[actorIdx]={cardId:buriedCard.id,cardIndex};
-      const nextGs={...gs,abilityData:{...abilityData,buryAliveChoices:nextChoices,buryAliveSelectedIndex:null}};
+      const nextGs={...state,abilityData:{...abilityData,buryAliveChoices:nextChoices,buryAliveSelectedIndex:null}};
       broadcastMpStateBeforeLocalReplay(nextGs);
-      setGs(nextGs);
+      setGs(previous=>{
+        if(previous?.phase!=='BURY_ALIVE_SELECT'||previous.abilityData?.buryAliveId!==abilityData.buryAliveId)return previous;
+        const currentChoices=[...(previous.abilityData?.buryAliveChoices||[])];
+        if(currentChoices[actorIdx])return previous;
+        currentChoices[actorIdx]=nextChoices[actorIdx];
+        return {...previous,abilityData:{...previous.abilityData,buryAliveChoices:currentChoices,buryAliveSelectedIndex:null}};
+      });
       return;
     }
     let P=copyPlayers(gs.players),D=[...gs.deck],Disc=[...gs.discard];
@@ -7456,7 +7487,16 @@ export default function Game(){
   function resolveSharedBuryAlive(state,autoFill=false){
     const abilityData=state?.abilityData||{};
     const targets=abilityData.targets||[];
-    if(state?.phase!=='BURY_ALIVE_SELECT'||!Array.isArray(abilityData.buryAliveChoices)||!isLocalSeatIndex(abilityData.source))return false;
+    if(state?.phase!=='BURY_ALIVE_SELECT'||!Array.isArray(abilityData.buryAliveChoices))return false;
+    if(abilityData.buryAliveId?abilityData.buryAliveResolverUuid!==playerUUIDRef.current:!isLocalSeatIndex(abilityData.source))return false;
+    if(state._isMP){
+      if(!abilityData.buryAliveId)return false;
+      if(autoFill){
+        socketRef.current?.emit('mpStateSync',{roomId:roomModal?.roomId,matchId:state._mpMatchId,gs:derotateGs(state,myPlayerIndexRef.current),buryAliveTimeout:true});
+        return false;
+      }
+      if(!abilityData.buryAliveReady)return false;
+    }
     const choices=[...abilityData.buryAliveChoices];
     if(autoFill){
       targets.forEach(targetIdx=>{
@@ -7486,11 +7526,12 @@ export default function Game(){
     });
     const turnOwner=abilityData._turnOwner??state.currentTurn;
     const nextGs=buildTargetContinuationGs({players:P,deck:D,discard:Disc,log:L,turnOwner,abilityData});
-    if(queue.length&&!abilityData.pendingZoneIncome)broadcastAnimTransaction(nextGs,queue,{context:'buryAlive',barrier:'continuation',msgs:L.slice(state.log.length),beforePlayers:state.players,beforeDiscard:state.discard});
+    if(queue.length&&!abilityData.pendingZoneIncome&&!abilityData.buryAliveId)broadcastAnimTransaction(nextGs,queue,{context:'buryAlive',barrier:'continuation',msgs:L.slice(state.log.length),beforePlayers:state.players,beforeDiscard:state.discard});
     finishTargetContinuation({
       queue,
       nextGs,
       continueRest:!!(abilityData.fromRest&&isLocalSeatIndex(abilityData.source)),
+      sharedBuryResolutionId:abilityData.buryAliveId||null,
     });
     return true;
   }

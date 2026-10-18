@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { getMpTurnTimerOwnerKey, useMpCthDecisionTimer, useMpDiscardTimer, useMpTurnTimer } from '../useMultiplayerTimers';
+import { getMpTurnTimerOwnerKey, useMpCthDecisionTimer, useMpDiscardTimer, useMpTurnTimer, useMpDecisionTimer } from '../useMultiplayerTimers';
 const runtime=vi.hoisted(()=>({effects:[]}));
 vi.mock('react',()=>({useRef:value=>({current:value}),useState:value=>[value,vi.fn()],useEffect:fn=>runtime.effects.push(fn)}));
 afterEach(()=>{runtime.effects=[];vi.useRealTimers();});
@@ -42,4 +42,14 @@ describe('already queued multiplayer timeout vs manual commit',()=>{
     const next={...old,abilityData:{godCard:{id:'new'}}};h.setCurrent(next);vi.advanceTimersByTime(15000);
     expect(h.current).toBe(next);h.cleanup();
   });
+});
+
+describe('owned decision deadline retry',()=>{
+ it('retries an early server deadline once per tick and cancels on cleanup',()=>{
+  const onTimeout=vi.fn(()=>false);
+  const h=mount(args=>useMpDecisionTimer({...args,isLocalDecisionActive:true,decisionKey:'bury-id',onTimeout}),base);
+  vi.advanceTimersByTime(20000);expect(onTimeout).toHaveBeenCalledTimes(1);
+  vi.advanceTimersByTime(250);expect(onTimeout).toHaveBeenCalledTimes(2);
+  h.cleanup();vi.advanceTimersByTime(1000);expect(onTimeout).toHaveBeenCalledTimes(2);
+ });
 });

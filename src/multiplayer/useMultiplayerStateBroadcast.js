@@ -27,6 +27,7 @@ export function shouldSuppressNormalStateBroadcast(gs) {
   if (gs.gameOver) return true;
   if (gs.phase === 'MP_PLAYER_WIN_WAIT') return true;
   if (gs.phase === 'SWAP_STEAL_CARD' || gs.phase === 'SWAP_GIVE_CARD') return true;
+  if (gs.phase === 'BURY_ALIVE_SELECT' && gs.abilityData?.buryAliveId) return true;
   if (gs._mpEndTurn || gs._mpAutoDiscard || gs._mpAutoCthDecision) return true;
   return !!(gs._endTurnReplay && !isEndTurnReplayDecisionState(gs));
 }

@@ -29,6 +29,17 @@ const ANIMATED_REPLAY_TYPES = new Set([
 // sequence number: phases and turn numbers cannot determine packet freshness.
 const RECENT_ANIMATED_RAW_LIMIT = 16;
 
+export function preserveSharedBurySelection(previous, incoming) {
+  const ad = previous?.abilityData, next = incoming?.abilityData;
+  if (previous?.phase !== 'BURY_ALIVE_SELECT' || incoming?.phase !== 'BURY_ALIVE_SELECT'
+    || incoming.gameOver || !ad?.buryAliveId || ad.buryAliveId !== next?.buryAliveId
+    || previous._mpMatchId !== incoming._mpMatchId || previous._turnKey !== incoming._turnKey
+    || next.buryAliveChoices?.[0] || ad.buryAliveSelectedIndex == null) return incoming;
+  const selected = previous.players?.[0]?.hand?.[ad.buryAliveSelectedIndex];
+  const index = selected?.id == null ? -1 : (incoming.players?.[0]?.hand || []).findIndex(card => card.id === selected.id);
+  return index < 0 ? incoming : { ...incoming, abilityData: { ...next, buryAliveSelectedIndex: index } };
+}
+
 function getWireValueSignature(value) {
   // Canonical JSON matches wire values even when object keys are reordered.
   // Store bounded strings rather than mutable snapshots or lossy hashes.
@@ -237,8 +248,8 @@ export function processIncomingMultiplayerStateSync({
 }) {
   if (!rawState) return 'ignored';
   const myIndex = context.myPlayerIndexRef.current;
-  const rotatedState = rotateGsForViewer(rawState, myIndex);
   const previousState = context.latestGsRef.current || currentState;
+  const rotatedState = preserveSharedBurySelection(previousState, rotateGsForViewer(rawState, myIndex));
   // A replay delta can intentionally keep the public game state unchanged and
   // carry only a newly-created visual event (endless corridor and CTH rest
   // draws both use this shape).  Do not let the stale-state fast path discard

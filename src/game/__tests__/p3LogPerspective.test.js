@@ -368,7 +368,8 @@ describe('TOE011 canonical text from real App producers', () => {
 
   it('persists both shared bury responders by name for terminal and reconnect history', () => {
     const context = actionContext({ phase: 'BURY_ALIVE_SELECT' });
-    context.gs.abilityData = { source: 0, targets: [0, 1], buryAliveChoices: [
+    context.playerUUIDRef={current:'resolver'};
+    context.gs.abilityData = { source: 0, targets: [0, 1], buryAliveId:'server-decision',buryAliveReady:true,buryAliveResolverUuid:'resolver',buryAliveChoices: [
       { cardId: context.gs.players[0].hand[0].id, cardIndex: 0 },
       { cardId: context.gs.players[1].hand[0].id, cardIndex: 0 },
       null,

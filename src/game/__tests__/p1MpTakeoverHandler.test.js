@@ -35,6 +35,23 @@ function bind(latest) {
 }
 
 describe('TOE016 buffered takeover uses the committed match state', () => {
+  it('does not let a legacy echoed swap marker block later AI turns', () => {
+    const latest={_mpMatchId:'m',_turnKey:12,currentTurn:1,phase:'DRAW_REVEAL',_mpPrivateSwapWaiting:true};
+    const context=bind(latest);
+    context.handleMpAiTakeover({authorityUuid:'authority',playerIndex:1,gs:latest});
+    expect(context.resolveMpAiTakeoverState).toHaveBeenCalledOnce();
+  });
+  it('upgrades an obscured swap wait only from the matching authoritative takeover checkpoint', () => {
+    const latest={_mpMatchId:'m',_turnKey:9,currentTurn:1,phase:'SWAP_GIVE_CARD',_mpPrivateSwapWaiting:true,abilityData:{}};
+    const checkpoint={...latest,_mpPrivateSwapWaiting:undefined,abilityData:{takenCard:{id:'private'}}};
+    const context=bind(latest);
+    context.handleMpAiTakeover({authorityUuid:'authority',playerIndex:1,gs:checkpoint});
+    expect(context.resolveMpAiTakeoverState.mock.calls[0][0]).toBe(checkpoint);
+    for(const wrong of [{...checkpoint,_turnKey:8},{...checkpoint,_mpMatchId:'old'},{...checkpoint,currentTurn:2}]){
+      const c=bind(latest);c.handleMpAiTakeover({authorityUuid:'authority',playerIndex:1,gs:wrong});
+      expect(c.resolveMpAiTakeoverState).not.toHaveBeenCalled();
+    }
+  });
   it('discards a buffered takeover when a grace-period reconnect transfers authority', () => {
     const context = bind({ phase: 'DRAW_REVEAL', currentTurn: 2, _turnKey: 9 });
     context.roomModalRef.current.aiAuthorityUuid = 'restored-earlier-human';

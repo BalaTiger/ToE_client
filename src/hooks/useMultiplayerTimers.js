@@ -306,10 +306,18 @@ export function useMpDecisionTimer({
       intervalRef: mpDecisionIntervalRef,
       playTickSound,
     });
-    timeoutRef.current = setTimeout(() => {
-      onTimeoutRef.current?.();
-    }, 20000);
+    let active = true;
+    const attemptTimeout = () => {
+      if (!active) return;
+      // An authoritative decision may still be waiting for its server deadline
+      // or a busy presentation. Keep one owned retry; cleanup cancels it.
+      if (onTimeoutRef.current?.() === false && active) {
+        timeoutRef.current = setTimeout(attemptTimeout, 250);
+      }
+    };
+    timeoutRef.current = setTimeout(attemptTimeout, 20000);
     return () => {
+      active = false;
       clearTimeout(timeoutRef.current);
       timeoutRef.current = null;
       clearInterval(intervalId);
