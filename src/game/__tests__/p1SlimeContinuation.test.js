@@ -151,3 +151,20 @@ describe('TOE017 deferred SAN inspection after an AI slime response', () => {
       { previousState: before })).toThrow(/missing visual events.*inspection/);
   });
 });
+
+describe('multiplayer deferred bewitch income identity',()=>{
+  it('names the off-turn recipient in state and transfer logs after slime response',()=>{
+    const players=makeStandardPlayers(3,[{name:'recipient',role:'追猎者',hp:10,san:9,hand:[createTsathogguaSlimeCard()]},{name:'caster',role:'邪祀者'},{name:'observer',role:'寻宝者'}]);
+    const card=makeZoneCard('A4',0,{id:'deferred-a4',name:'空谷传音'});
+    const initial=makeGs({players,currentTurn:1,phase:'TSG_SLIME_BALANCE',_isMP:true,_visualEvents:[],
+      abilityData:{type:'tsgSlimeBalance',targetIdx:0,_turnOwner:1,pendingZoneIncome:{card,ownerId:players[0].id}}});
+    const {context,submissions}=bindHandlers(initial);
+    context.resolveTsathogguaSlimeBalance(true);
+    const result=submissions.at(-1);
+    expect(result.nextState.players[0].hand.some(c=>c.id===card.id)).toBe(true);
+    expect(result.nextState.players[1].hand.some(c=>c.id===card.id)).toBe(false);
+    expect(result.nextState.log.some(line=>line.startsWith('recipient 收入了'))).toBe(true);
+    expect(result.nextState.log.some(line=>line.startsWith('你 收入了')||line.startsWith('caster 收入了'))).toBe(false);
+    expect(result.queue.flatMap(step=>step.msgs||[]).some(line=>line.startsWith('recipient 收入了'))).toBe(true);
+  });
+});

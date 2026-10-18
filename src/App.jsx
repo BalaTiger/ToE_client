@@ -174,6 +174,7 @@ import {
   resolveEndTurn,
   END_TURN_DECISION,
   resolvePostDiscardEndTurn,
+  canResumePostDiscardEndTurn,
   discardCardsFromHand,
   discardCardsFromHandFromRight,
   splitKeptDestroyedDiscarded,
@@ -3551,11 +3552,19 @@ export default function Game(){
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[gs?._mpEndTurn,isBlocked]);
 
+  // 重连后续跑已完成弃牌的简单回合结束路径。
+  useEffect(()=>{
+    if(!gs?._mpResumePostDiscardEndTurn||!isMultiplayer||isBlocked)return;
+    if(!canResumePostDiscardEndTurn(gs))return;
+    kickoffEndTurnSeq({...gs,_mpResumePostDiscardEndTurn:undefined});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[gs,isMultiplayer,isBlocked]);
+
   // 执行自动从右侧弃牌
   useEffect(()=>{
     if(!gs?._mpAutoDiscard)return;
     setGs(p=>p?{...p,_mpAutoDiscard:undefined}:p);
-    if(!isMultiplayer||gs.gameOver||gs.phase!=='DISCARD_PHASE'||!isLocalCurrentTurn(gs))return;
+    if(!isMultiplayer||gs.gameOver||gs.phase!=='DISCARD_PHASE'||!isLocalCurrentTurn(gs)||gs._mpEndTurnDiscardResolved)return;
     autoDiscardRef.current?.();
   },[gs,isMultiplayer]);
 
@@ -4750,6 +4759,7 @@ export default function Game(){
   // 黄液(蟾蜍之神)发放事件：PASSIVE_GOD，排在 CTH 之后、无尽通道之前。
   // ponytail: 发放逻辑暂与 beginEndTurnReplay 的内联版并存；Stage 6 收口后删除内联版。
   function runTsgSlimeGrantEvent(state){
+    if(state._tsgSlimeGrantedAtTurnEnd)return advanceEndTurnSeq(state);
     const P=copyPlayers(state.players);
     const L=[...state.log];
     const slimeLog=[];
@@ -6029,9 +6039,10 @@ export default function Game(){
       nextGs={...nextGs,players,discard,abilityData};
       if(income){
         const {card,drawerIdx,dest}=income;
+        const recipient=nextGs._isMP?players[drawerIdx].name:localDisplayName(drawerIdx,players[drawerIdx].name);
         const msg=dest==='discard'
-          ?`${localDisplayName(drawerIdx,players[drawerIdx].name)} 已死亡，待收入的 ${cardLogText(card,{alwaysShowName:true})} 放入弃牌堆`
-          :`${localDisplayName(drawerIdx,players[drawerIdx].name)} 收入了 ${cardLogText(card,{alwaysShowName:true})}`;
+          ?`${recipient} 已死亡，待收入的 ${cardLogText(card,{alwaysShowName:true})} 放入弃牌堆`
+          :`${recipient} 收入了 ${cardLogText(card,{alwaysShowName:true})}`;
         nextGs={...nextGs,log:[...nextGs.log,msg],...appendPublicCardGainTriggers(nextGs,players,drawerIdx,dest==='player'?[card]:[])};
         const win=nextGs.gameOver||checkWin(players,nextGs._isMP);
         if(win)nextGs={...nextGs,gameOver:win};
@@ -9045,9 +9056,10 @@ export default function Game(){
   function confirmDiscard(){
     // 使用最新的 gs 快照（避免 React 批量更新导致闭包读到旧的 discardSelected）
     const latestGs=latestGsRef.current;
+    const baseGs=latestGs||gs;
+    if(baseGs?.gameOver||baseGs?.phase!=='DISCARD_PHASE'||(baseGs._isMP&&!isLocalCurrentTurn(baseGs))||baseGs._mpEndTurnDiscardResolved)return;
     const selected=(latestGs||gs).abilityData?.discardSelected||[];
     if(!selected.length)return;
-    const baseGs=latestGs||gs;
     const {players:P,discarded}=discardCardsFromHand(baseGs.players,0,selected);
 
     const result=resolvePostDiscardEndTurn(baseGs,{

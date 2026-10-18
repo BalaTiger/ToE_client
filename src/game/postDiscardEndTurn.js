@@ -1,4 +1,4 @@
-import { getEndTurnEvents } from './endTurnEvents';
+import { END_TURN_EVENT, getEndTurnEvents } from './endTurnEvents';
 import { createHandLimitDiscardEvent } from './visualEvents';
 import { statePatchStep, discardStep } from './animQueueHelpers';
 import { buildPlayerTurnDrawQueue } from './turnAnimState';
@@ -9,6 +9,21 @@ import {
   splitKeptDestroyedDiscarded,
   applyHandDiscardSideEffectsWithAnim as defaultApplyHandDiscardSideEffectsWithAnim,
 } from './handLimitDiscard';
+
+// A restored snapshot has already committed the discard, but its local
+// animation callback/scheduler no longer exists. Resume only the simple,
+// non-interactive boundary whose remaining effects can be identified safely.
+export function canResumePostDiscardEndTurn(state) {
+  if (!state?._isMP || state.gameOver || state.currentTurn !== 0
+    || state.phase !== 'DISCARD_PHASE' || state._turnFlowStage !== TURN_FLOW_STAGE.END_TURN
+    || state._endTurnReplay || state._turnFlowResume || state.drawReveal
+    || Object.keys(state.abilityData || {}).length) return false;
+  const actor = state.players?.[0];
+  if (!actor || actor.isDead) return false;
+  const limit = Math.max(0, (actor._nyaHandLimit ?? 4) - (actor.handLimitDecrease || 0));
+  if (!state._tsgSlimeGrantedAtTurnEnd && (actor.hand?.length || 0) > limit) return false;
+  return getEndTurnEvents(state.players, 0).every(event => event.id === END_TURN_EVENT.TSG_SLIME_GRANT);
+}
 
 /**
  * Pure helper for the shared "hand-limit discard -> end of turn" transition.

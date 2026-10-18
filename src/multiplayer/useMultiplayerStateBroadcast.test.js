@@ -386,3 +386,22 @@ describe('useMultiplayerStateBroadcast helpers', () => {
     expect(socket.emit.mock.calls.map(([event]) => event)).toEqual(['mpStateSync', 'gameEnd']);
   });
 });
+
+describe('private swap reconnect checkpoints', () => {
+  it.each(['SWAP_STEAL_CARD', 'SWAP_GIVE_CARD'])('persists %s while keeping the normal broadcast suppressed', phase => {
+    const {args,socket,renderer}=setupBroadcast();
+    const gs={...args.gs,_mpMatchId:'match-swap',phase,skillUsed:phase==='SWAP_GIVE_CARD',abilityData:{swapTi:1,takenCard:{id:'taken'}}};
+    renderer.render({gs});
+    expect(socket.emit).toHaveBeenCalledWith('mpStateSync',expect.objectContaining({swapCheckpoint:true,matchId:'match-swap',gs}));
+    expect(shouldSuppressNormalStateBroadcast(gs)).toBe(true);
+  });
+  it('does not echo a restored preview or buffer a disconnected preview', () => {
+    const {args,socket,renderer}=setupBroadcast();
+    args.receivedGsRef.current=true;
+    renderer.render({gs:{...args.gs,phase:'SWAP_GIVE_CARD'}});
+    expect(socket.emit).not.toHaveBeenCalled();
+    socket.connected=false;
+    renderer.render({gs:{...args.gs,phase:'SWAP_STEAL_CARD'}});
+    expect(socket.emit).not.toHaveBeenCalled();
+  });
+});

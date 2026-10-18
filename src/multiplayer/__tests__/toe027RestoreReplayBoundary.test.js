@@ -212,3 +212,19 @@ describe('TOE027 real matchRestored dead god owner recovery', () => {
     expect(p.context.receivedGsRef.current).toBe(true);
   });
 });
+
+describe('restore committed simple post-discard boundary',()=>{
+  it('marks only the outgoing human owner for immediate scheduler recovery',()=>{
+    const raw={...roomState(14),phase:'DISCARD_PHASE',currentTurn:0,_turnFlowStage:'endTurn',abilityData:{},drawReveal:null};
+    const owner=client(0);owner.restore(raw);
+    expect(owner.state._mpResumePostDiscardEndTurn).toBe(true);
+    const observer=client(1);observer.restore(raw);
+    expect(observer.state._mpResumePostDiscardEndTurn).toBeUndefined();
+  });
+  it('keeps a genuine discard choice and complex pending decision interactive',()=>{
+    for(const patch of [{_turnFlowStage:'discard',abilityData:{fromEndTurn:true,discardSelected:[0]}},{abilityData:{type:'godChoice'}}]){
+      const raw={...roomState(14),phase:'DISCARD_PHASE',currentTurn:0,_turnFlowStage:'endTurn',abilityData:{},drawReveal:null,...patch};
+      const owner=client(0);owner.restore(raw);expect(owner.state._mpResumePostDiscardEndTurn).toBeUndefined();
+    }
+  });
+});

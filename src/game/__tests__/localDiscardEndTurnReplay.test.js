@@ -7,12 +7,13 @@ import { derotateGs, isLocalCurrentTurn, rotateGsForViewer } from '../rotateStat
 import { buildMpRemoteReplayAction } from '../multiplayerRemoteReplay';
 import { prepareAnimQueueLogs } from '../animLogs';
 import { consumeVisualLogEntries } from '../visualEventLogs';
+import { createTsathogguaSlimeCard } from '../../constants/card';
 import { makeGs, makeStandardPlayers, makeZoneCard } from './factory';
 
 // Normalize checkout line endings before locating whole handler/effect blocks.
 const source = readFileSync(new URL('../../App.jsx', import.meta.url), 'utf8').replace(/\r\n/g, '\n');
 const handlers = [
-  'autoDiscardFromRight', 'kickoffEndTurnSeq', 'stepEndTurnSeq',
+  'autoDiscardFromRight', 'confirmDiscard', 'kickoffEndTurnSeq', 'stepEndTurnSeq',
   'dispatchEndTurnEvent', 'runTsgSlimeGrantEvent', 'advanceEndTurnSeq',
   'finishEndTurnSeq', 'broadcastAnimTransaction', 'broadcastMpStateBeforeLocalReplay',
 ].map(name => {
@@ -25,6 +26,9 @@ const effectStart = source.indexOf('  // 执行自动从右侧弃牌');
 const effectEnd = source.indexOf('\n\n  useEffect', effectStart);
 if (effectStart < 0 || effectEnd < 0) throw new Error('Missing automatic-discard effect boundary');
 const discardEffect = source.slice(effectStart, effectEnd);
+const restoreStart = source.indexOf('  // 重连后续跑已完成弃牌的简单回合结束路径。');
+if (restoreStart < 0) throw new Error('Missing post-discard restore effect');
+const restoreEffect = source.slice(restoreStart, effectStart);
 
 function makeContext(initial) {
   const packets = [];
@@ -60,7 +64,9 @@ function makeContext(initial) {
       });
     },
   };
-  runInNewContext(handlers, context);
+  const limitStart = source.indexOf('function getHandLimitForPlayer(');
+  const limitEnd = source.indexOf('\n}', limitStart) + 2;
+  runInNewContext(source.slice(limitStart, limitEnd) + '\n' + handlers, context);
   return { context, packets, queues, consumed };
 }
 
@@ -120,6 +126,7 @@ describe('multiplayer automatic discard and end-turn replay', () => {
   it.each([
     { currentTurn: 1, phase: 'DISCARD_PHASE' },
     { currentTurn: 0, phase: 'ACTION' },
+    { currentTurn: 0, phase: 'DISCARD_PHASE', _mpEndTurnDiscardResolved: true },
   ])('does not execute an old remote timeout command in %j', state => {
     const autoDiscard = vi.fn();
     runInNewContext(discardEffect, {
@@ -127,5 +134,52 @@ describe('multiplayer automatic discard and end-turn replay', () => {
       setGs: vi.fn(), autoDiscardRef: { current: autoDiscard }, useEffect: callback => callback(),
     });
     expect(autoDiscard).not.toHaveBeenCalled();
+  });
+});
+
+describe('manual discard and already queued timeout ordering',()=>{
+  it.each([false,true])('does not repeat discard/end-turn grant on a second manual callback (actorTsg=%s)',actorTsg=>{
+    const players=makeStandardPlayers(2);
+    players[0].hand=['A1','A2','A3','A4','B2'].map(key=>makeZoneCard(key));
+    if(actorTsg){players[0].godName='TSG';players[0].godLevel=1;}
+    const initial=makeGs({players,_isMP:true,phase:'DISCARD_PHASE',abilityData:{fromEndTurn:true,discardSelected:[4]},deck:[makeZoneCard('C2')]});
+    const {context,packets,queues}=makeContext(initial);
+    context.latestGsRef={current:initial};
+    context.setGs=update=>{context.latestGsRef.current=typeof update==='function'?update(context.latestGsRef.current):update;};
+    context.confirmDiscard();
+    const firstPacketCount=packets.length,firstQueueCount=queues.length;
+    context.confirmDiscard();
+    expect(packets.length).toBe(firstPacketCount);expect(queues.length).toBe(firstQueueCount);
+    expect(context.finalState.currentTurn).toBe(1);
+    expect(context.finalState.players[0].hand).toHaveLength(actorTsg?5:4);
+  });
+});
+
+describe('restore simple post-discard end-turn boundary',()=>{
+  it.each([false,true])('resumes without another discard or duplicate slime (alreadyGranted=%s)',alreadyGranted=>{
+    const players=makeStandardPlayers(2);
+    players[0].hand=['A1','A2','A3','A4'].map(key=>makeZoneCard(key));players[0].godName='TSG';players[0].godLevel=1;
+    if(alreadyGranted)players[0].hand.push(createTsathogguaSlimeCard());
+    const initial=makeGs({players,_isMP:true,phase:'DISCARD_PHASE',_turnFlowStage:'endTurn',abilityData:{},_tsgSlimeGrantedAtTurnEnd:alreadyGranted,
+      _mpResumePostDiscardEndTurn:true,deck:[makeZoneCard('C2')],_visualEvents:[]});
+    expect(game.canResumePostDiscardEndTurn(initial)).toBe(true);
+    const {context}=makeContext(initial);
+    context.isBlocked=false;
+    context.useEffect=callback=>callback();
+    runInNewContext(restoreEffect,context);
+    expect(context.finalState.currentTurn).toBe(1);
+    expect(context.finalState.players[0].hand).toHaveLength(5);
+    expect(context.finalState.discard).toHaveLength(0);
+  });
+  it.each([
+    {phase:'ACTION'}, {_turnFlowStage:'discard'}, {currentTurn:1}, {gameOver:{winner:'追猎者'}},
+    {_endTurnReplay:{}}, {_turnFlowResume:{kind:'endTurnReplay'}}, {abilityData:{type:'godChoice'}},
+  ])('does not auto-resume a decision or uncommitted checkpoint %j',patch=>{
+    const initial=makeGs({_isMP:true,phase:'DISCARD_PHASE',_turnFlowStage:'endTurn',abilityData:{},...patch});
+    expect(game.canResumePostDiscardEndTurn(initial)).toBe(false);
+  });
+  it('keeps CTH and other event sequences on their existing recovery path',()=>{
+    const players=makeStandardPlayers(2);Object.assign(players[0],{godName:'CTH',godLevel:1,isResting:true});
+    expect(game.canResumePostDiscardEndTurn(makeGs({players,_isMP:true,phase:'DISCARD_PHASE',_turnFlowStage:'endTurn',abilityData:{}}))).toBe(false);
   });
 });

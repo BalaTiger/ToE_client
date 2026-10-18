@@ -207,6 +207,22 @@ export function useMultiplayerStateBroadcast({
       return;
     }
 
+    // Save the private swap decision for reconnect/takeover without relaying
+    // its intermediate hands. Peers still receive one completed swap event.
+    if (gs.phase === 'SWAP_STEAL_CARD' || gs.phase === 'SWAP_GIVE_CARD') {
+      if (receivedGsRef.current) {
+        receivedGsRef.current = false;
+        return;
+      }
+      if (latestGsRef.current !== gs || !socketRef.current.connected || !roomId) return;
+      socketRef.current.emit('mpStateSync', {
+        roomId,
+        matchId: gs._mpMatchId,
+        swapCheckpoint: true,
+        gs: derotateGs(gs, myPlayerIndexRef.current),
+      });
+      return;
+    }
     if (shouldSuppressNormalStateBroadcast(gs)) return;
     if (receivedGsRef.current) {
       receivedGsRef.current = false;

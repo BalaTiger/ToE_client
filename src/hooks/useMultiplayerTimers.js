@@ -49,7 +49,15 @@ function useMpSecondTimer({ active, seconds, warningAt, playTickSound, onTimeout
 
 export function getMpTurnTimerOwnerKey(gs) {
   if (!gs) return '';
-  return `${gs._turnKey ?? 'turn'}:${gs.currentTurn ?? 'none'}`;
+  return `${gs._mpMatchId ?? 'match'}:${gs._turnKey ?? 'turn'}:${gs.currentTurn ?? 'none'}`;
+}
+
+function ownsTimeoutState(current, expected) {
+  return !!current && !current.gameOver
+    && current._mpMatchId === expected?._mpMatchId
+    && current._turnKey === expected?._turnKey
+    && current.currentTurn === expected?.currentTurn
+    && current.phase === expected?.phase;
 }
 
 export function getMpTurnTimerMode({
@@ -110,8 +118,11 @@ export function useMpCthDecisionTimer({
     seconds: 15,
     warningAt: 5,
     playTickSound,
-    onTimeout: () => setGs(p => p ? { ...p, _mpAutoCthDecision: true } : p),
-    deps: [isMpCthDecisionPhase, gs?.phase, gs?.drawReveal?.card?.id, gs?.abilityData?.godCard?.id, gs?.gameOver, playTickSound],
+    onTimeout: () => setGs(p => ownsTimeoutState(p, gs)
+      && p.drawReveal?.card?.id === gs.drawReveal?.card?.id
+      && p.abilityData?.godCard?.id === gs.abilityData?.godCard?.id
+      ? { ...p, _mpAutoCthDecision: true } : p),
+    deps: [isMpCthDecisionPhase, gs?._mpMatchId, gs?._turnKey, gs?.currentTurn, gs?.phase, gs?.drawReveal?.card?.id, gs?.abilityData?.godCard?.id, gs?.gameOver, playTickSound],
   });
 }
 
@@ -127,8 +138,9 @@ export function useMpDiscardTimer({
     seconds: 15,
     warningAt: 10,
     playTickSound,
-    onTimeout: () => setGs(p => p ? { ...p, _mpAutoDiscard: true } : p),
-    deps: [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?._mpEndTurnDiscardResolved, gs?.gameOver, playTickSound],
+    onTimeout: () => setGs(p => ownsTimeoutState(p, gs) && !p._mpEndTurnDiscardResolved
+      ? { ...p, _mpAutoDiscard: true } : p),
+    deps: [isMultiplayer, gs?._mpMatchId, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?._mpEndTurnDiscardResolved, gs?.gameOver, playTickSound],
   });
 }
 
@@ -188,7 +200,7 @@ export function useMpTurnTimer({
     mpTurnOwnerRef.current = ownerKey;
     mpTurnStartRef.current = Date.now() - elapsedBefore;
     if (remMs <= 0) {
-      setGs(p => p ? { ...p, _mpEndTurn: true } : p);
+      setGs(p => ownsTimeoutState(p, gs) ? { ...p, _mpEndTurn: true } : p);
       return clearTurnTimer;
     }
     const intervalId = startSecondCountdown({
@@ -198,7 +210,8 @@ export function useMpTurnTimer({
       intervalRef: mpTurnIntervalRef,
       playTickSound,
     });
-    mpTurnTimeoutRef.current = setTimeout(() => setGs(p => p ? { ...p, _mpEndTurn: true } : p), remMs);
+    mpTurnTimeoutRef.current = setTimeout(() => setGs(p => ownsTimeoutState(p, gs)
+      ? { ...p, _mpEndTurn: true } : p), remMs);
     return () => {
       clearTimeout(mpTurnTimeoutRef.current);
       mpTurnTimeoutRef.current = null;
@@ -207,7 +220,7 @@ export function useMpTurnTimer({
       setMpTurnSec(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.gameOver, isMpCthDecisionPhase, isMpDecisionPhase, isTurnTimerSuspended, playTickSound]);
+  }, [isMultiplayer, gs?._mpMatchId, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.gameOver, isMpCthDecisionPhase, isMpDecisionPhase, isTurnTimerSuspended, playTickSound]);
 
   return mpTurnSec;
 }
@@ -262,7 +275,7 @@ export function useMpHuntRevealTimer({
       setMpHuntSec(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.abilityData?.huntTi, gs?.abilityData?.huntPromptId, isLocalHuntTarget, isMultiplayer]);
+  }, [gs?._mpMatchId, gs?.phase, gs?.currentTurn, gs?._turnKey, gs?.abilityData?.huntTi, gs?.abilityData?.huntPromptId, isLocalHuntTarget, isMultiplayer]);
 
   return mpHuntSec;
 }
@@ -303,7 +316,7 @@ export function useMpDecisionTimer({
       setMpDecisionSec(null);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMultiplayer, gs?.phase, gs?.currentTurn, gs?.gameOver, decisionKey, isLocalDecisionActive, playTickSound]);
+  }, [isMultiplayer, gs?._mpMatchId, gs?._turnKey, gs?.phase, gs?.currentTurn, gs?.gameOver, decisionKey, isLocalDecisionActive, playTickSound]);
 
   return mpDecisionSec;
 }

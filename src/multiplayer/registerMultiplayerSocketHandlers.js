@@ -1,4 +1,4 @@
-import { EXPANSION_RANDOM_KEY, initGame, recoverDeadGodChoiceState } from '../game';
+import { EXPANSION_RANDOM_KEY, initGame, recoverDeadGodChoiceState, canResumePostDiscardEndTurn } from '../game';
 import { isLocalSeatIndex, rotateGsForViewer } from '../game/rotateState';
 import { getMultiplayerIdentityStorage } from '../hooks/useMultiplayerLobby';
 import { _getZoomCompensatedRect } from '../utils/dom';
@@ -364,6 +364,10 @@ export function registerMultiplayerSocketHandlers({
         const recovered = recoverDeadGodChoiceState(restoredGs);
         if (recovered !== restoredGs) receivedGsRef.current = false;
         restoredGs = recovered;
+      }
+      if (rawGs.currentTurn === safeIdx && !safePlayers[safeIdx]?.isAI
+        && canResumePostDiscardEndTurn(restoredGs)) {
+        restoredGs = { ...restoredGs, _mpResumePostDiscardEndTurn: true };
       }
       restoreVisibleLog?.(restoredGs.log || [], restoredGs);
       setGs(restoredGs);
