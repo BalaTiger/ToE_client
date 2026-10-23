@@ -24,6 +24,7 @@ export function SelfPlayerPanel({
   phase,
   isBlocked,
   canLocalTargetSelect,
+  isSelfTargetSelectable,
   isMobile,
   isMobileLandscape,
   boardCssPx,
@@ -40,6 +41,7 @@ export function SelfPlayerPanel({
   godHighlightPanelBursts,
   isSelfDeadPanelDimmed,
   isMultiplayer,
+  emojiEnabled = true,
   showEmojiPicker,
   setShowEmojiPicker,
   setEmojiButtonPos,
@@ -48,6 +50,7 @@ export function SelfPlayerPanel({
   sailingActive = false,
   sailingPaused = false,
 }) {
+  const targetSelectable = isSelfTargetSelectable ?? (phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect);
   const isShortDesktop = !isMobile && !isMobileLandscape && middleRowHeight < 150;
   const presentationStyle = {
     opacity: isSelfDeadPanelDimmed ? 0.32 : 1,
@@ -58,7 +61,7 @@ export function SelfPlayerPanel({
     ? '#cc2222'
     : sanHitIndices.includes(0)
     ? '#8840cc'
-    : phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect
+    : targetSelectable
     ? '#a4d7ba'
     : 'var(--toe-line,#3a2510)';
 
@@ -123,8 +126,8 @@ export function SelfPlayerPanel({
       className="toe-battle-panel toe-player-panel toe-closed-panel toe-self-player-panel"
       data-pid={0}
       data-death-panel={0}
-      data-target-selectable={phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect}
-      onClick={phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? () => handleAIClick(0) : undefined}
+      data-target-selectable={targetSelectable}
+      onClick={targetSelectable && !isBlocked ? () => handleAIClick(0) : undefined}
       style={{
         backgroundColor: 'var(--toe-panel-active,#180f07)',
         border: `1.5px solid ${borderColor}`,
@@ -152,10 +155,10 @@ export function SelfPlayerPanel({
         position: 'relative',
         overflow: 'visible',
         opacity: guillotinedPids.has(0) ? 0 : 1,
-        cursor: phase === 'SHU_SELECT_TARGET' && !isBlocked && canLocalTargetSelect ? 'pointer' : 'default',
+        cursor: targetSelectable && !isBlocked ? 'pointer' : 'default',
       }}
     >
-      {phase === 'SHU_SELECT_TARGET' && canLocalTargetSelect && <TargetMarker down />}
+      {targetSelectable && <TargetMarker down />}
       <div className="toe-self-sidebar-skin" aria-hidden="true" style={presentationStyle}>
         <img src={buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-top.webp')} alt="" />
         <div style={{ backgroundImage: `url('${buildPublicUrl('/img/ui/coastal/self-sidebar-neutral-rail.webp')}')` }} />
@@ -293,7 +296,7 @@ export function SelfPlayerPanel({
 
       {isMultiplayer && (
         <div style={{ position: 'absolute', top: 6, right: 6, zIndex: 50 }}>
-          <button className="toe-button" aria-label="发送表情"
+          <button className="toe-button" aria-label="发送表情" disabled={!emojiEnabled} title={!emojiEnabled ? '旁观时不能发送表情' : undefined}
             ref={emojiButtonRef}
             onClick={() => {
               const rect = _getZoomCompensatedRect(emojiButtonRef.current);

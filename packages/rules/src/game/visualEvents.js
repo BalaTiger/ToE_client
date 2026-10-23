@@ -316,6 +316,7 @@ export function buildGodGiftKeepSteps(event) {
 
 export function createDeckReshuffleEvent({
   playerIdx = 0,
+  count = null,
   drawEventId = null,
   msgs = [],
   drawOrder = 0,
@@ -325,6 +326,7 @@ export function createDeckReshuffleEvent({
   if (!normalizedMsgs.length) return null;
   return withVisualEventMeta({
     type: VISUAL_EVENT.DECK_RESHUFFLE,
+    ...(Number.isInteger(count) && count > 0 ? { count } : {}),
     turnStartStage: 'draw',
     turnStartStageOrder: drawOrder * 2,
     drawOrder,
@@ -341,6 +343,7 @@ export function createTurnDrawVisualEvents(draw = {}) {
   const reshuffleEvent = draw.reshuffleLog
     ? createDeckReshuffleEvent({
         playerIdx: drawEvent.playerIdx,
+        count: draw.reshuffleCount,
         drawEventId: drawEvent.id,
         msgs: [draw.reshuffleLog],
         drawOrder: drawEvent.drawOrder,

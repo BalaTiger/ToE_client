@@ -5,6 +5,7 @@ import * as game from '../index';
 import * as animQueueHelpers from '../animQueueHelpers';
 import * as apophisAnimQueue from '../apophisAnimQueue';
 import * as animationTiming from '../animationTiming';
+import { animationDeadlineSchedule } from '../animationDeadline';
 import * as queueMachine from '../animationQueueMachine';
 import { isAiSeat } from '../rotateState';
 import { buildSwapCardsVisualTransaction } from '../identitySkillVisualTransaction';
@@ -160,8 +161,9 @@ describe('single-player shared handlers after multiplayer synchronization', () =
     const pending = { phase: 'AI_TURN', players: [{ name: '旧角色' }] };
     const oldCallback = vi.fn();
     const context = {
-      ...queueMachine, ...animationTiming,
+      ...queueMachine, ...animationTiming, animationDeadlineSchedule,
       isMultiplayer: false, paused: false, guillotineReady: true,
+      playbackDeadlineMs: null, deadlinePulse: 0, performance,
       anim: { type: 'HP_DAMAGE', _playbackId: 17, durationMs: 100, impactAtMs: 50,
         visualTimeline: [{ atMs: 50, patch: { players: pending.players } }] },
       ANIM_STEP_GAP: 0, Date, setTimeout, clearTimeout,
@@ -183,6 +185,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
       setEarthquakeVisualPlayers: vi.fn(), visualStateLocks: { clear: vi.fn() },
       traceAnimationQueue: vi.fn(), advanceQueue: vi.fn(), applyVisualPatch: vi.fn(),
       setDisplayStats: vi.fn(), revealAnimLogs: vi.fn(),
+      applyPresentationCue: vi.fn(),
       sendQueueLifecycleEvent: type => {
         context.queueLifecycleRef.current = queueMachine.transitionAnimationQueue(context.queueLifecycleRef.current, type);
       },
@@ -206,6 +209,7 @@ describe('single-player shared handlers after multiplayer synchronization', () =
     expect(context.applyVisualPatch).not.toHaveBeenCalled();
     expect(context.setDisplayStats).not.toHaveBeenCalled();
     expect(context.revealAnimLogs).not.toHaveBeenCalled();
+    expect(context.applyPresentationCue).not.toHaveBeenCalled();
     expect(oldCallback).not.toHaveBeenCalled();
     context.cleanup();
   });

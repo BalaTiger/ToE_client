@@ -139,6 +139,8 @@ export function createPlayerDefeatedStatEvent({
   settlementOwner = null,
 } = {}) {
   if (target == null) return null;
+  const deathSettlement = playersAfter?.[target]?._deathSettlementReceipt;
+  if (deathSettlement) delete playersAfter[target]._deathSettlementReceipt;
   const beforeSnapshot = clonePlayersForStatPatch(playersBefore);
   const afterSnapshot = clonePlayersForStatPatch(playersAfter);
   const beforePlayer = beforeSnapshot[target];
@@ -165,6 +167,10 @@ export function createPlayerDefeatedStatEvent({
     ...(seq != null ? { seq } : {}),
     ...(phaseOrder != null ? { phaseOrder } : {}),
     ...(settlementOwner ? { settlementOwner } : {}),
+    ...(deathSettlement ? { deathSettlement: {
+      discardedCards: [...(deathSettlement.discardedCards || [])],
+      destroyedCount: deathSettlement.destroyedCount || 0,
+    } } : {}),
     playersBefore: beforeSnapshot,
     committedPlayers,
     playersAfter: afterSnapshot,
@@ -404,11 +410,12 @@ export function primeDisplayStatsForStatQueue(displayStats = [], queue = []) {
     if (step?.type === 'TSG_SLIME_POP' && step.statPresentation) {
       const { target, from } = step.statPresentation;
       if (target != null && from) {
-        next[target] = {
-          ...(next[target] || {}),
-          ...(from.hp != null ? { hp: from.hp } : {}),
-          ...(from.san != null ? { san: from.san } : {}),
-        };
+        for (const field of ['hp', 'san']) {
+          const key = `${target}:${field}`;
+          if (primed.has(key) || from[field] == null) continue;
+          next[target] = { ...(next[target] || {}), [field]: from[field] };
+          primed.add(key);
+        }
       }
       return;
     }

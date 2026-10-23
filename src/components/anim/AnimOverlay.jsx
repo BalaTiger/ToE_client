@@ -58,7 +58,7 @@ const ANIM_RENDERERS = {
   HUNT_REVEAL_CARD: ({ anim, exiting }) => <HuntRevealCardOverlay anim={anim} exiting={exiting} />,
   DISCARD: ({ anim, exiting, expansionKey }) => <DiscardMoveOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   BURY_TO_DECK: ({ anim, exiting, expansionKey }) => <BuryToDeckOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
-  ZHU_HIDE_CARD: ({ anim, exiting }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} />,
+  ZHU_HIDE_CARD: ({ anim, exiting, expansionKey }) => <ZhuHideCardOverlay anim={anim} exiting={exiting} expansionKey={expansionKey} />,
   CAVE_DUEL: ({ anim, exiting }) => <CaveDuelAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_REVERSAL: ({ anim, exiting }) => <GeomagneticReversalAnim anim={anim} exiting={exiting} />,
   GEOMAGNETIC_RESTORE_SHUFFLE: ({ anim, exiting }) => <GeomagneticRestoreShuffleAnim anim={anim} exiting={exiting} />,

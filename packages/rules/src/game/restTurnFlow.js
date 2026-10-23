@@ -4,6 +4,7 @@ import { getEndTurnEvents } from './endTurnEvents.js';
 import { checkWin } from './turnEngine.js';
 import { TURN_FLOW_STAGE } from './turnFlowStages.js';
 import { enterTurnBoundary, transitionTurnFlowStage } from './turnFlowManager.js';
+import { createCardEffectEvent } from './visualEvents.js';
 
 /**
  * Pure resolver for the rest action and its end-of-turn transition.
@@ -45,6 +46,11 @@ export function resolveRestTurnEnd(gs, {
   const restStatPatch = recovery.statEvents.length
     ? { _statEvents: restMeta._statEvents, _statEventSeq: restMeta._statEventSeq }
     : {};
+  if (gs._intentEngine) restStatPatch._visualEvents = [...(restMeta._visualEvents || gs._visualEvents || []), {
+    ...createCardEffectEvent({ effectKey: 'playerRestChanged', actorIdx: actorIndex,
+      payload: { isResting: P[actorIndex].isResting } }),
+    presentationStatBoundarySeq: restMeta._statEventSeq || gs._statEventSeq || 0,
+  }];
 
   const win = checkWin(P, gs._isMP);
   if (win) {

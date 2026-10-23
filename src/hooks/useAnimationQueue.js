@@ -4,6 +4,7 @@ import { markConsumedVisualEvents } from '../game/visualEvents';
 import { consumeVisualLogEntries } from '../game/visualEventLogs';
 import { attachApophisNightTimeline } from '../game/apophisAnimQueue';
 import { attachIncomePresentation } from '../game/incomePresentation';
+import { animationDeadlineSchedule } from '../game/animationDeadline';
 import { assertPreparedAnimationTransaction } from '../game/animationTransaction';
 import {
   applyStatAnimationImpact,
@@ -93,10 +94,12 @@ export function useAnimationQueue({
   ANIM_DURATION,
   ANIM_SPEED_SCALE,
   paused = false,
+  playbackDeadlineMs = null,
 }) {
   const [anim, setAnim] = useState(null);
   const [animExiting, setAnimExiting] = useState(false);
   const [readyGuillotineId, setReadyGuillotineId] = useState(null);
+  const [deadlinePulse, setDeadlinePulse] = useState(0);
   const guillotineReady = anim?.type !== 'GUILLOTINE' || !anim.hitIndices?.length
     || readyGuillotineId === (anim._playbackId || anim);
   const markGuillotineReady = useCallback(step => {
@@ -234,7 +237,18 @@ export function useAnimationQueue({
     return result;
   }
 
-  function advanceQueue() {
+  function applyPresentationCue(step, cue) {
+    if (cue.kind === 'visual') applyVisualPatch(cue.patch);
+    else if (cue.kind === 'impact') {
+      if (setDisplayStats) setDisplayStats(prev => applyStatAnimationImpact(prev, step));
+      revealAnimLogs(step, true);
+    } else if (cue.kind === 'exit') {
+      sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_EXITED);
+      setAnimExiting(true);
+    }
+  }
+
+  function advanceQueue({ fastForward = false } = {}) {
     traceAnimationQueue('advance:enter', {
       activeAnim: anim?.type || null,
       activePlaybackId: anim?._playbackId || null,
@@ -264,7 +278,7 @@ export function useAnimationQueue({
           setVisualDiscard([...(next.discard || [])]);
         }
         setGs(prev => applyStatePatch(prev, next));
-        advanceQueue();
+        advanceQueue({ fastForward });
       } else if (next.type === 'VISUAL_LOCK') {
         visualStateLocks.lock({
           players: next.players,
@@ -272,7 +286,7 @@ export function useAnimationQueue({
           hiddenZhuCardId: next.hiddenZhuCardId,
           turnHighlight: next.turnHighlight,
         });
-        advanceQueue();
+        advanceQueue({ fastForward });
       } else if (next.type === 'CTH_CONTINUE') {
         sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.COMMIT_STARTED);
         setAnim(null);
@@ -296,6 +310,15 @@ export function useAnimationQueue({
           ? { ...next, local: true }
           : next;
         sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_ADVANCED);
+        if (fastForward) {
+          // Preserve every remaining visual/stat/log commit without one timer
+          // per step: background-tab throttling must not prolong catch-up.
+          revealAnimLogs(displayStep);
+          buildAnimationPlaybackCues(displayStep, ANIM_STEP_GAP)
+            .filter(cue => cue.kind !== 'advance').forEach(cue => applyPresentationCue(displayStep, cue));
+          advanceQueue({ fastForward: true });
+          return;
+        }
         setAnim(displayStep);
         revealAnimLogs(displayStep);
       }
@@ -430,9 +453,17 @@ export function useAnimationQueue({
       playbackRef.current = { id: playbackId, elapsedMs: 0, runningSinceMs: null, firedCueIds: new Set() };
     }
     const playback = playbackRef.current;
-    if (paused || !guillotineReady) {
+    const deadlineRemaining = Number.isFinite(playbackDeadlineMs)
+      ? Math.max(0, playbackDeadlineMs - performance.now()) : null;
+    if (paused || !guillotineReady && deadlineRemaining !== 0) {
       sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.PAUSED);
-      return;
+      // A slow cosmetic readiness signal cannot consume the player's decision
+      // time after the server's immutable presentation cap.
+      if (!paused && deadlineRemaining != null) {
+        const timer = setTimeout(() => setDeadlinePulse(value => value + 1), deadlineRemaining);
+        return () => clearTimeout(timer);
+      }
+      return undefined;
     }
     sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.RESUMED);
     playback.runningSinceMs = Date.now();
@@ -460,14 +491,8 @@ export function useAnimationQueue({
         return;
       }
       active.firedCueIds.add(cue.id);
-      if (cue.kind === 'visual') applyVisualPatch(cue.patch);
-      else if (cue.kind === 'impact') {
-        if (setDisplayStats) setDisplayStats(prev => applyStatAnimationImpact(prev, anim));
-        revealAnimLogs(anim, true);
-      } else if (cue.kind === 'exit') {
-        sendQueueLifecycleEvent(ANIMATION_QUEUE_EVENT.STEP_EXITED);
-        setAnimExiting(true);
-      } else if (cue.kind === 'advance') {
+      if (cue.kind !== 'advance') applyPresentationCue(anim, cue);
+      else if (cue.kind === 'advance') {
         traceAnimationQueue('cue:advance', {
           animType: anim?.type || null,
           playbackId: anim?._playbackId || null,
@@ -477,7 +502,7 @@ export function useAnimationQueue({
           lifecycle: queueLifecycleRef.current.phase,
         });
         try {
-          advanceQueue();
+          advanceQueue({ fastForward: Number.isFinite(playbackDeadlineMs) && performance.now() >= playbackDeadlineMs });
         } catch (error) {
           traceAnimationQueue('cue:advance-error', {
             animType: anim?.type || null,
@@ -496,6 +521,9 @@ export function useAnimationQueue({
       playback.elapsedMs,
       playback.firedCueIds,
     );
+    const schedule = animationDeadlineSchedule(cues, animQueueRef.current, {
+      deadlineMs: playbackDeadlineMs, nowMs: performance.now(), stepGapMs: ANIM_STEP_GAP,
+    });
     traceAnimationQueue('playback:start', {
       animType: anim.type,
       playbackId: playbackId,
@@ -508,13 +536,17 @@ export function useAnimationQueue({
       lifecycle: queueLifecycleRef.current.phase,
     });
     cues.forEach(cue => {
-      timers.push(setTimeout(() => fireCue(cue), cue.delayMs));
+      // Keep the original cue order and commit boundary even when catching up.
+      // In particular this never restores final HP/SAN before their impact.
+      if (schedule.remainingMs === 0) fireCue(cue);
+      else timers.push(setTimeout(() => fireCue(cue), cue.delayMs / schedule.rate));
     });
     return () => {
       timers.forEach(clearTimeout);
       const active = playbackRef.current;
       if (active.id === playbackId && Number.isFinite(active.runningSinceMs)) {
-        active.elapsedMs = advanceAnimationElapsed(active.elapsedMs, active.runningSinceMs, Date.now());
+        const elapsed = advanceAnimationElapsed(0, active.runningSinceMs, Date.now());
+        active.elapsedMs += elapsed * (Number.isFinite(schedule.rate) ? schedule.rate : 1);
         traceAnimationQueue('playback:cleanup', {
           animType: anim?.type || null,
           playbackId,
@@ -528,7 +560,7 @@ export function useAnimationQueue({
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [anim, paused, guillotineReady]);
+  }, [anim, paused, guillotineReady, playbackDeadlineMs, deadlinePulse]);
 
   function playAnimationTransaction(transaction) {
     assertPreparedAnimationTransaction(transaction);

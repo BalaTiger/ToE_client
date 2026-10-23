@@ -1,6 +1,11 @@
 import { CARD_FLIGHT_POSE } from './cardSizing';
 
 export const EARTHQUAKE_ANIMATION_STYLES = `
+  @keyframes authorityCardDissolve {
+    0% {opacity:1; transform:translate(0,0) ${CARD_FLIGHT_POSE.from}; filter:brightness(1) blur(0)}
+    38% {opacity:0.95; transform:translate(0,0) ${CARD_FLIGHT_POSE.from}; filter:brightness(1.8) blur(0)}
+    100% {opacity:0; transform:translate(0,0) ${CARD_FLIGHT_POSE.from}; filter:brightness(0.35) blur(12px)}
+  }
   @keyframes earthquakeBlackout {
     0%, 2%, 6%, 10%, 39%, 45%, 100% {opacity:0}
     4%, 8% {opacity:0.86; background:#000}

@@ -71,6 +71,7 @@ export function GodChoiceActions({
   allowDiscard = true,
   keepButtonRef = null,
   decisionError = null,
+  legalChoices,
 }) {
   if (!godCard) return null;
   const def = GOD_DEFS[godCard.godKey];
@@ -90,10 +91,10 @@ export function GodChoiceActions({
         <>
           <div className="toe-reveal-decision-buttons" role="group" aria-label="邪神牌决策">
             <RevealChoiceButton kind="cult" disabled={!allowWorship} onClick={onWorship}>{worshipLabel}</RevealChoiceButton>
-            {!alreadyWorship && !forcedConvert && player.role === ROLE_CULTIST && allowKeepHand && (
+            {(legalChoices ? legalChoices.includes('keepHand') : !alreadyWorship && !forcedConvert && player.role === ROLE_CULTIST && allowKeepHand) && (
               <RevealChoiceButton kind="confirm" tone="rest" onClick={onKeepHand} buttonRef={keepButtonRef}>收入手牌</RevealChoiceButton>
             )}
-            {!forcedConvert && (
+            {(legalChoices ? legalChoices.includes('discard') : !forcedConvert) && (
               <RevealChoiceButton kind="cancel" tone="end" disabled={!allowDiscard} onClick={onDiscard}>放弃</RevealChoiceButton>
             )}
           </div>

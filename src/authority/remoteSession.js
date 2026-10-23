@@ -1,3 +1,5 @@
+import { presentationReadyPayload } from './presentationClock.js';
+
 const freeze = value => {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     Object.values(value).forEach(freeze); Object.freeze(value);
@@ -6,8 +8,10 @@ const freeze = value => {
 };
 export class RemoteSession {
   #view = null; #listeners = new Set(); #pending = new Map(); #sequence = 0;
-  constructor(socket, matchId, { onError = () => {}, sessionId = crypto.randomUUID() } = {}) {
+  #presentationReceipt = null;
+  constructor(socket, matchId, { onError = () => {}, sessionId = crypto.randomUUID(), freshStart = false } = {}) {
     this.socket = socket; this.matchId = matchId; this.onError = onError; this.sessionId = sessionId;
+    this.freshStart = freshStart === true;
     this.onView = view => this.accept(view);
     socket.on('view', this.onView);
     this.onConnect = () => { this.resume().catch(onError); };
@@ -53,5 +57,19 @@ export class RemoteSession {
     catch (error) { if (!error.uncertain) this.#pending.delete(actionId); throw error; }
   }
   async abandon() { return this.#request('abandon', { matchId: this.matchId }); }
+  async presentationReady(view = this.#view) {
+    const payload = presentationReadyPayload(view);
+    if (!payload || view !== this.#view) return null;
+    if (!this.socket.connected) throw new Error('not_connected');
+    const key = `${payload.batchId}:${payload.revision}:${payload.decisionId}`;
+    if (this.#presentationReceipt?.key === key) return this.#presentationReceipt.promise;
+    const promise = this.#request('presentationReady', payload);
+    this.#presentationReceipt = { key, promise };
+    try { return await promise; }
+    catch (error) {
+      if (this.#presentationReceipt?.promise === promise) this.#presentationReceipt = null;
+      throw error;
+    }
+  }
   dispose() { this.socket.off('view', this.onView); this.socket.off('connect', this.onConnect); this.#listeners.clear(); }
 }

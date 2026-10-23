@@ -25,14 +25,32 @@ const smallBtnStyle = {
 };
 
 // ── Room Modal ────────────────────────────────────────────────
-function RoomModal({ roomModal, playerUUID, cdType, cdSecondsLeft, onClose, onTogglePrivacy, onSetReady, onCopyRoomId }) {
+function RoomCountdown({ countdown, playerUUID, players }) {
+  const [receivedAt] = useState(() => performance.now());
+  const [elapsedMs, setElapsedMs] = useState(0);
+  useEffect(() => {
+    const timer = setInterval(() => setElapsedMs(performance.now() - receivedAt), 250);
+    return () => clearInterval(timer);
+  }, [receivedAt]);
+  // Use the server's remaining duration, not the browser's wall clock. Reaching
+  // zero only changes this label; the server alone starts games/removes seats.
+  const seconds = Math.max(0, Math.ceil((countdown.deadline - countdown.serverNow - elapsedMs) / 1000));
+  const target = players.find(player => player.uuid === String(countdown.targetSeat));
+  const targetName = target?.uuid === playerUUID ? '你' : target?.username || '未准备玩家';
+  const message = seconds > 0
+    ? countdown.type === 'start' ? `全员准备！${seconds}s 后开始游戏…` : `${targetName}尚未准备，${seconds}s 后将被移出房间`
+    : countdown.type === 'start' ? '正在等待服务器开始对局…' : '正在等待服务器更新房间…';
+  return <div role="status" style={{ textAlign: 'center', padding: '10px 12px', color: countdown.type === 'start' ? '#92b579' : '#d18d6e', fontSize: 13 }}>{message}</div>;
+}
+
+function RoomModal({ roomModal, playerUUID, cdType, cdSecondsLeft, onClose, onTogglePrivacy, onSetReady, onCopyRoomId, onStart, canStart = false, busy = false, waiting = true }) {
   if (!roomModal) return null;
   const myPlayerRec = roomModal.players.find(p => p.uuid === playerUUID);
   const myReady = myPlayerRec?.ready || false;
   return (
     <div className="toe-dialog-backdrop" style={{ position: 'fixed', inset: 0, zIndex: 1500, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <div className="toe-dialog" data-ui-dialog="room" role="dialog" aria-label="联机房间" onClick={e => e.stopPropagation()} style={{ padding: '32px clamp(20px, 4vw, 36px)', maxWidth: 560, width: '92%', maxHeight: '92dvh', overflowY: 'auto', position: 'relative' }}>
-        <button className="toe-dialog-close" type="button" aria-label="关闭房间" onClick={onClose} style={{ position: 'absolute', top: 12, right: 14 }}>✕</button>
+        <button className="toe-dialog-close" type="button" aria-label="关闭房间" disabled={busy} onClick={onClose} style={{ position: 'absolute', top: 12, right: 14 }}>✕</button>
         <div className="toe-dialog-header" style={{ textAlign: 'center', marginBottom: 24 }}>
           <div className="toe-title" style={{ fontSize: 28, letterSpacing: 4, marginBottom: 10 }}>等待旅者</div>
           <div className="toe-subtitle" style={{ fontSize: 13 }}>分享房间号，等待其他旅者加入并准备。</div>
@@ -45,8 +63,8 @@ function RoomModal({ roomModal, playerUUID, cdType, cdSecondsLeft, onClose, onTo
           </div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 14, flexWrap: 'wrap' }}>
             <span className="toe-subtitle" style={{ fontSize: 12 }}>房间人数：{roomModal.count || roomModal.players.length}/{roomModal.max || 12}</span>
-            {roomModal.owner === playerUUID ? (
-              <button className="toe-button" type="button" aria-pressed={!roomModal.isPrivate} onClick={() => onTogglePrivacy(!roomModal.isPrivate)} title={roomModal.isPrivate ? '切换为公开' : '切换为私密'} style={{ padding: '5px 12px', fontSize: 12 }}>
+            {roomModal.owner === playerUUID && onTogglePrivacy ? (
+              <button className="toe-button" type="button" disabled={busy || !waiting} aria-pressed={!roomModal.isPrivate} onClick={() => onTogglePrivacy(!roomModal.isPrivate)} title={roomModal.isPrivate ? '切换为公开' : '切换为私密'} style={{ padding: '5px 12px', fontSize: 12 }}>
                 {roomModal.isPrivate ? '私密房间' : '公开房间'} · 切换
               </button>
             ) : <span className="toe-subtitle" style={{ fontSize: 12 }}>{roomModal.isPrivate ? '私密房间' : '公开房间'}</span>}
@@ -64,11 +82,17 @@ function RoomModal({ roomModal, playerUUID, cdType, cdSecondsLeft, onClose, onTo
             </div>
           ))}
         </div>
+        {roomModal.botCount > 0 && <p className="toe-subtitle" role="status">另有 {roomModal.botCount} 位 AI 将加入对局</p>}
+        {!waiting && <p className="toe-subtitle" role="status">等待其他玩家完成结算并返回房间</p>}
         <div style={{ display: 'flex', gap: 14, marginBottom: 14 }}>
-          <button className="toe-button toe-button-danger" type="button" onClick={onClose} style={{ flex: 1, padding: '12px', fontSize: 16 }}>离开房间</button>
-          <button className="toe-button toe-button-primary" type="button" aria-pressed={myReady} onClick={() => onSetReady(!myReady)} style={{ flex: 1, padding: '12px', fontSize: 16 }}>{myReady ? '取消准备' : '准备'}</button>
+          <button className="toe-button toe-button-danger" type="button" disabled={busy} onClick={onClose} style={{ flex: 1, padding: '12px', fontSize: 16 }}>离开房间</button>
+          <button className="toe-button toe-button-primary" type="button" disabled={busy || !waiting || !myPlayerRec} aria-pressed={myReady} onClick={() => onSetReady(!myReady)} style={{ flex: 1, padding: '12px', fontSize: 16 }}>{myReady ? '取消准备' : '准备'}</button>
         </div>
-        {cdType && cdSecondsLeft !== null && cdSecondsLeft > 0 && (
+        {onStart && roomModal.owner === playerUUID && <button className="toe-button toe-button-primary" type="button" disabled={busy || !canStart || !waiting} onClick={onStart} style={{ width: '100%', padding: '12px', marginBottom: 14 }}>开始对局</button>}
+        {waiting && roomModal.countdown && <RoomCountdown
+          key={`${roomModal.roomId}:${roomModal.countdown.version}:${roomModal.countdown.serverNow}`}
+          countdown={roomModal.countdown} players={roomModal.players} playerUUID={playerUUID} />}
+        {!roomModal.countdown && cdType && cdSecondsLeft !== null && cdSecondsLeft > 0 && (
           <div role="status" style={{ textAlign: 'center', padding: '10px 12px', color: cdType === 'start' ? '#92b579' : '#d18d6e', fontSize: 13 }}>
             {cdType === 'start' ? '全员准备！' + cdSecondsLeft + 's 后开始游戏…' : cdSecondsLeft + 's 后将踢出未准备的玩家'}
           </div>
@@ -171,7 +195,7 @@ function PrivacyToggleModal({ show, dontShowAgain, onChangeDontShow, onConfirm, 
 }
 
 // ── Tutorial Overlay ──────────────────────────────────────────
-function TutorialOverlay({ show, step, onComplete, onStart }) {
+function TutorialOverlay({ show, step, onComplete, onStart, onResume }) {
   if (!show) return null;
   return (
     <div className="toe-dialog-backdrop" style={{ position: 'fixed', inset: 0,  zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -212,6 +236,7 @@ function TutorialOverlay({ show, step, onComplete, onStart }) {
             >
               ✦ 告诉我如何探索
             </button>
+            {onResume && <button className="toe-button" type="button" onClick={onResume} style={{ padding: '10px 24px' }}>继续上次教学</button>}
           </div>
         </div>
       )}

@@ -3,7 +3,7 @@ import { GOD_DEFS } from '../../constants/card';
 import { isBlackGoatYoung, isTsathogguaSlime } from '../../game';
 import { getRestActionBlockReason } from '../../game/interactionAvailability';
 import { TUTORIAL_FLOW } from '../../game/tutorialScenario';
-import { DDCard, GodTooltip } from '../cards';
+import { DDCard, DDCardBack, GodTooltip } from '../cards';
 import { buildPublicUrl } from '../../utils/url';
 import { ActionIcon } from './ActionIcon';
 import './coastal-hand.css';
@@ -78,6 +78,7 @@ export function HandArea({
   confirmBuryAliveSelection,
   confirmIgniteTorchDiscard,
   setGs,
+  authorityControls,
   anim,
 }) {
   const skillIcon = skillRi?.icon || ri?.icon;
@@ -183,16 +184,16 @@ export function HandArea({
                 const skillRole = gs.globalOnlySwapOwner != null ? '寻宝者' : me.role;
                 const isHunter = skillRole === '追猎者';
                 const skillDisabled = !!me.disableSkill;
-                const restBlockReason = getRestActionBlockReason({ phase, isBlocked, gs, player: me });
+                const restBlockReason = authorityControls ? (authorityControls.rest ? null : 'unavailable') : getRestActionBlockReason({ phase, isBlocked, gs, player: me });
                 const restLimited = !!restBlockReason;
-                const skillRestLimited =
+                const skillRestLimited = authorityControls ? !authorityControls.skill :
                   skillDisabled || (isHunter ? gs.restUsed || gs.multiplyUsed : skillLimited || gs.restUsed || gs.skillUsed || gs.multiplyUsed);
                 const isSwapSkill = effectiveSkillName === '掉包';
                 // Rest consumes both flags; restUsed identifies the action that actually ran.
                 const swapUnavailableByRest = isSwapSkill && gs.restUsed && !skillDisabled && !isBlocked && myTurn && !gs.multiplyUsed;
                 const restUnavailableBySwap = isSwapSkill && restBlockReason === 'skillUsed' && !me.disableRest && myTurn && !gs.multiplyUsed;
                 const hasBgy = me.hand.some(isBlackGoatYoung);
-                const multiplyLimited = gs.skillUsed || gs.restUsed || gs.multiplyUsed;
+                const multiplyLimited = authorityControls ? !authorityControls.multiply : gs.skillUsed || gs.restUsed || gs.multiplyUsed;
                 const showTutorialSkillButton = !isScriptedTutorial || isTutorialActionAllowed({ type: 'useSkill' });
                 const showTutorialRestButton = !isScriptedTutorial;
                 const showTutorialMultiplyButton = !isScriptedTutorial;
@@ -231,7 +232,7 @@ export function HandArea({
                       )}
                       {hasBgy && showTutorialMultiplyButton && (
                         <button className="toe-button toe-turn-plaque toe-turn-multiply"
-                          onClick={() => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
+                          onClick={authorityControls ? authorityControls.onMultiply : () => setGs({ ...gs, phase: 'MULTIPLY_SELECT_TARGET', abilityData: { ...gs.abilityData } })}
                           disabled={multiplyLimited}
                         >
                           <ActionIcon kind="multiply" />
@@ -265,10 +266,15 @@ export function HandArea({
           </div>
         )}
         <div className="toe-turn-actions toe-phase-actions" role="group" aria-label="阶段确认">
+        {authorityControls?.publicConfirm && <button className="toe-button toe-turn-plaque toe-turn-end toe-phase-plaque"
+          disabled={authorityControls.publicConfirm.selected !== authorityControls.publicConfirm.count}
+          onClick={authorityControls.publicConfirm.onConfirm}>
+          <ActionIcon kind="confirm" /><span className="toe-turn-label">确认战利品 ({authorityControls.publicConfirm.selected}/{authorityControls.publicConfirm.count})</span>
+        </button>}
         {phase === 'DISCARD_PHASE' && !isDiscardPhaseResolving && isLocalCurrentTurn(gs) && !isBlocked && (
           <button className="toe-button toe-turn-plaque toe-turn-end toe-phase-plaque"
             onClick={confirmDiscard}
-            disabled={!(gs.abilityData.discardSelected || []).length}
+            disabled={authorityControls ? !authorityControls.canConfirmDiscard : !(gs.abilityData.discardSelected || []).length}
           >
             <ActionIcon kind="confirm" /><span className="toe-turn-label">确认弃牌{(gs.abilityData.discardSelected || []).length > 0 ? ` (${(gs.abilityData.discardSelected || []).length})` : ''}</span>
           </button>
@@ -354,7 +360,7 @@ export function HandArea({
                 zIndex: isSel ? 30 : undefined,
               }}
             >
-              <DDCard
+              {c._back ? <DDCardBack expansionKey={gs.expansionKey} frameStyle={{ width: cardWidth }} /> : <DDCard
                 card={c}
                 onClick={clickable ? () => handleMyCardClick(i) : undefined}
                 disabled={visuallyDisabled}
@@ -367,7 +373,7 @@ export function HandArea({
                 hoverPreview={false}
                 hideCssFrame={isBlackGoatYoung(c) || isTsathogguaSlime(c)}
                 frameStyle={isMobile || isMobileLandscape ? { zoom: mobileCardScale } : { width: cardWidth }}
-              />
+              />}
               {canUpgradeNow && (
                 <div
                   data-hand-card-hint

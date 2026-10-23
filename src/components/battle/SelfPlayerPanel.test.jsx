@@ -5,6 +5,19 @@ import { SelfPlayerPanel } from './SelfPlayerPanel';
 import { RINFO } from '../../game/setup';
 
 describe('SelfPlayerPanel presentation player', () => {
+  it('explains why an observer cannot send emoji without exposing protocol details', () => {
+    vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
+    const markup = renderToStaticMarkup(<SelfPlayerPanel
+      player={{ role: '寻宝者', hp: 10, san: 10, zoneCards: [] }} displayStats={[{ hp: 10, san: 10 }]}
+      ri={RINFO['寻宝者']} phase="ACTION" isMultiplayer emojiEnabled={false}
+      boardCssPx={value => value} middleRowHeight={180} fontSizes={{ tiny: 9, small: 10, body: 12 }}
+      boardScaleRatio={1} vw={1280} expansionKey="群星呼唤" hitIndices={[]} sanHitIndices={[]}
+      hpHealIndices={[]} sanHealIndices={[]} guillotinedPids={new Set()} godHighlightPanelBursts={{}} />);
+    const emojiButton = markup.match(/<button[^>]*aria-label="发送表情"[^>]*>/)?.[0];
+    expect(emojiButton?.includes('disabled=""')).toBe(true);
+    expect(emojiButton?.includes('title="旁观时不能发送表情"')).toBe(true);
+    expect(markup.includes('协议尚不支持')).toBe(false);
+  });
   it.each(Object.entries(RINFO).flatMap(([role, ri]) => [113, 180].map(height => [role, ri, height])))('keeps %s goal help and presentation stats (%j, %ipx)', (role, ri, middleRowHeight) => {
     vi.stubGlobal('window', { __PUBLIC_BASE__: '/' });
     const player = {

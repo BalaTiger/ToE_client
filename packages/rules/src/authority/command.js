@@ -43,6 +43,7 @@ export function resolveCommand(match, principal, command, { now, actions, random
     return { match, acknowledgement: { ...receipt.acknowledgement, duplicate: true } };
   }
   if (!Number.isFinite(now)) fail('invalid_host');
+  if (source !== 'offline' && now < (match.decision.notBefore ?? -Infinity)) fail('presentation_pending');
   if (houndsRunning(match.state) && remainingHounds(match, now) === 0) fail('host_clock_due');
   if (match.state.gameOver) fail('match_finished');
   if (source !== 'offline' && (source === 'timeout' ? now < match.decision.deadline : now >= match.decision.deadline)) {
@@ -64,6 +65,7 @@ export function resolveCommand(match, principal, command, { now, actions, random
   if (!next || typeof next !== 'object' || next.then) fail('invalid_rule_result');
   draft.state = next;
   draft.revision += 1;
+  delete draft.openingPlayers;
   draft.turnClock = updateTurnClock(match, next, now);
   draft.houndsClock = updateHoundsClock(match, next, now, draft.revision);
   const sameWindow = action.concurrent && action.windowKey
@@ -73,7 +75,7 @@ export function resolveCommand(match, principal, command, { now, actions, random
   draft.grants = draft.grants.filter(grant => grant.decisionId === draft.decision.id);
   for (const grant of next._pendingReadGrants || []) draft.grants.push({ ...grant, decisionId: draft.decision.id });
   delete next._pendingReadGrants;
-  const newEvents = [...collectPublicRuleEvents(match.state, next), ...(next._pendingPublicEvents || [])];
+  const newEvents = collectPublicRuleEvents(match.state, next);
   draft.publicEvents = [...draft.publicEvents, ...newEvents.map((event, index) => ({
     ...event, visibility: 'public', id: `${match.id}:event:${draft.revision}:${index}`,
   }))].slice(-256);

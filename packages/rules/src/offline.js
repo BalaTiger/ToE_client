@@ -5,14 +5,21 @@ import { chooseAiIntent } from './authority/policies.js';
 import { projectMatch } from './authority/view.js';
 import { executeRuleResolution } from './execution.js';
 import { advanceRuleTime } from './authority/time.js';
+import { collectInitialPublicRuleEvents, compactAuthorityState } from './authority/events.js';
 
 export const OFFLINE_SAVE_KEY = 'toe.offline.v2';
 const SAVE_SCHEMA = 'toe.offline-save/v2';
 
-export function createOfflineRecord({ id, seed, now, expansionKey, roleCounts }) {
+export function createOfflineRecord({ id, seed, now, expansionKey, selectedRole, roleCounts }) {
   if (typeof id !== 'string' || !id.startsWith('offline:')) throw new TypeError('Expected an offline session identity');
-  const { state, random } = initializeRules({ mode: 'offline', seed, now, namespace: `${id}:0`, expansionKey, roleCounts });
-  return { ...createPrivateMatch({ id, state, seed, now }), random, origin: 'offline' };
+  const { state, random } = initializeRules({ mode: 'offline', seed, now, namespace: `${id}:0`, expansionKey, selectedRole, roleCounts });
+  const initialEvents = collectInitialPublicRuleEvents(state);
+  const record = createPrivateMatch({ id, state, seed, now });
+  record.publicEvents = initialEvents.map((event, index) => ({ ...event,
+    visibility: 'public', id: `${id}:event:0:${index}` })).slice(-256);
+  record.openingPlayers = structuredClone(state._playersBeforeThisDraw || state._preTurnPlayers || state.players);
+  record.state = compactAuthorityState(state);
+  return { ...record, random, origin: 'offline' };
 }
 function assertOffline(record) {
   if (record?.schema !== 'toe.private-match/v2' || record.origin !== 'offline'

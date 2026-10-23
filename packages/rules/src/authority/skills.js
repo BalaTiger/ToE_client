@@ -3,6 +3,7 @@ import { copyPlayers, isWinHand, hasHuntRevealableCard } from '../game/coreUtils
 import { resolveApophisTarget } from '../game/apophisNight.js';
 import { deriveEffectDecisionState } from '../game/effectStatePatch.js';
 import { checkWin } from '../game/victory.js';
+import { appendCommittedPublicEvent } from './incomeEvents.js';
 const skillRole = (state, seat) => state.globalOnlySwapOwner != null ? '寻宝者'
   : state.players[seat]._nyaBorrow || state.players[seat].role;
 const own = (state, seat) => state.currentTurn === seat;
@@ -21,6 +22,8 @@ export function finishAuthoritySkillTarget(state) {
     const players = copyPlayers(state.players);
     if (state.globalOnlySwapOwner == null) players[pending.source].roleRevealed = true;
     return { ...next, players, phase: players[pending.target].revealHand ? 'SWAP_SELECT_TARGET_CARD' : 'SWAP_STEAL_CARD',
+      _pendingPublicEvents: [...(next._pendingPublicEvents || []),
+        { type: 'skillStarted', kind: 'swap', sourceSeat: pending.source, targetSeat: pending.target }],
       abilityData: { ...state.abilityData, swapTi: pending.target } };
   }
   throw new Error(`Unmigrated skill target: ${pending.kind}`);
@@ -42,8 +45,12 @@ function take(state, index) {
   const source = state.currentTurn, target = state.abilityData.swapTi, players = copyPlayers(state.players);
   const baselineHands = players.map(player => [...player.hand]);
   const [card] = players[target].hand.splice(index, 1); players[source].hand.push(card);
-  return { ...state, players, phase: 'SWAP_GIVE_CARD', skillUsed: true,
-    _privateSwap: { source, target, takenId: card.id, baselineHands } };
+    return appendCommittedPublicEvent({ ...state, players, phase: 'SWAP_GIVE_CARD', skillUsed: true,
+      _privateSwap: { source, target, takenId: card.id, baselineHands } }, {
+      type: 'swapTakeCommitted', sourceSeat: source, targetSeat: target, card,
+      sourceCount: players[source].hand.length, targetCount: players[target].hand.length,
+      blind: !state.players[target].revealHand,
+    });
 }
 export const skillActions = {
   'skill.begin': { phases: ['ACTION'], payloadKeys: [], authorize: canBegin, available: canBegin,
@@ -82,14 +89,18 @@ export const skillActions = {
       && payload.cardIndex < state.players[seat].hand.length && !state.players[state.abilityData.swapTi].isDead,
     apply: (state, seat, payload) => {
       const players = copyPlayers(state.players), target = state.abilityData.swapTi;
+      const takenCard = players[seat].hand.find(card => card.id === state._privateSwap.takenId);
       const [card] = players[seat].hand.splice(payload.cardIndex, 1); players[target].hand.push(card);
       const winners = [seat, target].filter(index => (players[index]._nyaBorrow || players[index].role) === '寻宝者' && isWinHand(players[index].hand)).sort((a, b) => a - b);
       const win = winners.length ? { winner: '寻宝者', winnerIdx: winners[0], ...(winners.length > 1 ? { winnerIdx2: winners[1] } : {}),
         reason: `${winners.map(index => players[index].name).join('、')} 通过掉包集齐了全部编号` } : checkWin(players, state._isMP);
       winners.forEach(index => { players[index].roleRevealed = true; });
       return { ...state, players, phase: 'ACTION', abilityData: {}, skillUsed: true, _privateSwap: null,
-        _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'cardsMoved', fromSeat: seat, toSeat: target, count: 1 },
-          { type: 'cardsMoved', fromSeat: target, toSeat: seat, count: 1 }],
+        _pendingPublicEvents: [...(state._pendingPublicEvents || []),
+          { type: 'swapCommitted', sourceSeat: seat, targetSeat: target, count: 1,
+            sourceCount: players[seat].hand.length, targetCount: players[target].hand.length,
+            takenCard, givenCard: card, takenPublic: !!state.players[target].revealHand,
+            givenPublic: !!state.players[seat].revealHand }],
         ...(win ? { gameOver: win } : {}) };
     } },
 };

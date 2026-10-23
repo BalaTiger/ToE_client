@@ -402,6 +402,7 @@ export function killPlayerState(P, i, Disc, L) {
   P[i].roleRevealed = true;
   L.push(`☠ ${P[i].name}（${P[i].role}）倒下了！`);
   const { kept, destroyed } = splitHandDiscardCards(P[i].hand);
+  const discardedCards = [...kept, ...(P[i].godZone || [])];
   if (kept.length) Disc.push(...kept);
   if (destroyed.length) L.push(`${P[i].name} 的 ${destroyed.length} 张衍生牌被销毁`);
   P[i].hand = [];
@@ -411,6 +412,9 @@ export function killPlayerState(P, i, Disc, L) {
     P[i].godName = null;
     P[i].godLevel = 0;
   }
+  // Transient canonical presentation receipt from the actual committed route.
+  // The defeat-event producer consumes it; it never becomes a player view.
+  P[i]._deathSettlementReceipt = { discardedCards, destroyedCount: destroyed.length };
 }
 
 export function makeInspectionMeta(gs){

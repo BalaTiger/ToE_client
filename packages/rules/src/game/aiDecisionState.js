@@ -74,7 +74,7 @@ export function resolveAiGodChoiceTransition(gs) {
 
   if (players[actorIdx]?.isDead) {
     const cancelled = discardDeadDrawerGod({ players, discard, godCard, drawerIdx: actorIdx,
-      visualEvents: resolveBaseGs._visualEvents || [] });
+      visualEvents: resolveBaseGs._visualEvents || [], presentationState: resolveBaseGs });
     // The dead drawer has no god response. A living partner's already-triggered
     // inspection/rope reaction still settles before the victory check.
     const gameOver = livingInspectionReaction ? null : checkWin(players, gs._isMP);

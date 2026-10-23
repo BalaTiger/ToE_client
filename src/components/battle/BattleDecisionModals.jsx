@@ -60,6 +60,7 @@ export function BattleDecisionModals({
   sameAbyssSelect,
   sphinxGuess,
   decipherStoneCarvingConfirm,
+  legalActions,
 }) {
   const pendingZhuCard = pendingZhuDrawCard || pendingZhuGodCard || pendingZhuSphinxCard || pendingZhuAiDrawCard;
 
@@ -164,7 +165,7 @@ export function BattleDecisionModals({
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="toe-button toe-button-primary" onClick={() => runDecision('tsg-slime:yes', () => resolveTsathogguaSlimeBalance(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>牺牲黏液</button>
+                <button className="toe-button toe-button-primary" disabled={legalActions && !legalActions['slime.answer']?.choices.includes(true)} onClick={() => runDecision('tsg-slime:yes', () => resolveTsathogguaSlimeBalance(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>牺牲黏液</button>
                 <button className="toe-button" onClick={() => runDecision('tsg-slime:no', () => resolveTsathogguaSlimeBalance(false))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>保留黏液</button>
               </div>
             ) : (
@@ -190,7 +191,7 @@ export function BattleDecisionModals({
             </div>
             {isLocalSeatIndex(gs.abilityData?.targetIdx) ? (
               <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                <button className="toe-button toe-button-primary" onClick={() => runDecision('etherealize:yes', () => resolveEtherealizeRedirect(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>消耗虚化并转移</button>
+                <button className="toe-button toe-button-primary" disabled={legalActions && !legalActions['etherealize.answer']?.choices.includes(true)} onClick={() => runDecision('etherealize:yes', () => resolveEtherealizeRedirect(true))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>消耗虚化并转移</button>
                 <button className="toe-button" onClick={() => runDecision('etherealize:no', () => resolveEtherealizeRedirect(false))} style={{ padding: '8px 18px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>承受损失</button>
               </div>
             ) : (
@@ -232,7 +233,7 @@ export function BattleDecisionModals({
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
               {(gs.abilityData?.revealedCards || []).map((card, index) => {
                 const pickerIdx = gs.abilityData?.pickOrder?.[gs.abilityData?.pickIndex || 0];
-                const canPick = isLocalFirstComePicker(gs);
+                const canPick = isLocalFirstComePicker(gs) && (!legalActions || legalActions['publicPick.choose']?.cardIndices.includes(index));
                 return (
                   <DDCard
                     key={card.id ?? `${card.key}-${index}`}
@@ -265,7 +266,7 @@ export function BattleDecisionModals({
             </div>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap', marginBottom: 16 }}>
               {(gs.abilityData?.godCards || []).map((card, index) => {
-                const canPick = isLocalSeatIndex(gs.abilityData?.playerIndex);
+                const canPick = isLocalSeatIndex(gs.abilityData?.playerIndex) && (!legalActions || legalActions['grave.choose']?.cardIndices.includes(index));
                 return (
                   <DDCard
                     key={card.id ?? `${card.godKey}-${index}`}
@@ -302,7 +303,7 @@ export function BattleDecisionModals({
                   <button className="toe-button" onClick={() => runDecision('same-abyss:discard', () => sameAbyssSelect('discard'))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     {(gs.abilityData?.discardCount || 0) > 0 ? '弃置手牌至' : '不弃牌，保持'} {gs.abilityData?.actorHandCount || 0} 张
                   </button>
-                  <button className="toe-button toe-button-danger" onClick={() => runDecision('same-abyss:hp', () => sameAbyssSelect('hp'))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
+                  <button className="toe-button toe-button-danger" disabled={legalActions && !legalActions['sameAbyss.choose']?.choices.includes('damage')} onClick={() => runDecision('same-abyss:hp', () => sameAbyssSelect('hp'))} style={{ padding: '8px 16px', fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, cursor: 'pointer' }}>
                     失去 4 HP
                   </button>
                 </>

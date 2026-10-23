@@ -223,6 +223,11 @@ export function resolveCaveDuelState(
     targetCard,
   });
   const nextPlayers = outcome.players;
+  // Capture only the actual revealed-card move, before a public gain can
+  // trigger any later hand mutation or stat consequence.
+  const duelReceipt = { sourceSeat: sourceIdx, targetSeat: targetIdx,
+    sourceCard: outcome.sourceCard, targetCard: outcome.targetCard, winnerSeat: outcome.winnerIdx,
+    sourceCount: nextPlayers[sourceIdx].hand.length, targetCount: nextPlayers[targetIdx].hand.length };
   const log = [...state.log, outcome.logLine];
   let proliferatingZPatch = {};
   if (outcome.duelCompare > 0) {
@@ -243,5 +248,5 @@ export function resolveCaveDuelState(
     ...(Object.prototype.hasOwnProperty.call(state, 'apophisNight') ? { apophisNight: state.apophisNight } : {}),
     ...(state._statEvents ? { _statEvents: state._statEvents, _statEventSeq: state._statEventSeq } : {}),
   };
-  return { nextGs, duelCompare: outcome.duelCompare, L: log };
+  return { nextGs, duelCompare: outcome.duelCompare, duelReceipt, L: log };
 }

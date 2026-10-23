@@ -92,7 +92,7 @@ function BlackGoatTrail({ txPx, tyPx, delay = 0, duration = 1.28 }) {
 
 // ── Discard Move Overlay ──────────────────────────────────────
 // Shows a card-back flying from the actor's hand area to the discard pile
-export function ZhuHideCardOverlay({ anim, exiting }) {
+export function ZhuHideCardOverlay({ anim, exiting, expansionKey = '地神的潜影' }) {
   const [style, setStyle] = React.useState(null);
 
   React.useEffect(() => {
@@ -152,7 +152,7 @@ export function ZhuHideCardOverlay({ anim, exiting }) {
               filter: 'blur(1px)',
               animation: 'zhuHideGlow 1.15s ease forwards',
             }} />
-            <MiniCardFace card={anim.card} width={style.width} />
+            {anim.card._back ? <CardBackLayer expansionKey={expansionKey} /> : <MiniCardFace card={anim.card} width={style.width} />}
           </div>
         </>
       )}
@@ -169,22 +169,24 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
     const card = anim.card || anim.cards?.[0] || null;
     const s = card ? (card.isGod ? GOD_CS : (CS[card.letter] || null)) : null;
     const targetPid = anim.targetPid || 0;
-    const discardPos = getPileCardAnchor(
+    const discardPos = anim.destination === 'destroyed' ? null : getPileCardAnchor(
       '[data-discard-pile]',
       { x: window.innerWidth * 0.35, y: window.innerHeight * 0.50 }
     );
-    const discardX = discardPos.x;
-    const discardY = discardPos.y;
 
     const sourceAnchor = item => anim.sourceAnchor === 'godChoice' ? getGodChoiceCardAnchor(item)
       : anim.sourceAnchor === 'playerArea' || anim.sourceAnchor === 'reveal' ? getPlayerAreaCardAnchor(targetPid, item, true)
       : getPlayerHandCardAnchor(targetPid, item);
     const startPos = sourceAnchor(card);
+    const destination = discardPos || startPos;
+    const discardX = destination.x;
+    const discardY = destination.y;
     const startX = startPos.x;
     const startY = startPos.y;
     setPaths((anim.cards?.length ? anim.cards : Array.from({ length: Math.max(1, anim.count || 1) }, () => card)).map(item => {
       const from = sourceAnchor(item);
-      return { left: from.x, top: from.y, ...getCardFlightStyle(from, discardPos, 0, 'endpoints') };
+      return { left: from.x, top: from.y,
+        ...getCardFlightStyle(from, discardPos || from, 0, 'endpoints') };
     }));
 
     if (startX && startY) {
@@ -196,7 +198,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         left: startX,
         top: startY,
         transform: 'translate(-50%, -50%) scale(1)',
-        ...getCardFlightStyle(startPos, discardPos, 0, 'endpoints'),
+        ...getCardFlightStyle(startPos, destination, 0, 'endpoints'),
         borderRadius: 4,
         backgroundColor: s ? 'transparent' : '#100c08',
         background: s ? 'transparent' : undefined,
@@ -205,7 +207,7 @@ export function DiscardMoveOverlay({ anim, exiting, expansionKey = '地神的潜
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        animation: `discardCardFlyCustom 1.0s cubic-bezier(0.4,0,0.3,1) forwards`,
+        animation: `${anim.destination === 'destroyed' ? 'authorityCardDissolve' : 'discardCardFlyCustom'} 1.0s cubic-bezier(0.4,0,0.3,1) forwards`,
         '--tx': `${tx}px`,
         '--ty': `${ty}px`
       });

@@ -314,7 +314,9 @@ export function DiceRollAnim({ anim, exiting }) {
       </div>
       {settled && (
         <div className="toe-dice-result" style={{ animation: 'animFadeIn 0.3s ease-out' }}>
-          {isApophisRoll ? (
+          {anim.publicOnly ? (
+            <div style={{ color: '#c8a96e', fontSize: 18, textAlign: 'center' }}>掷出 {d1} 点</div>
+          ) : isApophisRoll ? (
             <>
               <div style={{
                 fontFamily: "var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)", fontSize: 13, color: apophisSuccess ? '#c8a96e' : '#e08888', letterSpacing: 3,

@@ -34,6 +34,7 @@ import { submitRecoveryEvents } from './statChangeEngine.js';
 import { applyBalanceDiscardSideEffects } from './balanceCards.js';
 import { makeProliferatingZState } from './proliferatingZ.js';
 import { appendPublicCardGainTriggers } from './cardGainEvents.js';
+import { createCardReceiptEvent } from './cardReceiptEvents.js';
 import { VISUAL_EVENT, createLogOnlyVisualEvent, createCardMoveVisualEvent, createCardEffectEvent, createDiceResultVisualEvent, createEarthquakeEvent, createGraveDigEvent, createInspectionVisualEvent, createRandomTargetVisualEvent, createSphinxResultEvent, createStatEventsEvent, createThrowStoneEvent, createVritraImmortalRevealEvent } from './visualEvents.js';
 import { createGeomagneticRestoreCard } from '../constants/card.js';
 import {
@@ -399,6 +400,7 @@ function handleInspection(playerIndex, gs) {
   let gainedCard = null;
   let gainedCardLog = null;
   const inspectionDiscardEvents = [];
+  let restChangeEvent = null;
   let inspectionDamageDecision = null;
   const statEventSeq = (gs?._statEventSeq || 0) + 1;
   // 检查检定牌堆是否为空，如果为空则洗牌
@@ -479,6 +481,8 @@ function handleInspection(playerIndex, gs) {
     case 'flip': {
       // 翻面
       P[playerIndex].isResting = !P[playerIndex].isResting;
+      restChangeEvent = { ...createCardEffectEvent({ effectKey: 'playerRestChanged', actorIdx: playerIndex,
+        payload: { isResting: P[playerIndex].isResting } }), presentationStatBoundarySeq: gs?._statEventSeq || 0 };
       L.push(`${P[playerIndex].name} 昏睡，${P[playerIndex].isResting ? '翻面' : '醒来'}`);
       break;
     }
@@ -625,9 +629,11 @@ function handleInspection(playerIndex, gs) {
     ...(gainedCard ? { gainedCard, gainedCardLog } : {}),
   };
   const inspectionVisualEvent = createInspectionVisualEvent(inspectionEvent);
+  if (restChangeEvent && inspectionVisualEvent) restChangeEvent.presentationAfterEventIds = [inspectionVisualEvent.id];
   newGs._visualEvents = [
     ...((gs?._visualEvents) || []),
     ...(inspectionVisualEvent ? [inspectionVisualEvent] : []),
+    ...(restChangeEvent ? [restChangeEvent] : []),
   ];
   // 更新游戏状态
   newGs.players = P;
@@ -866,7 +872,15 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       };
     }
   };
-  const toggleRest = i => { if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return; P[i].isResting = !P[i].isResting; msgs.push(`${P[i].name}${P[i].isResting ? '进入' : '离开'}休息状态`); };
+  const toggleRest = i => {
+    if (i == null || !P[i] || P[i].isDead || (avoidNegative && i === ci) || avoidNegativeFor.includes(i)) return;
+    P[i].isResting = !P[i].isResting;
+    if (gs._intentEngine) statePatch._visualEvents = [...(statePatch._visualEvents || []), {
+      ...createCardEffectEvent({ effectKey: 'playerRestChanged', actorIdx: i, payload: { isResting: P[i].isResting } }),
+      presentationStatBoundarySeq: Math.max(gs._statEventSeq || 0, statePatch._statEventSeq || 0, inspectionMeta._statEventSeq || 0),
+    }];
+    msgs.push(`${P[i].name}${P[i].isResting ? '进入' : '离开'}休息状态`);
+  };
   const adjacent = getAdjacentTargets(P, ci);
   const others = P.map((_, i) => i).filter(i => i !== ci && !P[i].isDead);
   const allLiving = P.map((_, i) => i).filter(i => !P[i].isDead);
@@ -937,7 +951,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
       ? null
       : buildTsathogguaSlimeBalanceDecision(beforePlayers, result.P || P, { _turnOwner: gs?.currentTurn ?? ci });
     const ownedVisualEvents = (result.statePatch?._visualEvents || []).map(event => {
-      if (event?.type === VISUAL_EVENT.CARD_EFFECT && event?.effectKey === 'forcedRandomDiscard') {
+      if (event?.type === VISUAL_EVENT.CARD_EFFECT && ['forcedRandomDiscard', 'earthquake', 'burrowingWorm'].includes(event?.effectKey)) {
         if (event.payload?.sequentialDiscard) return event;
         return { ...event, statEvents };
       }
@@ -1816,6 +1830,8 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         const myHand = [...P[ci].hand];
         P[ci].hand = [...P[swapTarget].hand];
         P[swapTarget].hand = myHand;
+        const swapReceipt = createCardReceiptEvent({ type: 'handsSwapped', sourceSeat: ci, targetSeat: swapTarget,
+          sourceReceivedCards: [...P[ci].hand], targetReceivedCards: [...myHand] }, { ...gs, ...statePatch });
         const swapMsg = `${actor.name} 与 ${P[swapTarget].name} 交换了全部手牌（${P[ci].hand.length} 张 ↔ ${P[swapTarget].hand.length} 张）`;
         msgs.push(swapMsg);
         const moves = [[ci, swapTarget], [swapTarget, ci]]
@@ -1828,7 +1844,7 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
           ...(index === 0 ? { playersBefore: playersBeforeSwap } : {}),
           ...(index === moves.length - 1 ? { playersAfter: copyPlayers(P), msgs: [swapMsg] } : {}),
         }));
-        statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), ...swapEvents] };
+        statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), ...swapEvents, swapReceipt] };
       } else {
         msgs.push(`${actor.name} 无法找到交换目标`);
       }
@@ -2207,12 +2223,17 @@ export function applyFx(card, ci, ti, ps, deck, disc, gs, avoidNegative = false,
         };
         if (!P[ci].zoneCards) P[ci].zoneCards = [];
         P[ci].zoneCards.push(blankZone);
+        let destination = 'zone';
         msgs.push(`${actor.name} 放置了一张空白区域牌`);
         if (P[ci].hand.length <= 3) {
           P[ci].hand.push(blankZone);
           P[ci].zoneCards.pop();
+          destination = 'hand';
           msgs.push(`${actor.name} 手牌不大于3张，将空白区域牌收入手牌`);
         }
+        const receipt = createCardReceiptEvent({ type: 'cardIncomeCommitted', seat: ci, card: blankZone,
+          destination, source: 'generated' }, { ...gs, ...statePatch });
+        statePatch = { ...statePatch, _visualEvents: [...(statePatch._visualEvents || []), receipt] };
       }
     },
     revealTopCards: () => {

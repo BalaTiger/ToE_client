@@ -19,6 +19,7 @@ import { aiShouldKeepZoneCard, chooseAiCultistBewitchPlan, getHunterChaseTargets
 import { checkWin } from './victory.js';
 export { checkWin } from './victory.js';
 import { clearPlayerGodZone } from './aiTurn.js';
+import { appendCardReceiptEvent, createCardReceiptEvent } from './cardReceiptEvents.js';
 import { splitAnimBoundLogs } from './animLogs.js';
 import { GOD_DEFS, createBlackGoatYoungCard, createTsathogguaSlimeCard } from '../constants/card.js';
 import { ROLE_TREASURE, ROLE_HUNTER, ROLE_CULTIST, isRevealedCultist } from './coreUtils.js';
@@ -52,6 +53,7 @@ import {
   createGodGiftDiscardEvent,
   createGodGiftKeepEvent,
   createLogOnlyVisualEvent,
+  createCardEffectEvent,
   createDiceResultVisualEvent,
   createOrderedSettlementEvents,
   createStatEventsEvent,
@@ -401,6 +403,8 @@ export function abandonGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   // 信仰退出是抛弃结算的边界：先移除 Tag/神域牌，再结算 SAN 与其
   // 连带检定。这样后续任何伤害或检定快照都不可能恢复已经失去的信仰。
   clearPlayerGodZone(P[targetIndex], Disc);
+  if (discardedGodCards.length) inspectionMeta = appendCardReceiptEvent(inspectionMeta,
+    { type: 'publicCardsDiscarded', seat: targetIndex, cards: discardedGodCards, source: 'godZone' });
   const playersAfterFaithExit = copyPlayers(P);
   const discardAfterFaithExit = [...Disc];
   L = [...L, settlementMsg];
@@ -488,7 +492,7 @@ export function createFaithSettlementGodStatusEvent({
   });
 }
 
-export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null) {
+export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspectionMeta, logMsg, nextGodCard = null, { incomeSource = 'reveal' } = {}) {
   let convertLog = logMsg || `${P[targetIndex].name} 改信新神，${formatSanLoss(1)}`;
   L = [...L, convertLog];
   const playersBeforeFaithExit = copyPlayers(P);
@@ -499,6 +503,8 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
   const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
   if (P[targetIndex]?.godName || discardedGodCards.length) {
     clearPlayerGodZone(P[targetIndex], Disc);
+    if (discardedGodCards.length) inspectionMeta = appendCardReceiptEvent(inspectionMeta,
+      { type: 'publicCardsDiscarded', seat: targetIndex, cards: discardedGodCards, source: 'godZone' });
   }
   const playersAfterFaithExit = copyPlayers(P);
   const discardAfterFaithExit = [...Disc];
@@ -514,6 +520,8 @@ export function convertGodFollower(targetIndex, startIndex, P, D, Disc, L, inspe
     P[targetIndex].godLevel = 1;
     P[targetIndex].godZone = [{ ...nextGodCard }];
     P[targetIndex].hasBelievedGod = true;
+    inspectionMeta = appendCardReceiptEvent(inspectionMeta, { type: 'cardIncomeCommitted', seat: targetIndex,
+      card: P[targetIndex].godZone[0], destination: 'godZone', source: incomeSource });
   }
   return {
     P,
@@ -560,6 +568,9 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
   const abandonedFaithExits = [];
   let presentAfterInspectionSeq = null;
   let inspectionMeta = makeInspectionMeta(gs);
+  const incomeSource = opts.incomeSource || (opts.fromEndTurnReplay ? 'hand' : 'reveal');
+  const recordIncome = destination => visualEvents.push(createCardReceiptEvent({ type: 'cardIncomeCommitted',
+    seat: ci, card: godCard, destination, source: incomeSource }, { ...gs, ...inspectionMeta, ...statePatch }));
   P = P.map(p => ({ ...p, godZone: [...(p.godZone || [])] })); // shallow copy godZone arrays
   const hadWinnerAtSettlementStart = !!checkWin(P, gs?._isMP);
   const settlementHasNewWinner = () => !hadWinnerAtSettlementStart && !!checkWin(P, gs?._isMP);
@@ -620,6 +631,8 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
     const statEventsBefore = inspectionMeta?._statEvents || [];
     const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     clearPlayerGodZone(P[ci], Disc);
+    if (discardedGodCards.length) visualEvents.push(createCardReceiptEvent(
+      { type: 'publicCardsDiscarded', seat: ci, cards: discardedGodCards, source: 'godZone' }, { ...gs, ...inspectionMeta, ...statePatch }));
     const playersAfterFaithExit = copyPlayers(P);
     const discardAfterFaithExit = [...Disc];
     previousFaithExit = {
@@ -669,6 +682,7 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
   if (action === 'upgrade') {
     const playersBeforeFaithEstablished = copyPlayers(P);
     P[ci].godLevel++; P[ci].godZone.push({ ...godCard });
+    recordIncome('godZone');
     P[ci].hasBelievedGod = true;
     faithEstablished = {
       playersBefore: playersBeforeFaithEstablished,
@@ -684,7 +698,7 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
     msgs.push(statusMsg);
     const inspectionSeqBefore = inspectionMeta?._inspectionSeq || 0;
     const convertBaseLog = [...(Array.isArray(gs?.log) ? gs.log : []), ...msgs];
-    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard);
+    const converted = convertGodFollower(ci, gs?.currentTurn ?? ci, P, D, Disc, convertBaseLog, inspectionMeta, `${P[ci].name} 改信新神，${formatSanLoss(1)}`, godCard, { incomeSource });
     P = converted.P; D = converted.D; Disc = converted.Disc; inspectionMeta = converted.inspectionMeta;
     previousFaithExit = converted.faithExit || previousFaithExit;
     faithEstablished = converted.faithEstablished || faithEstablished;
@@ -698,6 +712,7 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
   } else if (action === 'worship') {
     const playersBeforeFaithEstablished = copyPlayers(P);
     P[ci].godName = godKey; P[ci].godLevel = 1; P[ci].godZone = [{ ...godCard }]; P[ci].hasBelievedGod = true;
+    recordIncome('godZone');
     faithEstablished = {
       playersBefore: playersBeforeFaithEstablished,
       playersAfter: copyPlayers(P),
@@ -711,6 +726,7 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
     P[ci].roleRevealed = true;
     const playersBeforeGodGiftKeep = copyPlayers(P);
     P[ci].hand.push({ ...godCard });
+    if (!opts.fromEndTurnReplay) recordIncome('hand');
     const keepMsg = `${P[ci].name}（邪祀者）将邪神牌收入手牌`;
     msgs.push(keepMsg);
     const keepEvent = createGodGiftKeepEvent({
@@ -727,6 +743,7 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
     proliferatingZGainEvents.push({ ownerIdx: ci, cards: [godCard] });
   } else {
     Disc.push({ ...godCard }); msgs.push(`${P[ci].name} 放弃了邪神的馈赠`);
+    recordIncome('discard');
     discardedGod = godCard;
   }
   let zBase = { ...gs, ...statePatch };
@@ -741,6 +758,13 @@ export function resolveGodEncounter(ci, godCard, P, D, Disc, gs, forcedConvert, 
     presentAfterInspectionSeq,
   });
   const faithResolutionEvents = [godStatusEvent, apophisEclipseEvent].filter(Boolean);
+  if (godStatusEvent) {
+    const priorIds = new Set((gs?._visualEvents || []).map(event => event.id));
+    const beforeStatus = event => event?.effectKey === 'authorityCardReceipt' && !priorIds.has(event.id)
+      ? { ...event, presentationBeforeEventIds: [godStatusEvent.id] } : event;
+    inspectionMeta = { ...inspectionMeta, _visualEvents: (inspectionMeta._visualEvents || []).map(beforeStatus) };
+    visualEvents.forEach((event, index) => { visualEvents[index] = beforeStatus(event); });
+  }
   if (faithResolutionEvents.length > 1) {
     visualEvents.unshift(...createRuleResolutionTransaction({
       id: `faith:${godStatusEvent.id}`,
@@ -964,7 +988,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       // AI_GOD_CHOICE，结算界面仍会替 AI 选择并播放弃牌动画/音效。
       if (P[ci].isDead || checkWin(P, gs?._isMP)) {
         const cancelled = discardDeadDrawerGod({ players: P, discard: Disc, godCard: drawnCard,
-          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [] });
+          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [], presentationState: inspectionMeta });
         Disc = cancelled.discard;
         inspectionMeta = { ...inspectionMeta, _visualEvents: cancelled.visualEvents };
         return {
@@ -1068,7 +1092,7 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
       // worship/keep/discard choice (the AI branch has the same short-circuit).
       if (P[ci].isDead || P[ci].san <= 0) {
         const cancelled = discardDeadDrawerGod({ players: P, discard: Disc, godCard: drawnCard,
-          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [] });
+          drawerIdx: ci, visualEvents: inspectionMeta._visualEvents || [], presentationState: inspectionMeta });
         Disc = cancelled.discard;
         inspectionMeta = { ...inspectionMeta, _visualEvents: cancelled.visualEvents };
         return {
@@ -1102,7 +1126,15 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
   if (drawnCard.forced) {
     const res = applyFx(drawnCard, ci, null, P, D, Disc, gs, false, [], isAI);
     P = res.P; D = res.D; Disc = res.Disc;
-    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci, statePatch: res.statePatch });
+    let income = null;
+    res.statePatch = applyZoneCardIncome({ players: P, discard: Disc, card: drawnCard, drawerIdx: ci,
+      statePatch: res.statePatch, ...(gs._intentEngine ? { presentationSource: 'reveal' } : {}),
+      onIncomeCommitted: receipt => { income = receipt; } });
+    if (income) {
+      const receipt = createCardReceiptEvent({ type: 'cardIncomeCommitted', seat: income.drawerIdx, card: income.card,
+        destination: income.dest === 'player' ? 'hand' : 'discard', source: 'reveal' }, { ...gs, ...res.statePatch });
+      res.statePatch = { ...res.statePatch, _visualEvents: [...(res.statePatch._visualEvents || []), receipt] };
+    }
     return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [`${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}（强制触发）`, ...res.msgs], statePatch: res.statePatch, kept: true, needsDecision: false };
   }
 
@@ -1111,7 +1143,10 @@ function handleCardDrawCore(ci, ps, deck, disc, isAI = false, gs = {}) {
     // 强制展示穴居人战争
     P[ci].hand.push(drawnCard);
     const logMsg = `${whoName} 摸到 ${cardLogText(drawnCard, { alwaysShowName: true })}，之前没有牌，强制展示！`;
-    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [logMsg], kept: true, needsDecision: false };
+    const income = createCardReceiptEvent({ type: 'cardIncomeCommitted', seat: ci, card: drawnCard,
+      destination: 'hand', source: 'reveal' }, gs);
+    return { P, D, Disc, drawnCard, reshuffleLog, effectMsgs: [logMsg], kept: true, needsDecision: false,
+      statePatch: { _visualEvents: [...(gs._visualEvents || []), income] } };
   }
 
   // AI auto-decision
@@ -1205,6 +1240,7 @@ export function handleCardDraw(ci, ps, deck, disc, isAI = false, gs = {}) {
     : null;
   return {
     ...result,
+    ...(result.reshuffleLog ? { reshuffleCount: disc.length } : {}),
     ...(result.drawnCard ? { sourcePile: result.sourcePile || sourcePile } : {}),
     ...(staleReversalPatch ? {
       statePatch: { ...(result.statePatch || {}), ...staleReversalPatch },
@@ -1256,12 +1292,17 @@ function turnStartEvent_BgyDamage(P, next, D, Disc, L, gs, inspectionMeta) {
       msgs: damage.logs,
       turnStartStage: 'turnStart',
     });
+    const pulseEvent = gs._intentEngine ? createCardEffectEvent({ effectKey: 'blackGoatPulse',
+      actorIdx: next, payload: { count: bgyCount }, statEvents: damage.statEvents }) : null;
+    if (pulseEvent) pulseEvent.presentationStatBoundarySeq = statEventSeq - 1;
     if (damageEvent) inspectionMeta = {
       ...inspectionMeta,
       _statEvents: [...(inspectionMeta?._statEvents || []), ...damage.statEvents],
       _statEventSeq: statEventSeq,
-      _visualEvents: [...(inspectionMeta?._visualEvents || []), damageEvent],
+      _visualEvents: [...(inspectionMeta?._visualEvents || []), ...(pulseEvent ? [pulseEvent] : []), damageEvent],
     };
+    if (pulseEvent && !damageEvent) inspectionMeta = { ...inspectionMeta,
+      _visualEvents: [...(inspectionMeta?._visualEvents || []), pulseEvent] };
     const slimeDecision = damage.phase === 'TSG_SLIME_BALANCE' ? damage.abilityData : null;
     if (slimeDecision) inspectionMeta = { ...inspectionMeta, abilityData: slimeDecision };
     if (slimeDecision) return { P, D, Disc, L, inspectionMeta, winAfterBgy: null };
@@ -1324,6 +1365,11 @@ function turnStartEvent_LinkHeal(P, pendingLinkHeals, L, inspectionMeta, statLog
     inspectionMeta = appendStatChangeResult(inspectionMeta, recovery);
     if (statLogs) statLogs.push(heal.msg);
     removeDamageLink(P, heal.linkId);
+    const expired = createCardEffectEvent({ effectKey: 'damageLinkExpired',
+      payload: { pair: [activeLink.a, activeLink.b], sourceLinkId: activeLink.id },
+      statEvents: recovery.statEvents || [] });
+    if (expired) inspectionMeta = { ...inspectionMeta,
+      _visualEvents: [...(inspectionMeta._visualEvents || []), expired] };
   }
   return { P, L, inspectionMeta };
 }
@@ -1822,6 +1868,10 @@ function resolveNextTurnState(gs, opts = {}) {
     turnStartLogs = [`── ${P[next].name} 的回合开始 ──`];
     L.push(...turnStartLogs);
     P[next].isResting = false;
+    const wakeEvent = gs._intentEngine ? { ...createCardEffectEvent({ effectKey: 'playerRestChanged',
+      actorIdx: next, payload: { isResting: false } }),
+    presentationStatBoundarySeq: skippedTurnBeforeStatSeq,
+    presentationAfterEventIds: [...visualEvents, ...(inspectionMeta?._visualEvents || [])].map(event => event.id).filter(Boolean) } : null;
     const wakeMsg = `${P[next].name} 从休息中醒来，跳过本回合`;
     L.push(wakeMsg);
     // Skip the turn: advance past player to the next living player
@@ -1845,10 +1895,16 @@ function resolveNextTurnState(gs, opts = {}) {
       afterInspectionSeq: inspectionMeta?._inspectionSeq || skippedTurnBeforeInspectionSeq,
       cthReplay: skippedTurnCthReplay,
     };
-    return resolveNextTurnState(
+    const resumed = resolveNextTurnState(
       { ...gs, players: P, deck: D, discard: Disc, log: L, currentTurn: next, skillUsed: false, restUsed: false, godFromHandUsed: false, godTriggeredThisTurn: false, globalOnlySwapOwner, _carryTsgSlimeGrantEvents: tsgSlimeGrantEvents, _carryGodPowerBlockedEvents: visualEvents.filter(event => event?.type === VISUAL_EVENT.GOD_POWER_BLOCKED), _carrySkippedTurnReplays: [...inheritedSkippedTurnReplays, skippedTurnReplay] },
       { ...opts, skipCurrentEndTurnStage: true },
     );
+    // This concrete wake-up precedes every event produced by the recursive
+    // next turn. Retain the receipt across that call's journal reset.
+    return wakeEvent ? { ...resumed, _visualEvents: [{ ...wakeEvent,
+      presentationBeforeEventIds: (resumed._visualEvents || []).map(event => event.id)
+        .filter(id => id && !wakeEvent.presentationAfterEventIds.includes(id)),
+    }, ...(resumed._visualEvents || [])] } : resumed;
   }
   // 翻面跳过回合没有回合开始/摸牌/行动/结束阶段，因此所有“下一回合”
   // 状态都只在角色真正进入正常回合时结转或到期。
@@ -2054,6 +2110,7 @@ function resolveNextTurnState(gs, opts = {}) {
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
+          reshuffleCount: rSlime.reshuffleCount,
           fromTsathogguaSlime: true,
           slimePop,
           statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
@@ -2112,7 +2169,7 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 多人游戏中记录玩家0摸牌信息到日志，让其他玩家可见（单机不需要，DRAW_REVEAL 时可见）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && (!res.kept || res.drawnCard.forced || (res.drawnCard.isGod && P[0].isDead))) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced || res.drawnCard.isGod)) {
       const msg = `${gs._isMP ? P[0].name : '你'} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
@@ -2125,6 +2182,7 @@ function resolveNextTurnState(gs, opts = {}) {
         // so its messages exclude those owned by the card-effect events.
         msgs: res.drawnCard.isGod ? [msg] : res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
+        reshuffleCount: res.reshuffleCount,
         statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
@@ -2218,6 +2276,7 @@ function resolveNextTurnState(gs, opts = {}) {
         drawerName: P[0].name,
         sourcePile: res.sourcePile,
         reshuffleLog: res.reshuffleLog,
+        reshuffleCount: res.reshuffleCount,
       } : null,
       selectedCard: null,
       abilityData: {},
@@ -2310,6 +2369,7 @@ function resolveNextTurnState(gs, opts = {}) {
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
+          reshuffleCount: rSlime.reshuffleCount,
           fromTsathogguaSlime: true,
           slimePop,
           statEventIds: collectFreshStatEventIds(rSlime.statePatch, statEventsBeforeSlimeDraw),
@@ -2368,7 +2428,7 @@ function resolveNextTurnState(gs, opts = {}) {
     P = res.P; D = res.D; Disc = res.Disc;
     // 记录摸牌信息到日志（与单机AI摸牌保持一致：[key] 名称）
     if (res.reshuffleLog) drawLogs.push(res.reshuffleLog);
-    if (res.drawnCard && (!res.kept || res.drawnCard.forced || (res.drawnCard.isGod && P[next].isDead))) {
+    if (res.drawnCard && (!res.kept || res.drawnCard.forced || res.drawnCard.isGod)) {
       const msg = `${P[next].name} 摸到 ${drawCardDecisionText(res.drawnCard)}`;
       if (!res.kept) drawLogs.push(msg);
       appendTurnDrawVisualEvents(turnDrawVisualEvents, {
@@ -2379,6 +2439,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: res.drawnCard.isGod ? [msg] : res.kept ? res.effectMsgs : [msg],
         reshuffleLog: res.reshuffleLog,
+        reshuffleCount: res.reshuffleCount,
         statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
@@ -2495,6 +2556,7 @@ function resolveNextTurnState(gs, opts = {}) {
           sourcePile: rSlime.sourcePile,
           msgs: [msg],
           reshuffleLog: rSlime.reshuffleLog,
+          reshuffleCount: rSlime.reshuffleCount,
           fromTsathogguaSlime: true,
           slimePop,
           godEncounter: rSlime.godEncounter,
@@ -2597,6 +2659,7 @@ function resolveNextTurnState(gs, opts = {}) {
         sourcePile: res.sourcePile,
         msgs: eventMsgs.length ? eventMsgs : drawLogs.slice(-1),
         reshuffleLog: res.reshuffleLog,
+        reshuffleCount: res.reshuffleCount,
         statEventIds: collectFreshStatEventIds(res.statePatch, statEventsBeforeFixedDraw),
         ...buildDrawKeepPresentation({
           playersBefore: playersBeforeFixedDraw,
@@ -2780,7 +2843,7 @@ export function recoverDeadGodChoiceState(gs) {
   if (!gs || gs.gameOver || !['GOD_CHOICE', 'AI_GOD_CHOICE'].includes(gs.phase)
     || !pending.godCard || !gs.players?.[drawerIdx]?.isDead) return gs;
   const cancelled = discardDeadDrawerGod({ players: gs.players, discard: gs.discard,
-    godCard: pending.godCard, drawerIdx, visualEvents: gs._visualEvents || [] });
+    godCard: pending.godCard, drawerIdx, visualEvents: gs._visualEvents || [], presentationState: gs });
   let continued = buildTargetContinuationState({
     baseState: { ...gs, discard: cancelled.discard,
       _visualEvents: bindTurnFlowEvents(gs, cancelled.visualEvents), abilityData: {} },

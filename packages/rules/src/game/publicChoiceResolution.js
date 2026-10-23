@@ -21,7 +21,7 @@ function finishChoice(state, abilityData, extraPatch = {}) {
 // Decisions use the same policy as the visible UI, then execute real rules.
 export function resolveAiPublicChoiceState(state) { return resolvePublicChoiceState(state); }
 
-export function resolvePublicChoiceState(state, choice = null) {
+export function resolvePublicChoiceState(state, choice = null, { onPublicIncomeCommitted, onStoneCardsArranged } = {}) {
   const next = structuredClone(state);
   const ad = next.abilityData || {};
   const revealed = ad.revealedCards || [];
@@ -33,6 +33,7 @@ export function resolvePublicChoiceState(state, choice = null) {
     if (!Number.isInteger(chosenIndex) || chosenIndex < 0 || chosenIndex >= revealed.length) throw new RangeError('Invalid public card choice');
     const [card] = revealed.splice(chosenIndex, 1);
     simulateAiPublicCardGain(next, actorIdx, card);
+    onPublicIncomeCommitted?.({ drawerIdx: actorIdx, cards: [card], dest: 'hand' }, next);
     next.log.push(`【先到先得】${next.players[actorIdx].name} 选择了 ${cardLogText(card, { alwaysShowName: true })}`);
     const win = checkWin(next.players, next._isMP);
     if (win) return { ...next, gameOver: win };
@@ -46,7 +47,10 @@ export function resolvePublicChoiceState(state, choice = null) {
     if (key == null) return finishChoice(next, ad);
     const matched = revealed.filter(card => matchesTortoiseKey(card, key));
     simulateAiPublicCardGain(next, actorIdx, matched);
-    next.discard.push(...revealed.filter(card => !matchesTortoiseKey(card, key)));
+    if (matched.length) onPublicIncomeCommitted?.({ drawerIdx: actorIdx, cards: matched, dest: 'hand' }, next);
+    const unselected = revealed.filter(card => !matchesTortoiseKey(card, key));
+    next.discard.push(...unselected);
+    if (unselected.length) onPublicIncomeCommitted?.({ drawerIdx: actorIdx, cards: unselected, dest: 'discard' }, next);
     next.log.push(`【灵龟卜祝】${next.players[actorIdx].name} 选择编号 ${key}，收入 ${matched.length} 张牌`);
     return finishChoice(next, ad);
   }
@@ -57,6 +61,7 @@ export function resolvePublicChoiceState(state, choice = null) {
     const originalRevealed = [...revealed];
     const [card] = revealed.splice(chosenIndex, 1);
     simulateAiPublicCardGain(next, actorIdx, card);
+    const receivedHandCount = next.players[actorIdx].hand.length;
     next.log.push(`【解读石刻】${next.players[actorIdx].name} 选择将 ${cardLogText(card, { alwaysShowName: true })} 收入手牌`);
     let inspectionPatch = {};
     if (card.isGod) {
@@ -71,6 +76,10 @@ export function resolvePublicChoiceState(state, choice = null) {
     const top = choice ? choice.topIndices.map(index => originalRevealed[index]).reverse() : revealed;
     const bottom = choice ? choice.bottomIndices.map(index => originalRevealed[index]).reverse() : [];
     next.deck.unshift(...top); next.deck.push(...bottom);
+    // This receipt belongs to the selecting recipient. It is emitted only
+    // after both canonical moves commit, before continuation can clear them.
+    onStoneCardsArranged?.({ seat: actorIdx, keptCard: card, handCount: receivedHandCount,
+      topCards: [...top], bottomCards: [...bottom], returnedCount: top.length + bottom.length }, next);
     if (top.length) next.log.push(`【解读石刻】${top.length} 张牌放回牌堆顶`);
     if (bottom.length) next.log.push(`【解读石刻】${bottom.length} 张牌放到牌堆底`);
     const decision = deriveEffectDecisionState(inspectionPatch, {

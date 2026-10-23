@@ -14,15 +14,19 @@ export function settlePendingZoneIncome(players, discard, pendingZoneIncome) {
 
 export function applyZoneCardIncome({
   players, discard, card, drawerIdx, statePatch = {}, fromEndTurnReplay = false,
+  onIncomeCommitted, presentationSource,
 }) {
   if (fromEndTurnReplay) return statePatch;
-  const pendingZoneIncome = { card, ownerId: players[drawerIdx].id };
+  const pendingZoneIncome = { card, ownerId: players[drawerIdx].id,
+    ...(presentationSource ? { presentationSource } : {}) };
   if (hasEffectDecisionState(statePatch)) {
     return {
       ...statePatch,
       abilityData: { ...statePatch?.abilityData, pendingZoneIncome },
     };
   }
-  settlePendingZoneIncome(players, discard, pendingZoneIncome);
+  const income = settlePendingZoneIncome(players, discard, pendingZoneIncome);
+  // Optional authority metadata observes the actual mutation, never predicts it.
+  if (income) onIncomeCommitted?.(income);
   return statePatch;
 }

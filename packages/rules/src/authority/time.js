@@ -7,6 +7,7 @@ import { checkWin } from '../game/victory.js';
 import { advanceAutomaticRules } from './automatic.js';
 import { collectPublicRuleEvents, compactAuthorityState } from './events.js';
 import { updateTurnClock, updateHoundsClock, remainingHounds, decisionDuration, houndsRunning } from './clocks.js';
+import { appendCommittedPublicEvent } from './incomeEvents.js';
 
 export function advanceRuleTime(record, now, { random } = {}) {
   if (!Number.isFinite(now)) throw new TypeError('Invalid rule time');
@@ -27,24 +28,31 @@ export function advanceRuleTime(record, now, { random } = {}) {
     const interrupted = damage.phase && old.phase !== 'ACTION'
       ? { phase: old.phase, abilityData: old.abilityData, drawReveal: old.drawReveal } : null;
     const pendingCard = old.drawReveal?.card || old.abilityData?.godCard;
+    let discardedPendingCard = null;
     if (players[target].isDead && pendingCard && !discard.some(card => card.id === pendingCard.id)
       && !players.some(player => player.hand.some(card => card.id === pendingCard.id))) {
       discard.push(pendingCard);
+      discardedPendingCard = pendingCard;
     }
     const next = { ...old, players, deck, discard, log, inspectionDeck, inspectionDiscard,
       houndsOfTindalosActive: false, houndsOfTindalosTarget: target, houndsOfTindalosElapsed: 0,
       ...buildStatChangeStatePatch(old, damage), ...(interrupted ? { _clockContinuation: interrupted } : {}),
       gameOver: checkWin(players, old._isMP),
       ...(damage.phase ? { phase: damage.phase, abilityData: damage.abilityData } : {}) };
-    return advanceAutomaticRules(next, record.state);
+    const committed = discardedPendingCard ? appendCommittedPublicEvent(next, {
+      type: 'cardIncomeCommitted', seat: old.drawReveal?.drawerIdx ?? old.abilityData?.drawerIdx ?? target,
+      card: discardedPendingCard, destination: 'discard', source: 'reveal',
+    }) : next;
+    return advanceAutomaticRules(committed, record.state);
   });
-  const pendingEvents = state._pendingPublicEvents || [];
+  const publicEvents = collectPublicRuleEvents(record.state, state);
   delete state._pendingPublicEvents;
   draft.state = compactAuthorityState(state); draft.revision = revision;
+  delete draft.openingPlayers;
   draft.turnClock = updateTurnClock(record, state, now); draft.houndsClock = updateHoundsClock(record, state, now, revision);
   draft.decision = { id: `${record.id}:decision:${revision}`, deadline: now + decisionDuration(state, draft) };
   draft.grants = [];
-  draft.publicEvents = [...record.publicEvents, ...[...collectPublicRuleEvents(record.state, state), ...pendingEvents].map((event, index) => ({
+  draft.publicEvents = [...record.publicEvents, ...publicEvents.map((event, index) => ({
     ...event, visibility: 'public', id: `${record.id}:clock-event:${revision}:${index}`,
   }))].slice(-256);
   return draft;

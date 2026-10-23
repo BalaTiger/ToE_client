@@ -9,6 +9,7 @@ import { buildTargetContinuationAbilityData } from '../game/targetContinuation.j
 import { applyBalanceDiscardSideEffects } from '../game/balanceCards.js';
 import { buildStatChangeStatePatch } from '../game/statChangeEngine.js';
 import { checkWin, getTreasureDeclarationWin } from '../game/victory.js';
+import { cardIncomeCommittedEvent, committedPublicEvent, appendCommittedPublicEvent } from './incomeEvents.js';
 
 const drawer = state => state.drawReveal?.drawerIdx ?? state.currentTurn;
 const drawOwned = (state, seat) => !!state.drawReveal?.card && drawer(state) === seat
@@ -40,18 +41,24 @@ export function settleKeptDraw(state, avoided = []) {
   clearBlindZoneDecisionFlag(players, seat, dr);
   const result = applyFx(card, seat, null, players, [...state.deck], [...state.discard], state,
     avoided.includes(seat), avoided.filter(index => index !== seat), false);
+  let income = null;
   const patch = applyZoneCardIncome({ players: result.P, discard: result.Disc, card, drawerIdx: seat,
-    statePatch: result.statePatch, fromEndTurnReplay: dr.fromEndTurnReplay });
+    statePatch: result.statePatch, fromEndTurnReplay: dr.fromEndTurnReplay,
+    presentationSource: 'reveal', onIncomeCommitted: committed => { income = committed; } });
   const pendingIncome = !!patch?.abilityData?.pendingZoneIncome;
   const decision = deriveEffectDecisionState(patch, { baseAbilityData: state.abilityData,
     fallbackPhase: 'ACTION', extraAbilityData: continuation(state, dr) });
+  const kept = committedPublicEvent({ ...state, ...patch }, { type: 'cardRevealed', seat, card, reason: 'keep' });
+  const pendingEvents = [...(state._pendingPublicEvents || []), kept];
   let next = withContinuation({ ...state, ...patch,
     players: result.P, deck: result.D, discard: result.Disc, drawReveal: null,
     phase: decision.phase, abilityData: decision.abilityData,
     log: [...(state.log || []), ...(dr.reshuffleLog ? [dr.reshuffleLog] : []), ...result.msgs,
       `${players[seat].name} 保留 ${cardLogText(card, { alwaysShowName: true })}`],
     ...(dr.fromEndTurnReplay ? advanceEndTurnReplayPatch(state) : {}),
-    _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'cardRevealed', seat, card, reason: 'keep' }],
+    _pendingPublicEvents: [...pendingEvents,
+      ...(!pendingIncome && !decision.hasDecision && income
+        ? [cardIncomeCommittedEvent(income, { ...state, ...patch, _pendingPublicEvents: pendingEvents })] : [])],
   }, dr);
   delete next._pendingMoldyFoodRoll; delete next._treasureDodge;
   // An unfinished effect must never win from a transient hand.
@@ -70,7 +77,7 @@ export function keepDraw(state) {
     const players = copyPlayers(state.players); clearBlindZoneDecisionFlag(players, seat, dr);
     return withContinuation({ ...state, players, phase: 'ZONE_SWAP_SELECT_TARGET', drawReveal: null,
       abilityData: { ...continuation(state, dr), zoneSwapCard: card, zoneSwapSource: seat,
-        ...(!dr.fromEndTurnReplay ? { pendingZoneIncome: { card, ownerId: players[seat].id } } : {}) },
+        ...(!dr.fromEndTurnReplay ? { pendingZoneIncome: { card, ownerId: players[seat].id, presentationSource: 'reveal' } } : {}) },
       ...(dr.fromEndTurnReplay ? advanceEndTurnReplayPatch(state) : {}),
     }, dr);
   }
@@ -108,7 +115,8 @@ export function discardDraw(state) {
     ({ players, deck, discard, log } = balance); damage = balance.damageDecision || null;
   }
   return withContinuation({ ...state, players, deck, discard, log, drawReveal: null,
-    _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'cardRevealed', seat, card, reason: 'discard' }],
+    _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'cardRevealed', seat, card,
+      reason: destroyed ? 'destroyed' : 'discard', presentationOrder: 'beforeStats' }],
     phase: damage?.phase || 'ACTION', abilityData: damage?.abilityData || continuation(state, dr),
     ...(dr.fromEndTurnReplay ? advanceEndTurnReplayPatch(state) : {}),
     ...buildStatChangeStatePatch(state, damage),
@@ -132,10 +140,12 @@ export const drawActions = {
       if (payload.use) state.players[seat].roleRevealed = true;
       const next = { ...state, _treasureDodge: { ...state._treasureDodge, answers } };
       if (next._treasureDodge.targets.some(index => !Object.hasOwn(answers, index))) return next;
-      return settleKeptDraw({ ...next, _pendingPublicEvents: [...(next._pendingPublicEvents || []),
-        ...next._treasureDodge.targets.filter(index => answers[index].roll !== null).map(index => ({
-          type: 'diceRolled', seat: index, roll: answers[index].roll, purpose: 'treasureDodge',
-        }))] }, next._treasureDodge.targets.filter(index => answers[index].avoided));
+      let revealed = next;
+      for (const index of next._treasureDodge.targets.filter(index => answers[index].roll !== null)) {
+        revealed = appendCommittedPublicEvent(revealed,
+          { type: 'diceRolled', seat: index, roll: answers[index].roll, purpose: 'treasureDodge' });
+      }
+      return settleKeptDraw(revealed, next._treasureDodge.targets.filter(index => answers[index].avoided));
     } },
 };
 

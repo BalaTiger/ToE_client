@@ -32,6 +32,9 @@ export function StartScreen({
   renameCdActive,
   playerUsername,
   playerUsernameSpecial,
+  onResumeGame,
+  onlineOptionsExtra,
+  onSpectateRoom,
 }) {
   const scale = getStartScreenScale(vw, vh);
   const startRules = [
@@ -51,6 +54,7 @@ export function StartScreen({
     <div className="toe-start-screen" style={{ '--toe-start-control-scale': getStartScreenControlScale(vw, vh) }} onClickCapture={handleUiSfxCapture}>
       <div className="toe-start-background" style={{ backgroundImage: "url('" + buildPublicUrl('/img/bg/bg_main.webp') + "')" }} />
       <div className="toe-start-shade" />
+      {onResumeGame && <button className="toe-button" onClick={onResumeGame} style={{ position: 'fixed', top: 14, left: 14, zIndex: 120, padding: '8px 18px', transform: 'scale(var(--toe-start-control-scale))', transformOrigin: 'left top' }}>继续单机</button>}
       <div className="toe-start-stage" data-start-scale={scale} style={{
         width: START_SCREEN_WIDTH, height: START_SCREEN_HEIGHT,
         transform: 'translate(-50%, -50%) scale(' + scale + ')',
@@ -160,7 +164,7 @@ export function StartScreen({
       </div>
 
       <OnlineOptionsDialog open={onlineOptionsModal} onClose={closeOnlineOptions}
-        multiLoading={multiLoading} handleCreateRoom={handleCreateRoom} handleOpenLobby={handleOpenLobby} joinRoomInput={joinRoomInput} setJoinRoomInput={setJoinRoomInput} handleJoinRoom={handleJoinRoom} renameInputVisible={renameInputVisible} renameInput={renameInput} setRenameInput={setRenameInput} handleRename={handleRename} handleRandomUsername={handleRandomUsername} setRenameInputVisible={setRenameInputVisible} renameCdActive={renameCdActive} playerUsername={playerUsername} playerUsernameSpecial={playerUsernameSpecial} />
+        multiLoading={multiLoading} handleCreateRoom={handleCreateRoom} handleOpenLobby={handleOpenLobby} joinRoomInput={joinRoomInput} setJoinRoomInput={setJoinRoomInput} handleJoinRoom={handleJoinRoom} renameInputVisible={renameInputVisible} renameInput={renameInput} setRenameInput={setRenameInput} handleRename={handleRename} handleRandomUsername={handleRandomUsername} setRenameInputVisible={setRenameInputVisible} renameCdActive={renameCdActive} playerUsername={playerUsername} playerUsernameSpecial={playerUsernameSpecial} onSpectateRoom={onSpectateRoom}>{onlineOptionsExtra}</OnlineOptionsDialog>
     </div>
   );
 }

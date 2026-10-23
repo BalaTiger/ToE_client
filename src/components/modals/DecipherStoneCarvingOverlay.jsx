@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { DDCard, DDCardBack } from '../cards';
 import { CARD_FACE_RATIO } from '../cards/CardFaceAssets';
+import { captureRevealCardAnchor } from '../../utils/dom';
 
 const CARD_W = 82;
 const CARD_H = CARD_W * CARD_FACE_RATIO;
@@ -135,6 +136,13 @@ export function DecipherStoneCarvingOverlay({ revealedCards, onConfirm, actorNam
 
   function handleConfirm() {
     if (zones.hand.length !== 1) return;
+    // Keep only local geometry before the dialog disappears. The authority
+    // receipt supplies the actual cards and destinations after acceptance.
+    const elements = [...(containerRef.current?.querySelectorAll('[data-card-id]') || [])];
+    for (const card of [...zones.hand, ...zones.top, ...zones.bottom]) {
+      const element = elements.find(node => node.dataset.cardId === String(card.id));
+      if (element) captureRevealCardAnchor(element, card);
+    }
     onConfirm({
       handCard: zones.hand[0],
       deckTopCards: zones.top,

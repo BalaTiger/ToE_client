@@ -541,8 +541,8 @@ function GodPowerBadge({player,playerIndex,pendant=false}){
 }
 
 // ── PlayerPanel ─────────────────────────────────────────────────
-function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null,simplified=false}){
-  const ri=RINFO[player.role];
+function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,showFaceUp,onCardSelect,selectableCardIndices,selectedCardIndices=[],isBeingHit,isSanHit,isHpHeal,isSanHeal,isBeingGuillotined,displayStats,scaleRatio,viewportWidth,expansionKey='地神的潜影',blackGoatPulseActive=false,godHighlightBurst=null,simplified=false}){
+  const ri=RINFO[player.role] || { col: '#9c9487', icon: '?', goal: '身份尚未公开' };
   const theme=getBoardTheme(expansionKey);
   const fontZoom = getFontZoomCompensate(scaleRatio);
   const _ = (px) => px * fontZoom;
@@ -703,6 +703,8 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
         overflow:blackGoatPulseActive?'visible':'hidden',
       }} data-player-hand-strip={playerIndex} ref={handStripRef}>
         {handCards.map((card,ci)=>{
+          const cardSelectable=!!onCardSelect&&(!selectableCardIndices||selectableCardIndices.includes(ci));
+          const cardSelected=selectedCardIndices.includes(ci);
           const marginLeft=shouldFillFlatHand?0:(ci===0?0:(handOverlap>0?-handOverlap:HAND_CARD_GAP));
           const width=shouldFillFlatHand?undefined:(handStripWidth>0?computedCardWidth:stretchedHandSlotWidth);
           return(
@@ -724,15 +726,18 @@ function PlayerPanel({player,playerIndex,isCurrentTurn,isSelectable,onSelect,sho
             }}>
               {card._back
                 ?<div
-                  onClick={onCardSelect?()=>onCardSelect(ci):undefined}
+                  onClick={cardSelectable?event=>{event?.stopPropagation();onCardSelect(ci);}:undefined}
+                  role={cardSelectable?'button':undefined} tabIndex={cardSelectable?0:undefined}
+                  aria-label={cardSelectable?`\u6697\u62bd\u7b2c ${ci+1} \u5f20\u724c`:undefined}
+                  onKeyDown={cardSelectable?event=>{if(event.key==='Enter'||event.key===' '){event.preventDefault();event?.stopPropagation();onCardSelect(ci);}}:undefined}
                   style={{
-                    cursor:onCardSelect?'pointer':'default',
-                    outline:onCardSelect?`1px solid ${theme.glow}88`:'none',
-                    boxShadow:onCardSelect?`0 0 10px ${theme.glow}44`:'none',
+                    cursor:cardSelectable?'pointer':'default',
+                    outline:cardSelectable?`1px solid ${theme.glow}88`:'none',
+                    boxShadow:cardSelectable?`0 0 10px ${theme.glow}44`:'none',
                     borderRadius:3,
                   }}
                 ><DDCardBack small expansionKey={expansionKey} frameStyle={shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle}/></div>
-                :<DDCard card={card} small={!showFaceUp} showCaption={false} compact={showFaceUp&&!useFullRevealCards} onClick={onCardSelect?()=>onCardSelect(ci):undefined} highlight={!!onCardSelect} holderId={playerIndex} hideCssFrame={isBlackGoatYoung(card)||isTsathogguaSlime(card)} tokenFaceWidth={!showFaceUp&&(isBlackGoatYoung(card)||isTsathogguaSlime(card))?hiddenDerivedFaceWidth:undefined} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
+                :<DDCard card={card} small={!showFaceUp} showCaption={false} compact={showFaceUp&&!useFullRevealCards} onClick={cardSelectable?()=>onCardSelect(ci):undefined} selected={cardSelected} highlight={cardSelectable} holderId={playerIndex} hideCssFrame={isBlackGoatYoung(card)||isTsathogguaSlime(card)} tokenFaceWidth={!showFaceUp&&(isBlackGoatYoung(card)||isTsathogguaSlime(card))?hiddenDerivedFaceWidth:undefined} frameStyle={showFaceUp?{zoom:revealCardZoom}:(shouldFillFlatHand?filledHandFrameStyle:sharedHandFrameStyle)}/>}
             </div>
           );
         })}

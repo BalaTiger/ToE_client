@@ -86,7 +86,7 @@ export function buildTargetContinuationState({
     const drawerIdx = choice?.drawerIdx ?? choice?.playerIndex ?? turnOwner;
     if (!choice?.godCard || !players?.[drawerIdx]?.isDead) return false;
     const cancelled = discardDeadDrawerGod({ players, discard, godCard: choice.godCard,
-      drawerIdx, visualEvents: cancelledVisualEvents });
+      drawerIdx, visualEvents: cancelledVisualEvents, presentationState: { ...baseState, ...extraPatch } });
     discard = cancelled.discard;
     cancelledVisualEvents = bindTurnFlowEvents(baseState, cancelled.visualEvents);
     cancelledGodChoice = true;

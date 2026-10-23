@@ -37,6 +37,20 @@ function stateWithSingleEvent(state, event) {
   return { ...(state || {}), _visualEvents: event ? [event] : [] };
 }
 
+// These canonical receipts feed the authority projection, while the legacy
+// orchestrator already owns their card moves, posture commits and link heal.
+// They are journal metadata here, not a second animation. Unknown effects and
+// malformed receipts still enter the strict visual compilation checks.
+function isAuthorityPresentationReceipt(event) {
+  if (event?.type !== VISUAL_EVENT.CARD_EFFECT) return false;
+  if (event.effectKey === 'authorityCardReceipt') return ['cardIncomeCommitted', 'handsSwapped', 'publicCardsDiscarded']
+    .includes(event.payload?.receipt?.type);
+  if (event.effectKey === 'playerRestChanged') return Number.isInteger(event.actorIdx)
+    && typeof event.payload?.isResting === 'boolean';
+  return event.effectKey === 'damageLinkExpired' && Array.isArray(event.payload?.pair)
+    && event.payload.pair.length === 2 && event.payload.pair.every(Number.isInteger);
+}
+
 function flattenOwnedVisualEvents(events = [], seen = new Set()) {
   return (Array.isArray(events) ? events : []).flatMap(event => {
     if (!event || seen.has(event)) return [];
@@ -208,6 +222,7 @@ export function getVisualEventIdsCoveredByAnimationQueue(state, queue = []) {
   const owners = flattenOwnedVisualEvents(events);
   return events.filter(event => {
     if (!event?.id) return false;
+    if (isAuthorityPresentationReceipt(event)) return true;
     const expected = composeCanonicalFaithSettlementSteps(
       tagVisualEventSteps(event, compileVisualEventToAnimSteps(event, state, null, { _statIdentityAdapted: true, allowTargetZero: true })),
       [event],
@@ -249,6 +264,7 @@ export function validateVisualEventTransaction(transaction, events = []) {
   }
 
   scopedEvents.forEach(event => {
+    if (isAuthorityPresentationReceipt(event)) return;
     const ownedIds = new Set(flattenOwnedVisualEvents([event]).map(owned => owned.id));
     const eventQueue = flatQueue.filter(step => ownedIds.has(step?.visualEventId));
     if (!eventQueue.length) {
@@ -475,7 +491,8 @@ function reportTransactionIssues(stage, issues = []) {
 
 function assertNoEmptyVisualEventCompilations(compiled = [], options = {}, stage = 'compile') {
   const issues = (Array.isArray(compiled) ? compiled : [])
-    .filter(item => item?.event && !(Array.isArray(item.steps) && item.steps.length))
+    .filter(item => item?.event && !isAuthorityPresentationReceipt(item.event)
+      && !(Array.isArray(item.steps) && item.steps.length))
     .map(item => ({
       code: 'EMPTY_VISUAL_EVENT_QUEUE',
       eventId: item.event.id || null,
@@ -495,6 +512,7 @@ export function compileVisualEventToAnimSteps(event, state, previousState = null
 
 function compileVisualEventSteps(event, state, previousState = null, options = {}) {
   if (!event) return [];
+  if (isAuthorityPresentationReceipt(event)) return [];
   if (!options._statIdentityAdapted) {
     const adapted = adaptLegacyStatEventGraph({
       state: { ...(state || {}), _visualEvents: [...(state?._visualEvents || []), event] },
@@ -887,12 +905,13 @@ export function compileRuleVisualEventsToAnimTransaction(state, previousState = 
     ));
   assertValidRuleResolutionEvents(freshScopedEvents);
   const scopedEvents = orderRuleResolutionEvents(freshScopedEvents);
-  const nestedSuppression = suppressNestedSettlementEvents(scopedEvents);
+  const receiptIds = scopedEvents.filter(isAuthorityPresentationReceipt).map(event => event.id);
+  const nestedSuppression = suppressNestedSettlementEvents(scopedEvents.filter(event => !isAuthorityPresentationReceipt(event)));
   const {
     events: presentationEvents,
     suppressedEventIds: suppressedStatEventIds,
   } = suppressStatsOwnedByExplicitEvents(nestedSuppression.events);
-  const suppressedEventIds = [...nestedSuppression.suppressedEventIds, ...suppressedStatEventIds];
+  const suppressedEventIds = [...receiptIds, ...nestedSuppression.suppressedEventIds, ...suppressedStatEventIds];
   const events = withRestAnnouncementOwnership(interleavePhaseOrderedVisualEvents(orderTurnStartVisualEvents(presentationEvents)));
   const compiledWithEmpty = events.map(event => ({
       event,

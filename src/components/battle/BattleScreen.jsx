@@ -12,10 +12,6 @@ import { createPortal } from 'react-dom';
 import { GameLayerPortal } from '../../ui/GameLayerPortal';
 import { getGameLayerTarget } from '../../ui/gameLayers';
 import {
-  RINFO,
-  ROLE_TREASURE,
-  ROLE_HUNTER,
-  ROLE_CULTIST,
   isValidEtherealizeRedirectTarget,
 } from '../../game';
 import { SOFT_GUIDE_DEFS } from '../../game/softGuides';
@@ -36,6 +32,7 @@ import { SelfPlayerPanel } from './SelfPlayerPanel';
 import { BattleSceneContent } from './BattleSceneContent';
 import { SwapBlindDrawOverlay } from './SwapBlindDrawOverlay';
 import { BattleDecisionModals } from './BattleDecisionModals';
+import { RoleSelectionDialog } from './RoleSelectionDialog';
 
 function getPhaseActionButtonStyle({
   isMobile,
@@ -332,17 +329,18 @@ export function BattleScreen(props) {
           {visualPlayers.slice(1).map((p,i)=>{
             const pi=i+1;
             const isTutorialTargetAllowed=!isScriptedTutorial||isTutorialActionAllowed({type:'selectTarget',pid:pi});
-            const isEtherealizeTargetAllowed=phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
-            const isSel=selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
+            const isEtherealizeTargetAllowed=!!props.isTargetSelectable||phase!=='ETHEREALIZE_SELECT_TARGET'||isValidEtherealizeRedirectTarget({players:visualPlayers,abilityData:gs.abilityData,targetIdx:pi});
+            const isSel=props.isTargetSelectable ? props.isTargetSelectable(pi) : selectingOther&&!p.isDead&&!isBlocked&&isTutorialTargetAllowed&&isEtherealizeTargetAllowed&&!(phase==='HUNT_SELECT_TARGET'&&(!hasHuntRevealableCard(p)||huntAbandoned.includes(pi)));
             // 掉包：公开手牌时正面选择；暗抽时改为全屏遮罩选择，不再点击手牌区
-            const isSwapPublicTargetCardPhase=phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
+            const isSwapPublicTargetCardPhase=!props.authorityControls?.publicCardsManaged&&phase==='SWAP_SELECT_TARGET_CARD'&&decisionContext?.localCanAct&&gs.abilityData?.swapTi===pi;
             // 在HUNT_SELECT_CARD_FROM_PUBLIC阶段，如果这是死者玩家，显示其手牌并允许选择
-            const isHuntCardFromPublicPhase=phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
-            const showFaceUpForSwap=isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
-            const onCardSelectForSwap=isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null;
+            const isHuntCardFromPublicPhase=!props.authorityControls?.publicCardsManaged&&phase==='HUNT_SELECT_CARD_FROM_PUBLIC'&&decisionContext?.localCanAct&&gs.abilityData?.huntTi===pi;
+            const authorityCards=props.publicCardSelection?.target===pi?props.publicCardSelection:null;
+            const showFaceUpForSwap=authorityCards?.faceUp||isSwapPublicTargetCardPhase||isHuntCardFromPublicPhase||p.revealHand;
+            const onCardSelectForSwap=authorityCards?.onSelect||(isSwapPublicTargetCardPhase?((cardIdx)=>swapSelectTargetCard(cardIdx)):isHuntCardFromPublicPhase?((cardIdx)=>huntSelectCardFromPublic(cardIdx)):null);
               return(
                 <div key={p.id} data-pid={pi} style={{position:'relative',zIndex:isSel?101:undefined,alignSelf:'start'}}>
-                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={1} viewportWidth={DESIGN_WIDTH} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
+                <PlayerPanel player={p} playerIndex={pi} isCurrentTurn={visualCurrentTurn===pi} isSelectable={isSel} showFaceUp={showFaceUpForSwap} onSelect={()=>handleAIClick(pi)} onCardSelect={onCardSelectForSwap} selectableCardIndices={authorityCards?.indices} selectedCardIndices={authorityCards?.selected} isBeingHit={hitIndices.includes(pi)} isSanHit={sanHitIndices.includes(pi)} isHpHeal={hpHealIndices.includes(pi)} isSanHeal={sanHealIndices.includes(pi)} isBeingGuillotined={guillotinedPids.has(pi)} displayStats={displayStats} scaleRatio={1} viewportWidth={DESIGN_WIDTH} expansionKey={gs.expansionKey} blackGoatPulseActive={blackGoatPulsePid===pi} godHighlightBurst={godHighlightPanelBursts[pi]}/>
                 </div>
               );
             })}
@@ -358,6 +356,7 @@ export function BattleScreen(props) {
             phase={phase}
             isBlocked={isBlocked}
             canLocalTargetSelect={canLocalTargetSelect}
+            isSelfTargetSelectable={props.isTargetSelectable?.(0)}
             isMobile={false}
             isMobileLandscape={false}
             boardCssPx={boardCssPx}
@@ -378,9 +377,10 @@ export function BattleScreen(props) {
             setShowEmojiPicker={setShowEmojiPicker}
             setEmojiButtonPos={setEmojiButtonPos}
             handleAIClick={handleAIClick}
+            emojiEnabled={props.emojiEnabled}
           />
           {/* Center: deck/discard piles */}
-        <PileDisplay deckCount={gs.deck.length} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeck.length+(gs.houndsOfTindalosActive?0:0)} compact={false} baseHeight={170} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={1} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId}/>
+        <PileDisplay deckCount={gs.deckCount ?? gs.deck?.length ?? 0} discardCount={visualDiscard.length} discardTop={visualDiscard[visualDiscard.length-1]||null} discardCards={visualDiscard} inspectionCount={gs.inspectionDeckCount ?? gs.inspectionDeck?.length ?? 0} compact={false} baseHeight={170} deckRef={deckAreaRef} discardRef={discardPileRef} scaleRatio={1} expansionKey={gs.expansionKey} zhuLitCards={zhuLitCardsForView} zhuHiddenCardId={zhuHiddenCardId}/>
           {/* Log — narrow, right-aligned */}
           <BattleLogPanel
             logRef={logRef}
@@ -482,6 +482,7 @@ export function BattleScreen(props) {
           confirmBuryAliveSelection={confirmBuryAliveSelection}
           confirmIgniteTorchDiscard={confirmIgniteTorchDiscard}
           setGs={setGs}
+          authorityControls={props.authorityControls}
           getButtonStyle={getButtonStyle}
           anim={anim}
         />);
@@ -500,39 +501,7 @@ export function BattleScreen(props) {
       {/* Global vignette */}
       <div style={{position:'absolute',inset:0,background:'radial-gradient(ellipse at 50% 50%,transparent 40%,#00000099 100%)',pointerEvents:'none',zIndex:3}}/>
       <GameLayerPortal>
-      {pendingRoleSelection&&(
-        <div style={{position:'fixed',inset:0,zIndex:9998,background:'#080503',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-          <div className="toe-dialog toe-role-selection" style={{textAlign:'center'}}>
-            <h2 className="toe-title" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:20,color:'#e8c87a',margin:'0 0 8px',letterSpacing:2}}>选择本局身份</h2>
-            <p className="toe-subtitle" style={{fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",fontSize:13,color:'#a07838',margin:'0 0 24px',fontStyle:'normal'}}>命运尚未落笔，由你决定扮演何人</p>
-            <div className="toe-role-options">
-              {[
-                {key:ROLE_TREASURE,...RINFO[ROLE_TREASURE]},
-                {key:ROLE_HUNTER,...RINFO[ROLE_HUNTER]},
-                {key:ROLE_CULTIST,...RINFO[ROLE_CULTIST]},
-                {key:'random',icon:'?',col:'#a07838',dim:'#5a4020',goal:'听凭命运安排',skillName:'随机身份'},
-              ].map(role=>(
-                <button
-                  className="toe-option toe-battle-role-choice"
-                  key={role.key}
-                  type="button"
-                  onClick={()=>confirmRoleSelection(role.key)}
-                  style={{
-                    '--toe-role-accent':role.col,
-                    padding:'18px 12px',cursor:'pointer',
-                    fontFamily:"var(--toe-ui-font, 'Noto Serif SC', 'Source Han Serif SC', 'Songti SC', 'SimSun', serif)",display:'flex',flexDirection:'column',alignItems:'center',gap:6,
-                    transition:'all 0.15s ease',
-                  }}
-                >
-                  <span style={{fontSize:30,color:role.col,filter:`drop-shadow(0 0 8px ${role.col}66)`}}>{role.icon}</span>
-                  <span style={{fontSize:14,letterSpacing:1,fontWeight:700}}>{role.key==='random'?'随机身份':role.key}</span>
-                  <small style={{fontSize:12,lineHeight:1.6,letterSpacing:0.5}}>{role.goal}</small>
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
+      {pendingRoleSelection && <RoleSelectionDialog onSelect={confirmRoleSelection} />}
       {/* ── 断线遮罩（游戏内）── */}
       {isDisconnected&&(
         <div
@@ -582,7 +551,7 @@ export function BattleScreen(props) {
       {/* Target selection mask + floating prompt */}
       <TargetSelectOverlay drawReveal={gs.drawReveal} phase={canLocalTargetSelect?phase:null} bewitchCard={gs.abilityData?.bewitchCard}/>
 
-      <BattleDecisionModals
+      {props.decisionLayer !== undefined ? props.decisionLayer : <BattleDecisionModals
         gs={gs}
         me={me}
         phase={phase}
@@ -642,7 +611,7 @@ export function BattleScreen(props) {
         sameAbyssSelect={sameAbyssSelect}
         sphinxGuess={sphinxGuess}
         decipherStoneCarvingConfirm={decipherStoneCarvingConfirm}
-      />
+      />}
 
       </GameLayerPortal>
       {/* Shake only the board content: transforming the root reanchors and clips its fixed backgrounds/overlays. */}
@@ -663,8 +632,8 @@ export function BattleScreen(props) {
           effects={<CoastalBoardEffects formula={gs.petrifyingFormula}
             night={!showTutorial && anim?.type !== 'APOPHIS_ECLIPSE' ? (anim && Object.prototype.hasOwnProperty.call(anim, '_apophisNight') ? anim._apophisNight : gs.apophisNight) : null}
             houndsActive={!showTutorial && houndsTimerVisible} secondsLeft={houndsSecLeft} />}
-          turn={gs.turn} turnLabel={visualCurrentTurn === 0 ? '你的回合' : `${visualPlayers[visualCurrentTurn]?.name || '其他角色'}的回合`}
-          counts={{ inspection: gs.inspectionDeck.length, deck: gs.deck.length, discard: visualDiscard.length }}
+          turn={gs.turn} turnLabel={!isSpectating && visualCurrentTurn === 0 ? '你的回合' : `${visualPlayers[visualCurrentTurn]?.name || '其他角色'}的回合`}
+          counts={{ inspection: gs.inspectionDeckCount ?? gs.inspectionDeck?.length ?? 0, deck: gs.deckCount ?? gs.deck?.length ?? 0, discard: visualDiscard.length }}
           compact={false} width={DESIGN_WIDTH} height={coastalBoardHeight} />
         <DamageLinkOverlay
           visualPlayers={visualPlayers}
@@ -745,7 +714,7 @@ export function BattleScreen(props) {
           />
         );
       })()}
-      {phase==='PLAYER_WIN_PENDING'&&(
+      {!props.authorityControls&&phase==='PLAYER_WIN_PENDING'&&(
         <TreasureMapAnim hand={me.hand} confirmCountdownSec={gs?._isMP?3:null} onConfirm={showTutorial?handleTutorialTreasureMapConfirm:()=>{
           markLocalTreasureMapShown?.();
           animQueueRef.current=[];
@@ -761,7 +730,7 @@ export function BattleScreen(props) {
     {/* Keep controls below this root's masks. The root itself must stay untransformed;
         background camera and shake transforms belong to its visual children. */}
     {!pendingRoleSelection && !roleRevealAnim && <GammaSlider defaultOpen={props.settingsDefaultOpen} gamma={gamma} onChange={handleGamma} musicVolume={musicVolume} onMusicVolumeChange={handleMusicVolume} sfxVolume={sfxVolume} onSfxVolumeChange={handleSfxVolume}
-      battleControls={{ onPause: () => setIsSoloPaused(true), onExit: requestExitMatch || returnToMainMenu, isMultiplayer, showTutorial,
+      battleControls={{ onPause: props.pauseAvailable === false ? undefined : () => setIsSoloPaused(true), onExit: requestExitMatch || returnToMainMenu, isMultiplayer, showTutorial,
         shake: sceneShake, paused: isSoloPaused,
         style: { top: coastalViewport.top + (COASTAL_CORNER.top + COASTAL_CORNER.controlsTop) * coastalScale,
           right: coastalViewport.left + (COASTAL_CORNER.right + COASTAL_CORNER.controlsRight) * coastalScale,

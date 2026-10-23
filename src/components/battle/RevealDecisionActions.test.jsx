@@ -97,6 +97,15 @@ describe('reveal card decisions', () => {
     expect(buttons[0].props.onClick).toBeUndefined();
     expect(textOf(tree)).not.toContain('失去 1 SAN');
   });
+  it('uses authority legal choices for a borrowed cultist identity and a forced max-level encounter', () => {
+    const borrowed = godProps({ player: { role: '寻宝者', _nyaBorrow: '邪教徒' }, legalChoices: ['worship', 'keepHand', 'discard'] });
+    const keep = descendants(GodChoiceActions(borrowed)).filter(node => node?.type === 'button').find(node => textOf(node) === '收入手牌');
+    expect(keep).toBeDefined(); keep.props.onClick(); expect(borrowed.onKeepHand).toHaveBeenCalledOnce();
+    const forced = godProps({ forcedConvert: true, player: { role: '邪教徒', godName: 'CTH', godLevel: 3 }, allowWorship: false, legalChoices: ['discard'] });
+    const buttons = descendants(GodChoiceActions(forced)).filter(node => node?.type === 'button' && !node.props.disabled);
+    expect(buttons.map(textOf)).toEqual(['放弃']);
+    buttons[0].props.onClick(); expect(forced.onDiscard).toHaveBeenCalledOnce();
+  });
 
   it('preserves actual encounter costs and revealed cultist immunity without encounter counters', () => {
     const paid = GodChoiceActions(godProps({ player: { role: '寻宝者', godEncounters: 2, lastGodEncounterSanLoss: 2 } }));

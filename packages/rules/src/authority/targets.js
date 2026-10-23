@@ -10,6 +10,7 @@ import { canGodPowerAffect } from '../game/godPowerImmunity.js';
 import { appendPublicCardGainTriggers } from '../game/cardGainEvents.js';
 import { applyFx } from '../game/effectEngine.js';
 import { addDamageLink } from '../game/damageLinks.js';
+import { appendCommittedPublicEvent, committedPublicEvent } from './incomeEvents.js';
 
 const sourceFor = (state, kind) => kind === 'shu' ? state.abilityData.shuChooserIdx ?? state.currentTurn
   : state.abilityData[`${kind}Source`] ?? state.currentTurn;
@@ -31,7 +32,8 @@ export function finishAuthorityTarget(state) {
     const players = copyPlayers(state.players);
     if (!players[target.source].hand.some(isBlackGoatYoung)) return buildTargetContinuationState({ baseState: base });
     const card = createBlackGoatYoungCard(); players[target.target].hand.push(card);
-    return buildTargetContinuationState({ baseState: { ...base, multiplyUsed: true }, players,
+    return buildTargetContinuationState({ baseState: appendCommittedPublicEvent({ ...base, multiplyUsed: true },
+      { type: 'publicTokensGranted', sourceSeat: target.source, targetSeat: target.target, kind: 'blackGoat', cards: [card] }), players,
       extraPatch: appendPublicCardGainTriggers(state, players, target.target, card) });
   }
   if (target.kind === 'zoneSwap') {
@@ -42,21 +44,26 @@ export function finishAuthorityTarget(state) {
   }
   if (target.kind === 'damageLink') {
     const players = copyPlayers(state.players);
-    addDamageLink(players, target.source, target.target, { expiryOwner: target.source });
-    return buildTargetContinuationState({ baseState: base, players });
+    const link = addDamageLink(players, target.source, target.target, { expiryOwner: target.source });
+    return buildTargetContinuationState({ baseState: appendCommittedPublicEvent(base,
+      { type: 'damageLinkEstablished', sourceSeat: target.source, targetSeat: target.target, sourceLinkId: link.id }), players });
   }
   if (target.kind === 'roseThorn') {
     const players = copyPlayers(state.players);
     const cards = players[target.source].hand.splice(0).map(card => ({ ...card, roseThornHolderId: target.target,
       roseThornSourceId: target.source, roseThornSourceName: players[target.source].name }));
     players[target.target].hand.push(...cards);
-    return buildTargetContinuationState({ baseState: base, players });
+    return buildTargetContinuationState({ baseState: cards.length ? appendCommittedPublicEvent(base,
+      { type: 'hiddenHandTransferred', sourceSeat: target.source, targetSeat: target.target, count: cards.length,
+        sourceCount: players[target.source].hand.length, targetCount: players[target.target].hand.length,
+        targetReceivedCards: cards }) : base, players });
   }
   if (target.kind === 'shu') {
     const players = copyPlayers(state.players), count = target.count;
     const cards = Array.from({ length: count }, () => createBlackGoatYoungCard());
     players[target.target].hand.push(...cards);
-    return buildTargetContinuationState({ baseState: base, players,
+    return buildTargetContinuationState({ baseState: cards.length ? appendCommittedPublicEvent(base,
+      { type: 'publicTokensGranted', sourceSeat: target.source, targetSeat: target.target, kind: 'blackGoat', cards }) : base, players,
       extraPatch: appendPublicCardGainTriggers(state, players, target.target, cards) });
   }
   if (target.kind === 'caveDuel') return { ...base, phase: 'CAVE_DUEL_SELECT_CARD',
@@ -123,9 +130,8 @@ export const targetActions = {
       const result = resolveCaveDuelState(state.players, duel.source, duel.target,
         source.index, target.index, source.card, target.card, state);
       const next = { ...result.nextGs, _sealedDuel: null,
-        _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'caveDuelRevealed',
-          sourceSeat: duel.source, targetSeat: duel.target, sourceCard: source.card, targetCard: target.card,
-          winnerSeat: result.duelCompare > 0 ? duel.source : result.duelCompare < 0 ? duel.target : null }] };
+        _pendingPublicEvents: [...(state._pendingPublicEvents || []), committedPublicEvent(state,
+          { type: 'caveDuelRevealed', ...result.duelReceipt })] };
       const winner = result.duelCompare > 0 ? duel.source : result.duelCompare < 0 ? duel.target : null;
       const win = checkWin(next.players, next._isMP) || (winner !== null && getTreasureDeclarationWin(next.players, winner));
       if (win) { next.gameOver = win; if (win.winnerIdx !== undefined) next.players[win.winnerIdx].roleRevealed = true; }

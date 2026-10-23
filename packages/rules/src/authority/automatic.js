@@ -20,6 +20,10 @@ import { finishAuthoritySkillTarget, cancelAuthoritySwap } from './skills.js';
 import { finishAuthorityHuntTarget, finishAuthorityHunt } from './hunt.js';
 import { finishAuthorityBewitchTarget, finishAuthorityBewitchGod } from './bewitch.js';
 import { settleAuthorityBury } from './bury.js';
+import { createTurnDrawVisualEvents, createTsathogguaSlimeGrantEvent, createTsathogguaSlimePopEvent } from '../game/visualEvents.js';
+import { collectFreshPresentationStats } from './presentationPublicEvents.js';
+import { cardIncomeCommittedEvent } from './incomeEvents.js';
+import { ruleScopedId } from '../runtime.js';
 
 function decisionOwner(state) {
   const ad = state.abilityData || {};
@@ -47,6 +51,88 @@ function advanceEnd(state) {
     _authorityEnd: { ...state._authorityEnd, cursor: state._authorityEnd.cursor + 1 } };
 }
 
+function appendPresentationCue(state, event) {
+  if (!event) return state;
+  return { ...state, _visualEvents: [...(state._visualEvents || []), {
+    ...event, presentationAfterStatIds: collectFreshPresentationStats({}, state).map(stat => stat.id),
+  }] };
+}
+function semanticCue(state, type, owner) {
+  return { id: ruleScopedId(type, (state._visualEvents || []).length), type, playerIdx: owner,
+    presentationBeforeNextDraw: true };
+}
+function appendAuthorityDrawEvent(before, after, result, owner, reason = 'draw') {
+  if (!result.drawnCard) return after;
+  const events = createTurnDrawVisualEvents({ playerIdx: owner, card: result.drawnCard,
+    sourcePile: result.sourcePile || 'deck',
+    reshuffleLog: result.reshuffleLog,
+    reshuffleCount: result.reshuffleCount,
+    statEventIds: collectFreshPresentationStats(before, after).map(stat => stat.id) });
+  const draw = events.find(event => event.type === 'drawCard');
+  const previousVisualIds = new Set((before._visualEvents || []).map(event => event.id));
+  const causedEventIds = [
+    ...(after._visualEvents || []).filter(event => !previousVisualIds.has(event.id)).map(event => event.id),
+    ...(after._pendingPublicEvents || []).slice((before._pendingPublicEvents || []).length)
+      .map((event, index) => event.presentationEventId || `pending:${(before._pendingPublicEvents || []).length + index}`),
+  ].filter(Boolean);
+  const prior = (after._visualEvents || []).map(event => event.presentationBeforeNextDraw
+    ? { ...event, presentationBeforeNextDraw: false,
+      presentationBeforeEventIds: [...(event.presentationBeforeEventIds || []), draw.id],
+      presentationBeforeStatIds: [...(event.presentationBeforeStatIds || []), ...(draw.statEventIds || [])] } : event);
+  return { ...after, _visualEvents: [...prior, ...events.map(event => ({
+    ...event, presentationReason: reason,
+    ...(event.id === draw.id ? { presentationBeforeEventIds: causedEventIds } : {}),
+    presentationAfterEventIds: [
+      ...(before._visualEvents || []).map(priorEvent => priorEvent.id).filter(Boolean),
+      ...(before._pendingPublicEvents || []).map((priorEvent, index) => priorEvent.presentationEventId || `pending:${index}`),
+    ],
+    presentationAfterStatIds: collectFreshPresentationStats({}, before).map(stat => stat.id),
+    ...(result.blindZoneIdentity ? { blindZoneIdentity: true } : {}),
+  }))] };
+}
+
+function startAuthorityTurn(state) {
+  const afterStatIds = collectFreshPresentationStats({}, state).map(stat => stat.id);
+  const next = startNextTurn(state);
+  const beforeStatIds = collectFreshPresentationStats(state, next).map(stat => stat.id);
+  // startNextTurn clears the previous legacy playback journal. In authority
+  // mode these are still-unpublished events from this same command (e.g. two
+  // forced CTH rest draws), so retain them through the public-event boundary.
+  const visuals = [...new Map([...(state._visualEvents || []), ...(next._visualEvents || [])]
+    .filter(event => event?.id).map(event => [event.id, event])).values()];
+  const priorIds = new Set((state._visualEvents || []).map(event => event.id));
+  const bannerIds = visuals.filter(event => event.type === 'turnStart' && event.playerIdx === next.currentTurn
+    && event.turnKey === next._turnKey).map(event => event.id);
+  return { ...next, _visualEvents: visuals.map(event => event.type === 'turnStart'
+    && event.playerIdx === next.currentTurn && event.turnKey === next._turnKey
+    ? { ...event, presentationAfterStatIds: afterStatIds, presentationBeforeStatIds: beforeStatIds,
+      presentationAfterEventIds: [
+        ...(state._visualEvents || []).map(prior => prior.id).filter(Boolean),
+        ...(state._pendingPublicEvents || []).map((prior, index) => prior.presentationEventId || `pending:${index}`),
+      ] } : !priorIds.has(event.id) && event.type === 'cardEffect' && event.effectKey === 'playerRestChanged'
+        && event.payload?.isResting === false
+        ? { ...event, presentationBeforeEventIds: [...(event.presentationBeforeEventIds || []), ...bannerIds],
+          presentationAfterEventIds: [...(event.presentationAfterEventIds || []),
+          ...(state._visualEvents || []).map(prior => prior.id).filter(Boolean),
+          ...(state._pendingPublicEvents || []).map((prior, index) => prior.presentationEventId || `pending:${index}`)] }
+        : !priorIds.has(event.id) && (['drawCard', 'deckReshuffle', 'tsgSlimePop', 'godPowerBlocked'].includes(event.type)
+          || event.type === 'cardEffect' && event.effectKey === 'blackGoatPulse')
+      ? { ...event, presentationAfterEventIds: [...(event.presentationAfterEventIds || []), ...bannerIds] } : event) };
+}
+
+function appendPendingIncomeEvent(state, pending, income) {
+  if (pending?.presentationSource !== 'reveal') return state;
+  const event = cardIncomeCommittedEvent(income, state);
+  return event ? { ...state, _pendingPublicEvents: [...(state._pendingPublicEvents || []), event] } : state;
+}
+
+// The caller has already appended this reserved card to public discard.
+// A formerly private choice becomes public only at that physical commit.
+function appendReservedDiscardEvent(state, card, owner) {
+  const receipt = cardIncomeCommittedEvent({ drawerIdx: owner, card, dest: 'discard' }, state);
+  return { ...state, _pendingPublicEvents: [...(state._pendingPublicEvents || []), receipt] };
+}
+
 export function drawAuthorityCard(state, owner, flags = {}, source = ZHU_REVEAL_SOURCE.TURN_DRAW) {
   const request = requestZhuReveal(state, { deck: state.deck, drawerIdx: owner, source,
     continuation: { authorityDraw: true } });
@@ -54,9 +140,9 @@ export function drawAuthorityCard(state, owner, flags = {}, source = ZHU_REVEAL_
     drawReveal: null, abilityData: buildZhuRevealAbilityData(request, flags),
     _authorityDraw: { owner, flags, source } };
   const result = playerDrawCard(state.players, state.deck, state.discard, owner, state);
-  const base = { ...state, ...result.statePatch, players: result.P, deck: result.D, discard: result.Disc,
+  const base = appendAuthorityDrawEvent(state, { ...state, ...result.statePatch, players: result.P, deck: result.D, discard: result.Disc,
     log: [...(state.log || []), ...(result.reshuffleLog ? [result.reshuffleLog] : []), ...(result.effectMsgs || [])],
-    drawReveal: null, phase: 'ACTION', abilityData: { ...state.abilityData, ...flags } };
+    drawReveal: null, phase: 'ACTION', abilityData: { ...state.abilityData, ...flags } }, result, owner);
   const decision = deriveEffectDecisionState(result.statePatch, { baseAbilityData: base.abilityData,
     extraAbilityData: flags, fallbackPhase: 'ACTION' });
   if (decision.hasDecision) return { ...base, phase: decision.phase, abilityData: decision.abilityData };
@@ -82,7 +168,8 @@ function replayNext(state) {
   if (!card.isGod) {
     const next = buildEndTurnReplayZoneDraw({ stateLike: state, players: state.players,
       replay: state._endTurnReplay, actorIndex, index, card, actorName: state.players[actorIndex].name }).state;
-    return card.forced ? settleKeptDraw(next) : next;
+    const settled = card.forced ? settleKeptDraw(next) : next;
+    return appendAuthorityDrawEvent(state, settled, { drawnCard: card }, actorIndex, 'endTurnReplay');
   }
   const encounter = buildEndTurnReplayGodEncounter({ stateLike: state, players: copyPlayers(state.players),
     replay: state._endTurnReplay, actorIndex, index, card,
@@ -101,9 +188,9 @@ function replayNext(state) {
   const decision = deriveEffectDecisionState(secondary ? meta : {}, {
     baseAbilityData: secondary ? { pendingGodChoice: godChoice, _turnOwner: state.currentTurn } : godChoice,
     fallbackPhase: 'GOD_CHOICE' });
-  return { ...state, ...meta, players: P, deck: D, discard: Disc, log: L, ...encounter.replayPatch,
+  return appendAuthorityDrawEvent(state, { ...state, ...meta, players: P, deck: D, discard: Disc, log: L, ...encounter.replayPatch,
     drawReveal: null, phase: decision.phase, abilityData: decision.abilityData,
-    ...(win ? { gameOver: win } : {}) };
+    ...(win ? { gameOver: win } : {}) }, { drawnCard: card }, actorIndex, 'endTurnReplay');
 }
 
 function inferContinuation(state) {
@@ -127,7 +214,8 @@ export function advanceAutomaticRules(initial, before = null) {
       if (state._privateSwap) state = cancelAuthoritySwap(state);
       if (state.abilityData?.pendingZoneIncome) {
         const players = copyPlayers(state.players), discard = [...state.discard];
-        settlePendingZoneIncome(players, discard, state.abilityData.pendingZoneIncome);
+        const income = settlePendingZoneIncome(players, discard, state.abilityData.pendingZoneIncome);
+        state = appendPendingIncomeEvent(state, state.abilityData.pendingZoneIncome, income);
         const { pendingZoneIncome: _settled, ...abilityData } = state.abilityData;
         state = { ...state, players, discard, abilityData };
       }
@@ -137,7 +225,24 @@ export function advanceAutomaticRules(initial, before = null) {
         ...(state._decisionContinuations || []).map(frame => frame.abilityData?.godCard)].filter(Boolean);
       const discard = [...state.discard], located = new Set([...state.deck, ...discard,
         ...state.players.flatMap(player => [...player.hand, ...(player.godZone || [])])].map(card => card.id));
-      for (const card of reserved) if (card.id != null && !located.has(card.id)) { discard.push(card); located.add(card.id); }
+      const reservations = [
+        { card: state.drawReveal?.card, owner: state.drawReveal?.drawerIdx ?? state.currentTurn },
+        { card: state.abilityData?.godCard, owner: state.abilityData?.drawerIdx ?? state.currentTurn },
+        { card: state.abilityData?.pendingGodChoice?.godCard, owner: state.abilityData?.pendingGodChoice?.drawerIdx ?? state.currentTurn },
+        { card: state._authorityBewitchGod?.card, owner: state._authorityBewitchGod?.target },
+        { card: state._clockContinuation?.drawReveal?.card,
+          owner: state._clockContinuation?.drawReveal?.drawerIdx ?? state.currentTurn },
+        ...(state.abilityData?.revealedCards || []).map(card => ({ card, owner: decisionOwner(state) })),
+        ...(state._decisionContinuations || []).map(frame => ({ card: frame.abilityData?.godCard,
+          owner: frame.abilityData?.drawerIdx ?? frame.abilityData?.playerIndex ?? state.currentTurn })),
+      ];
+      for (const card of reserved) if (card.id != null && !located.has(card.id)) {
+        discard.push(card); located.add(card.id);
+        const source = reservations.find(item => item.card?.id === card.id);
+        if (source && Number.isInteger(source.owner)) {
+          state = appendReservedDiscardEvent(state, card, source.owner);
+        }
+      }
       // The established final result reveals all roles/hands. Presentation
       // can animate that result, but never owns or delays its commitment.
       return { ...state, discard, drawReveal: null, abilityData: {}, _authorityBewitchGod: null, _clockContinuation: null,
@@ -166,18 +271,37 @@ export function advanceAutomaticRules(initial, before = null) {
     }
     if (state.phase === 'FIRST_COME_PICK_SELECT' && state.players[decisionOwner(state)]?.isDead) {
       const ad = state.abilityData, pickIndex = (ad.pickIndex || 0) + 1;
-      state = pickIndex < ad.pickOrder.length ? { ...state, abilityData: { ...ad, pickIndex } }
-        : buildTargetContinuationState({ baseState: { ...state, discard: [...state.discard, ...(ad.revealedCards || [])] } });
+      if (pickIndex < ad.pickOrder.length) state = { ...state, abilityData: { ...ad, pickIndex } };
+      else {
+        const discard = [...state.discard], owner = decisionOwner(state);
+        for (const card of ad.revealedCards || []) {
+          discard.push(card);
+          state = appendReservedDiscardEvent(state, card, owner);
+        }
+        state = buildTargetContinuationState({ baseState: { ...state, discard } });
+      }
       continue;
     }
     if (state.players[decisionOwner(state)]?.isDead && !['ACTION', 'BURY_ALIVE_SELECT'].includes(state.phase)) {
       const card = state.drawReveal?.card || state.abilityData?.godCard;
       const discard = [...state.discard];
-      if (card && !discard.some(item => item.id === card.id) && !state.players.some(player => player.hand.some(item => item.id === card.id))) discard.push(card);
-      if (['DECIPHER_STONE_CARVING', 'TORTOISE_ORACLE_SELECT'].includes(state.phase)) {
-        for (const revealed of state.abilityData.revealedCards || []) if (!discard.some(item => item.id === revealed.id)) discard.push(revealed);
+      if (card && !discard.some(item => item.id === card.id) && !state.players.some(player => player.hand.some(item => item.id === card.id))) {
+        discard.push(card);
+        const owner = state.drawReveal?.card ? state.drawReveal.drawerIdx ?? state.currentTurn
+          : state.abilityData.drawerIdx ?? state.currentTurn;
+        state = appendReservedDiscardEvent(state, card, owner);
       }
-      if (state.abilityData?.pendingZoneIncome) settlePendingZoneIncome(state.players, discard, state.abilityData.pendingZoneIncome);
+      if (['DECIPHER_STONE_CARVING', 'TORTOISE_ORACLE_SELECT'].includes(state.phase)) {
+        const owner = decisionOwner(state);
+        for (const revealed of state.abilityData.revealedCards || []) if (!discard.some(item => item.id === revealed.id)) {
+          discard.push(revealed);
+          state = appendReservedDiscardEvent(state, revealed, owner);
+        }
+      }
+      if (state.abilityData?.pendingZoneIncome) {
+        const income = settlePendingZoneIncome(state.players, discard, state.abilityData.pendingZoneIncome);
+        state = appendPendingIncomeEvent(state, state.abilityData.pendingZoneIncome, income);
+      }
       state = { ...state, discard, phase: 'ACTION', drawReveal: null, abilityData: {}, _authorityEnd: null,
         _ruleContinuation: null, _endTurnReplay: null }; continue;
     }
@@ -246,6 +370,7 @@ export function advanceAutomaticRules(initial, before = null) {
     if (state.abilityData?.pendingZoneIncome) {
       const players = copyPlayers(state.players), discard = [...state.discard];
       const income = settlePendingZoneIncome(players, discard, state.abilityData.pendingZoneIncome);
+      state = appendPendingIncomeEvent(state, state.abilityData.pendingZoneIncome, income);
       const { pendingZoneIncome: _settled, ...abilityData } = state.abilityData;
       const patch = income?.dest === 'player' ? appendPublicCardGainTriggers(state, players, income.drawerIdx, income.card) : {};
       state = { ...state, ...patch, players, discard, abilityData };
@@ -259,7 +384,7 @@ export function advanceAutomaticRules(initial, before = null) {
     const win = checkWin(state.players, state._isMP);
     if (win) return { ...state, gameOver: win };
     if (state.players[state.currentTurn]?.isDead) {
-      state = startNextTurn(enterTurnBoundary({ ...state, _authorityEnd: null, _ruleContinuation: null, abilityData: {} }));
+      state = startAuthorityTurn(enterTurnBoundary({ ...state, _authorityEnd: null, _ruleContinuation: null, abilityData: {} }));
       continue;
     }
     state = inferContinuation(state);
@@ -281,8 +406,10 @@ export function advanceAutomaticRules(initial, before = null) {
       const index = player.godName === 'TSG' && player.godLevel > 0 && !hasGodPowerImmunity(player)
         ? player.hand.findIndex(isTsathogguaSlime) : -1;
       if (index >= 0) {
-        player.hand.splice(index, 1);
-        state = drawAuthorityCard({ ...state, players }, owner,
+        const [removed] = player.hand.splice(index, 1);
+        const pop = createTsathogguaSlimePopEvent({ playerIdx: owner, cards: [removed] });
+        const popped = appendPresentationCue({ ...state, players }, { ...pop, presentationBeforeNextDraw: true });
+        state = drawAuthorityCard(popped, owner,
           { fromTsathogguaSlime: true, continueTurnStartDraw: true, _turnOwner: owner }, ZHU_REVEAL_SOURCE.TSG_SLIME);
       } else state = drawAuthorityCard({ ...state, _ruleContinuation: null, abilityData: {} }, owner);
       continue;
@@ -304,11 +431,12 @@ export function advanceAutomaticRules(initial, before = null) {
     if (!end) return state;
     const event = end.events[end.cursor];
     if (!event || state.players[end.owner].isDead) {
-      state = startNextTurn(enterTurnBoundary({ ...state, _authorityEnd: null, _ruleContinuation: null, abilityData: {} }));
+      state = startAuthorityTurn(enterTurnBoundary({ ...state, _authorityEnd: null, _ruleContinuation: null, abilityData: {} }));
       continue;
     }
     if (event.id === END_TURN_EVENT.CTH_REST_DRAW) {
-      state = { ...state, abilityData: { fromRest: true, cthDrawsRemaining: event.drawCount },
+      state = { ...appendPresentationCue(state, semanticCue(state, 'cthulhuDream', end.owner)),
+        abilityData: { fromRest: true, cthDrawsRemaining: event.drawCount },
         _ruleContinuation: { kind: 'restDraw', owner: end.owner } }; continue;
     }
     if (event.id === END_TURN_EVENT.REVERSE_TURN_ORDER) {
@@ -318,14 +446,19 @@ export function advanceAutomaticRules(initial, before = null) {
     }
     if (event.id === END_TURN_EVENT.TSG_SLIME_GRANT) {
       const players = copyPlayers(state.players), log = [...state.log];
-      const grant = grantTsathogguaSlimeAtEndTurn(players, end.owner, log, []);
+      const visuals = [];
+      const grant = grantTsathogguaSlimeAtEndTurn(players, end.owner, log, visuals);
       const patch = grant ? appendPublicCardGainTriggers(state, players, end.owner, grant.cards) : {};
-      state = advanceEnd({ ...state, ...patch, players, log, _tsgSlimeGrantedAtTurnEnd: true }); continue;
+      state = { ...state, ...patch, players, log, _tsgSlimeGrantedAtTurnEnd: true };
+      for (const cue of [...visuals, createTsathogguaSlimeGrantEvent(grant || {})].filter(Boolean)) state = appendPresentationCue(state, cue);
+      state = advanceEnd(state); continue;
     }
     if (event.id === END_TURN_EVENT.END_TURN_REPLAY_HAND) {
       const replay = buildEndTurnReplayStartState({ baseGs: state, players: state.players, deck: state.deck,
         discard: state.discard, log: state.log, actorIndex: end.owner, actorLabel: state.players[end.owner].name });
-      state = replay ? { ...replay, phase: 'ACTION', _ruleContinuation: { kind: 'endTurnReplay', owner: end.owner } }
+      state = replay ? { ...appendPresentationCue(replay, { ...semanticCue(state, 'endlessCorridorStarted', end.owner),
+        revealedCards: [...state.players[end.owner].hand] }),
+        phase: 'ACTION', _ruleContinuation: { kind: 'endTurnReplay', owner: end.owner } }
         : advanceEnd(state); continue;
     }
     throw new Error(`Unmigrated mandatory end-turn event: ${event.id}`);

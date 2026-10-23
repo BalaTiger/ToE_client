@@ -47,6 +47,11 @@ test('rest samples server dice, applies the actual recovery and cannot accept fo
   const { d1, d2 } = next.state._restRoll;
   assert.equal(next.random.draws, 2); assert.equal(next.state.players[0].hp, 7 + Math.max(d1, d2));
   assert.equal(next.state.players[0].isResting, true); assert.equal(next.state.currentTurn, 1);
+  assert.deepEqual(next.publicEvents[0], { type: 'restRolled', seat: 0, d1, d2,
+    visibility: 'public', id: 'turn:event:1:0' });
+  assert.ok(next.publicEvents.findIndex(event => event.type === 'statChanged' && event.seat === 0) > 0);
+  assert.equal(next.publicEvents.filter(event => event.type === 'restRolled').length, 1);
+  assert.equal(next.state._pendingPublicEvents, undefined);
 });
 
 test('CTH rest draws pause at each real human choice and resume the private server cursor to the next turn', () => {

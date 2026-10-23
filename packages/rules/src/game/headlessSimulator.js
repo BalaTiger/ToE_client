@@ -19,7 +19,7 @@ import {
   tryVritraImmortal,
   makeInspectionMeta,
 } from './coreUtils.js';
-import { VISUAL_EVENT } from './visualEvents.js';
+import { VISUAL_EVENT, createTsathogguaSlimePopEvent, createCardEffectEvent } from './visualEvents.js';
 import { applyInspectionForSanLoss, processInspectionTargets, resolvePendingDamageLinkBreak, submitLossEvents } from './effectEngine.js';
 import { buildStatChangeStatePatch } from './statChangeEngine.js';
 import { buildStatEvents } from './statEvents.js';
@@ -104,10 +104,19 @@ export function resolveHeadlessSlimeBalance(gs, useSlime = false, { fallbackPhas
   if (useSlime) {
     const slimeIdx = (target.hand || []).findIndex(card => card?.isTsathogguaSlime);
     if (slimeIdx >= 0) {
-      target.hand.splice(slimeIdx, 1);
+      const [poppedCard] = target.hand.splice(slimeIdx, 1);
+      const fromHp = target.hp, fromSan = target.san;
       const total = Math.max(0, Math.min(20, (abilityData.afterHp ?? target.hp) + (abilityData.afterSan ?? target.san)));
       target.hp = Math.max(0, Math.min(10, Math.ceil(total / 2)));
       target.san = Math.max(0, Math.min(10, Math.floor(total / 2)));
+      if (gs._intentEngine) {
+        const pop = createTsathogguaSlimePopEvent({ playerIdx: targetIdx, cards: [poppedCard] });
+        gs = { ...gs, _visualEvents: [...(gs._visualEvents || []), { ...pop,
+          statPresentation: { fromHp, fromSan, hp: target.hp, san: target.san },
+          presentationStatBoundarySeq: gs._statEventSeq || 0,
+          presentationAfterStatIds: (gs._statEvents || []).map(event => event.id).filter(Boolean),
+        }] };
+      }
       L.push(`【撒托古亚的赐福黏液】${target.name} 牺牲黏液，将HP/SAN平分为 ${target.hp}/${target.san}`);
     }
   } else {
@@ -441,7 +450,16 @@ export function resolveHeadlessEtherealize(gs, decision = null, { fallbackPhase 
     const redirectTargetIdx = decision ? decision.redirectTargetIdx
       : chooseAiEtherealizeRedirectTarget(P, abilityData.adjacentTargets || []);
     if (redirectTargetIdx != null) {
+      const stacksBefore = source.etherealizeStacks || 0;
       source.etherealizeStacks = Math.max(0, (source.etherealizeStacks || 0) - 1);
+      if (gs._intentEngine && source.etherealizeStacks < stacksBefore) {
+        const consume = createCardEffectEvent({ effectKey: 'etherealizeConsumed', actorIdx: sourceIdx,
+          payload: { targetSeat: redirectTargetIdx, lostHp: abilityData.lostHp || 0, lostSan: abilityData.lostSan || 0,
+            stacksBefore, stacksAfter: source.etherealizeStacks } });
+        gs = { ...gs, _visualEvents: [...(gs._visualEvents || []), { ...consume,
+          presentationStatBoundarySeq: gs._statEventSeq || 0,
+        }] };
+      }
       finalTargetIdx = redirectTargetIdx;
       recursionLoss = buildEtherealizeRedirectChainLoss({
         players: P,

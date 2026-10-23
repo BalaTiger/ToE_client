@@ -4,13 +4,14 @@ This is the current source of truth for `src/` module boundaries. Historical spl
 
 ## Current Goal
 
-Keep `App.jsx` as the top-level game shell while continuing to move independent logic into smaller modules:
+The shipped entry is `main.jsx` -> `authority/AuthorityApp.jsx`. The authority controller owns sessions and composes `AuthorityLobbyPresentation` / `AuthorityBattlePresentation`, which reuse the original lobby, coastal board, and animation components. `App.jsx` remains the legacy game shell and a source of existing presentation contracts; it is not mounted by the shipped entry. Continue to keep independent logic in smaller modules:
 
 - pure data -> `constants/`
-- pure rules and state transforms -> `game/`
+- canonical rules and state transforms -> `../packages/rules/src/` (shared by offline and the authoritative server)
+- client animation/presentation helpers and compatibility re-exports -> `game/`
 - standalone sound-sequence lifecycles -> `audio/`
 - reusable React hooks -> `hooks/`
-- multiplayer socket/session glue -> `multiplayer/`
+- shipped v2 session/command glue -> `authority/`; legacy relay/session references -> `multiplayer/`
 - render-only UI -> `components/`
 - generic runtime helpers -> `utils/`
 
@@ -18,12 +19,13 @@ Keep `App.jsx` as the top-level game shell while continuing to move independent 
 
 ```text
 src/
-├─ App.jsx                  # top-level game component and screen composition
+├─ App.jsx                  # legacy game shell; not mounted by main.jsx
 ├─ App.css                  # legacy app-level styles
 ├─ index.css                # global base styles
 ├─ main.jsx                 # React mount entry
 ├─ README_structure.md      # this document
 ├─ assets/                  # bundled static assets
+├─ authority/               # shipped session controller, safe-view presentation and semantic commands
 ├─ audio/                   # standalone sound-sequence timing and cleanup controllers
 ├─ components/
 │  ├─ anim/                 # animation overlays and animation CSS snippets
@@ -38,13 +40,15 @@ src/
 │  ├─ tutorial/             # in-game tutorial and soft guide overlays
 │  └─ ui/                   # small reusable UI pieces
 ├─ constants/               # card data, theme data, flavor text
-├─ game/                    # pure game logic and tested state helpers
+├─ game/                    # client presentation helpers and shared-rule re-exports
 ├─ hooks/                   # React hooks for app subsystems
-├─ multiplayer/             # socket connection, handlers, state broadcast, UI session hooks
+├─ multiplayer/             # legacy App.jsx relay/replay implementation and reusable helpers
 └─ utils/                   # runtime config, DOM, scale, socket loader
 ```
 
 ## Live log presentation boundary
+
+The queue/log ownership contract is reused by v2. The turn-flow, snapshot-relay, and `App.jsx` paths described below are legacy references; the shipped authority path compiles allowlisted `view.events` through `authority/presentationEvents.js` and `authority/useAuthorityPresentation.js`, without receiving raw rule snapshots or `_visualEvents`.
 
 The existing turn-flow manager selects the rule stage. Rules produce visual events with turn ownership and a separate settlement transcript. During play, only event/animation message payloads feed the live log; `state.log` is not a live-log cursor or a source of inferred events.
 
@@ -55,7 +59,7 @@ The existing turn-flow manager selects the rule stage. Rules produce visual even
 - Canonical event queues bypass legacy log-bucket attachment. Historical replay adapters remain for snapshots without staged events; do not use them for new producers.
 - `auditVisualEventLogCoverage` is a read-only audit of one ordered transaction against its rule-log delta. It reports missing/extra occurrences and ordering differences; it must not repair events or drive playback.
 
-Multiplayer manual and 20-second automatic hunt reveals share
+In the legacy relay path, manual and 20-second automatic hunt reveals share
 `buildMpHuntRevealVisualTransaction` in `game/identitySkillVisualTransaction.js`.
 The timer selects an eligible held card and delegates playback to `App.jsx`, so
 the target and peers receive the same queue-owned reveal log.
@@ -65,9 +69,13 @@ from reopening a confirmed hunt while preserving later hunts.
 
 ## Major Modules
 
-### `App.jsx`
+### `authority/` and `../packages/rules/`
 
-Still owns:
+`AuthorityApp.jsx` is the shipped controller. Its offline/remote session adapters supply safe views and submit semantic commands; original screen and animation components are composed under `authority/presentation/`. Canonical command validation, rule resolution, public event collection, and recipient projection live in `../packages/rules/src/`, not in the React presentation layer. See [`packages/rules/README.md`](../packages/rules/README.md) for package ownership and validation.
+
+### `App.jsx` (legacy reference)
+
+Within the unmounted legacy shell, this file still owns:
 
 - top-level `gs` state and screen branches
 - battle action handlers and turn-flow orchestration
@@ -81,7 +89,7 @@ Do not add pure data, pure rules, or standalone AI strategy here.
 
 ### `game/`
 
-Pure logic modules with no React dependency. Important files include:
+Client-side pure helpers and compatibility entry points with no React dependency. Rule modules such as `turnEngine.js` re-export the canonical implementations in `../packages/rules/src/game/`; edit those shared sources for rule changes. The inventory below also retains legacy replay helpers alongside active presentation helpers:
 
 - `coreUtils.js` - shared rules, card predicates, player copying, card log text
 - `setup.js` - deck, roles, and initial game construction helpers
@@ -105,7 +113,7 @@ Pure logic modules with no React dependency. Important files include:
 - `statEvents.js` - HP/SAN event compilation, combined-effect normalization, presentation baselines, impact updates, and continuity validation
 - `tutorialScenario.js` / `softGuides.js` - tutorial and soft-guide state helpers
 
-When a rule helper can be expressed as input -> output without DOM or React state, prefer putting it here and testing it under `game/__tests__/`.
+New canonical rule helpers belong in `../packages/rules/src/` with shared package tests. Client-only presentation transforms belong here and may use `game/__tests__/`; a pure function alone is not a reason to move rule ownership back into the client.
 
 ### `hooks/`
 
@@ -122,9 +130,9 @@ React state/effect modules that are reusable but still React-aware. Current exam
 - `useResourcePreload.js`
 - animation effect hooks such as damage, card transfer, skill, earthquake, audio, visual discard sync
 
-### `multiplayer/`
+### `multiplayer/` (legacy relay reference)
 
-Socket/session code that has been extracted from `App.jsx`:
+Socket/session code extracted from the legacy `App.jsx`. These relay/broadcast paths are not the shipped v2 authority transport:
 
 - `useMultiplayerConnection.js` - runtime Socket.io loading and connection setup
 - `registerMultiplayerSocketHandlers.js` - socket event registration
@@ -132,7 +140,7 @@ Socket/session code that has been extracted from `App.jsx`:
 - `useMultiplayerUiSession.js` - waiting-room/in-match foreground reconnect and emoji sending
 - `multiplayerRemoteReplayExecutor.js` - validates, buffers, and applies relayed state snapshots to animation/runtime refs
 
-`App.jsx` retains the authority check, seat rotation, socket emission, and thin wrappers that provide current React refs/actions to these modules.
+The legacy `App.jsx` retains its authority check, seat rotation, socket emission, and thin wrappers for these modules. Shipped v2 transport and semantic submission use `authority/remoteSession.js` and `authority/presentation/commands.js` instead; do not route new v2 behavior through the legacy state broadcast.
 
 ### `audio/`
 
@@ -248,6 +256,10 @@ When changing extracted logic, prefer focused tests first:
 - detached audio timing and cleanup behavior
 
 Then run `npm.cmd run build` for integration confidence.
+
+Authority UI checks have distinct boundaries. `authority/AuthorityApp.test.jsx` exercises controller transitions with a deterministic hook/session harness. `authority/presentation/authorityUiCoverage.test.js` uses the original JSX callbacks to check every advertised command and its exact payload, including opponent card-back taps for blind swap; it does not mount a browser DOM. `authority/authorityEntry.integration.test.jsx` preserves real React hooks and original components: it imports the shipped `main.jsx` and server-renders its initial lobby, then renders a stable battle view with the real presentation hook and invokes the original card-back callback through the command dispatcher. Browser mounting/portal destinations are replaced, and a pass-through observer retains the original player panel's callback without changing its rendered tree; no production session injection is added for testing.
+
+Server rendering does not run effects, subscriptions, animation playback, or browser event dispatch. These tests therefore do not establish the full lobby-to-battle lifecycle, physical hit targets, pixel proportions, background-tab scheduling, audio, or network behavior. Retain the focused queue/session tests and actual browser checks for those boundaries; viewport and artwork acceptance is documented in [`ui/README.md`](ui/README.md#ui-素材比例与验收). Prefer these entry checks plus the existing action matrix over duplicating all actions in another harness.
 
 ## Visual Event Transaction Boundary
 

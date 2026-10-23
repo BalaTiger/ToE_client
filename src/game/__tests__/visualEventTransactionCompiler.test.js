@@ -41,6 +41,7 @@ import {
 } from '../visualEventTransactionCompiler';
 import { prepareAnimationQueueSteps } from '../animationStepSchema';
 import { createPlayerDefeatedStatEvent } from '../statEvents';
+import { strictActionQueueMeta } from '../animationQueuePolicy';
 
 const selectTransactionQueue = (queue, transaction, options = {}) => (
   options.authority === ANIMATION_QUEUE_AUTHORITY.QUEUE
@@ -51,6 +52,53 @@ const selectTransactionQueue = (queue, transaction, options = {}) => (
 const player = (name, patch = {}) => ({ name, hp: 10, san: 10, hand: [], ...patch });
 
 describe('visualEventTransactionCompiler', () => {
+  it('treats explicit authority receipts as journal metadata without inventing legacy animation steps', () => {
+    const receipts = [
+      createCardEffectEvent({ effectKey: 'authorityCardReceipt', payload: { receipt: {
+        type: 'cardIncomeCommitted', seat: 0, card: { id: 'private-receipt-card' }, destination: 'hand', source: 'reveal',
+      } } }),
+      createCardEffectEvent({ effectKey: 'playerRestChanged', actorIdx: 0, payload: { isResting: false } }),
+      createCardEffectEvent({ effectKey: 'damageLinkExpired', payload: { pair: [0, 1] } }),
+    ];
+    const state = { players: [player('你'), player('对手')], _visualEvents: receipts };
+    const saved = structuredClone(state);
+    for (const receipt of receipts) {
+      expect(compileVisualEventToAnimSteps(receipt, state)).toEqual([]);
+      expect(compileVisualEventToAnimTransaction(receipt, state, null, { strictEventCompilation: true })).toBeNull();
+    }
+    expect(compileRuleVisualEventsToAnimTransaction(state, null, { strictEventCompilation: true })).toBeNull();
+    expect(getVisualEventIdsCoveredByAnimationQueue(state, [])).toEqual(receipts.map(event => event.id));
+    expect(strictActionQueueMeta(state, [])).toMatchObject({ eventIds: receipts.map(event => event.id) });
+    expect(state).toEqual(saved);
+  });
+
+  it('receipt references do not steal generic stat ownership or duplicate the already authored legacy queue', () => {
+    const stats = [{ id: 'receipt-neighbour-stat', seq: 1, type: 'HP_GAIN', target: 0,
+      from: { hp: 6, san: 10 }, to: { hp: 10, san: 10 } }];
+    const heal = createStatEventsEvent({ statEvents: stats });
+    const expired = createCardEffectEvent({ effectKey: 'damageLinkExpired', payload: { pair: [0, 1] }, statEvents: stats });
+    const state = { players: [player('你'), player('对手')], _visualEvents: [heal, expired] };
+    const transaction = compileRuleVisualEventsToAnimTransaction(state, null, { strictEventCompilation: true });
+    expect(transaction.queue).toEqual(compileRuleVisualEventsToAnimTransaction({ ...state, _visualEvents: [heal] }).queue);
+    expect(transaction.eventIds).toEqual([heal.id, expired.id]);
+    expect(validateVisualEventTransaction(transaction, [heal, expired])).toEqual([]);
+    expect(getVisualEventIdsCoveredByAnimationQueue(state, [])).toEqual([expired.id]);
+    expect(() => strictActionQueueMeta(state, [])).toThrow('queue is missing visual events');
+  });
+
+  it('keeps unknown effects and malformed receipt subtypes under strict compilation and coverage checks', () => {
+    for (const event of [
+      createCardEffectEvent({ effectKey: 'futureAuthorityEffect' }),
+      createCardEffectEvent({ effectKey: 'authorityCardReceipt', payload: { receipt: { type: 'futureReceipt' } } }),
+      createCardEffectEvent({ effectKey: 'playerRestChanged', actorIdx: 0, payload: { isResting: 'false' } }),
+    ]) {
+      const state = { players: [player('你')], _visualEvents: [event] };
+      expect(() => compileRuleVisualEventsToAnimTransaction(state, null, { strictEventCompilation: true })).toThrow('EMPTY_VISUAL_EVENT_QUEUE');
+      expect(() => compileVisualEventToAnimTransaction(event, state, null, { strictEventCompilation: true })).toThrow('EMPTY_VISUAL_EVENT_QUEUE');
+      expect(getVisualEventIdsCoveredByAnimationQueue(state, [])).toEqual([]);
+      expect(() => strictActionQueueMeta(state, [])).toThrow('queue is missing visual events');
+    }
+  });
   it('audits event messages without affecting runtime compilation', () => {
     const event = createLogOnlyVisualEvent({ msgs: ['事件日志'] });
     expect(auditVisualEventLogCoverage([event], ['事件日志'])).toEqual([]);

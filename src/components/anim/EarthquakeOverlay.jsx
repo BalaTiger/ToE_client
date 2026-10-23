@@ -27,7 +27,7 @@ function EarthquakeDiscardCard({ event }) {
   React.useEffect(() => {
     if (!event?.card) return;
     const start = getPlayerHandCardAnchor(event.playerIndex ?? 0, event.card);
-    const discard = getPileCardAnchor(
+    const discard = event.destination === 'destroyed' ? start : getPileCardAnchor(
       '[data-discard-pile]',
       { x: window.innerWidth * 0.35, y: window.innerHeight * 0.50 }
     );
@@ -65,7 +65,7 @@ function EarthquakeDiscardCard({ event }) {
       justifyContent: 'center',
       opacity: 0,
       transform: `translate(0,0) ${CARD_FLIGHT_POSE.from}`,
-      animationName: 'earthquakeDiscardFly',
+      animationName: event.destination === 'destroyed' ? 'authorityCardDissolve' : 'earthquakeDiscardFly',
       animationDuration: style['--duration'],
       animationTimingFunction: 'cubic-bezier(0.26,0,0.2,1)',
       animationDelay: style['--delay'],

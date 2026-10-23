@@ -1,5 +1,6 @@
 import { getZhuRevealDecision, removeZhuLightCard, moveTopDeckCardToBottom, ZHU_REVEAL_SOURCE } from '../game/zhuPower.js';
 import { drawAuthorityCard } from './automatic.js';
+import { appendDeckMoveEvent } from './deckMoveEvents.js';
 const owner = (state, seat) => getZhuRevealDecision(state)?.ownerIdx === seat;
 export const zhuActions = {
   'zhu.hide': { phases: ['ZHU_HIDE_AI_DRAW'], payloadKeys: ['hide'], authorize: owner, available: owner,
@@ -16,10 +17,13 @@ export const zhuActions = {
           cthDrawsRemaining: Math.max(0, (decision.continuation?.remaining ?? context.cthDrawsRemaining ?? 1) - 1) } : {}),
         ...(source === ZHU_REVEAL_SOURCE.PROLIFERATING_Z ? { fromProliferatingZ: true } : {}),
       };
-      const next = drawAuthorityCard({ ...state, phase: 'ACTION', abilityData: context,
+      const moved = { ...state, phase: 'ACTION', abilityData: context,
         deck: payload.hide ? moveTopDeckCardToBottom(state.deck) : [...state.deck],
         zhuLight: removeZhuLightCard(state.zhuLight, state.deck[0]), _authorityDraw: null,
-        _zhuBypassTopGuard: true }, decision.drawerIdx, flags, source);
+        _zhuBypassTopGuard: true };
+      const presented = payload.hide ? appendDeckMoveEvent(moved, { type: 'zhuCardHidden',
+        seat: decision.ownerIdx, card: state.deck[0], source }) : moved;
+      const next = drawAuthorityCard(presented, decision.drawerIdx, flags, source);
       delete next._zhuBypassTopGuard;
       return next;
     } },

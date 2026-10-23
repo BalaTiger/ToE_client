@@ -81,6 +81,7 @@ export default defineConfig([
       'vite.config.js',
       'temp_extract_inspection.js',
       'scripts/**/*.{js,mjs}',
+      'integration/**/*.{js,mjs}',
     ],
     extends: [js.configs.recommended],
     languageOptions: {

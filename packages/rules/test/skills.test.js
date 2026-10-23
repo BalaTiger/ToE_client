@@ -78,8 +78,13 @@ test('hunt validates the match and server damage, settles death and hidden loot 
   const done = act(match, 0, 'hunt.attack', { cardIndex: 0 });
   assert.equal(done.state.players[1].isDead, true); assert.equal(done.state.players[1].hand.length, 0);
   assert.equal(done.state.players[0].hand.length, 3); assert.equal(done.state.discard.length, 3);
-  const events = JSON.stringify(view(done, 2).events);
-  assert.equal(events.includes('victim-0'), true); assert.equal(events.includes('victim-1'), false);
+  const events = view(done, 2).events, json = JSON.stringify(events);
+  assert.equal(json.includes('victim-0'), true);
+  // The remainder actually entered public discard. Only the privately won
+  // cards must stay hidden; their earlier revealed card is already public.
+  for (const card of done.state.players[0].hand.filter(card => card.id !== 'victim-0')) {
+    assert.equal(json.includes(card.name), false);
+  }
   assert.equal(view(done, 2).players[0].hand, undefined);
 });
 test('public hunt loot asks for exactly three unique actual cards, then settles the remainder once', () => {

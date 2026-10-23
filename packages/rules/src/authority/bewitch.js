@@ -6,6 +6,7 @@ import { deriveEffectDecisionState } from '../game/effectStatePatch.js';
 import { applyFx } from '../game/effectEngine.js';
 import { applyZoneCardIncome } from '../game/zoneCardIncome.js';
 import { resolveGodIntent } from './gods.js';
+import { cardIncomeCommittedEvent } from './incomeEvents.js';
 const own = (state, seat) => state.currentTurn === seat;
 const targets = state => state.players.flatMap((player, seat) => seat !== state.currentTurn && !player.isDead ? [seat] : []);
 export function finishAuthorityBewitchGod(state) {
@@ -30,7 +31,8 @@ export function finishAuthorityBewitchTarget(state) {
   const [card] = players[source].hand.splice(index, 1); players[source].roleRevealed = true;
   const base = { ...state, players, skillUsed: true, _authorityBewitchTarget: null,
     abilityData: { _turnOwner: source },
-    _pendingPublicEvents: [...(state._pendingPublicEvents || []), { type: 'cardRevealed', seat: source, card, reason: 'bewitch' }] };
+    _pendingPublicEvents: [...(state._pendingPublicEvents || []),
+      { type: 'bewitchGiven', sourceSeat: source, targetSeat: target, card, presentationOrder: 'beforeStats' }] };
   if (card.isGod) {
     const progress = advanceGodEncounter(players[target], base);
     let next = { ...base, _authorityBewitchGod: { target, card }, phase: 'ACTION' };
@@ -46,12 +48,16 @@ export function finishAuthorityBewitchTarget(state) {
   }
   if (card.type === 'swapAllHands') return { ...base, phase: 'ZONE_SWAP_SELECT_TARGET', abilityData: {
     _turnOwner: source, zoneSwapCard: card, zoneSwapSource: target,
-    pendingZoneIncome: { card, ownerId: players[target].id } } };
+    pendingZoneIncome: { card, ownerId: players[target].id, presentationSource: 'reveal' } } };
   const result = applyFx(card, target, target, players, [...state.deck], [...state.discard], base, false, [], false);
-  const patch = applyZoneCardIncome({ players: result.P, discard: result.Disc, card, drawerIdx: target, statePatch: result.statePatch });
+  let income = null;
+  const patch = applyZoneCardIncome({ players: result.P, discard: result.Disc, card, drawerIdx: target,
+    statePatch: result.statePatch, presentationSource: 'reveal', onIncomeCommitted: committed => { income = committed; } });
   const decision = deriveEffectDecisionState(patch, { baseAbilityData: base.abilityData, turnOwner: source });
   return { ...base, ...patch, players: result.P, deck: result.D, discard: result.Disc,
-    log: [...state.log, ...result.msgs], phase: decision.phase, abilityData: decision.abilityData };
+    log: [...state.log, ...result.msgs], phase: decision.phase, abilityData: decision.abilityData,
+    _pendingPublicEvents: [...base._pendingPublicEvents,
+      ...(!patch?.abilityData?.pendingZoneIncome && !decision.hasDecision && income ? [cardIncomeCommittedEvent(income, { ...base, ...patch })] : [])] };
 }
 export const bewitchActions = {
   'bewitch.chooseCard': { phases: ['BEWITCH_SELECT_CARD'], payloadKeys: ['cardIndex'], authorize: own, available: own,

@@ -364,6 +364,11 @@ export function initGame(
 
   const debugFixedRoleCounts = normalizeRoleCounts(options.roleCounts, N);
   const roles = mkRoles(N, isSinglePlayer, null, debugFixedRoleCounts);
+  if (isSinglePlayer && options.localRole) {
+    const selectedIndex = roles.indexOf(options.localRole);
+    if (selectedIndex < 0) throw new TypeError('Selected role is unavailable in this setup');
+    [roles[0], roles[selectedIndex]] = [roles[selectedIndex], roles[0]];
+  }
   const players = names.map((name, i) => ({
     id: i,
     name,

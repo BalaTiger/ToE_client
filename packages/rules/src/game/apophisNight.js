@@ -122,6 +122,9 @@ export function resolveApophisTarget({
   }
 
   const apophisTargetEvent = {
+    // Explicit boundary before this target roll. Even a non-shifting roll
+    // must be presented before damage from the subsequently resolved action.
+    presentationStatBoundarySeq: gs?._statEventSeq || 0,
     seq: eventSeq,
     actorIdx,
     actorName: P[actorIdx]?.name || '',

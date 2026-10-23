@@ -1,0 +1,16 @@
+export const ACTION_LABELS = {
+  'draw.keep': '收入手牌', 'draw.discard': '弃置此牌', 'turn.end': '结束回合', 'turn.rest': '休息',
+  'skill.begin': '使用身份技能', 'skill.cancel': '取消', 'swap.takeBlind': '暗抽一张', 'swap.selectTarget': '选择掉包目标',
+  'swap.takeVisible': '选择抽取的牌', 'swap.give': '选择归还的牌', 'caveDuel.commit': '锁定对决选牌',
+  'caveDuel.selectTarget': '选择对决目标', 'peek.selectTarget': '选择偷看目标', 'turn.discard': '选择上限弃牌',
+  'publicPick.choose': '选择收入的牌', 'tortoise.choose': '选择编号', 'grave.choose': '选择取回的邪神牌',
+  'torch.discard': '选择引燃火把的弃牌', 'albino.reveal': '选择亮出的含火牌', 'bury.commit': '锁定活埋选牌',
+  'god.choose': '回应邪神', 'god.useHand': '使用手中的邪神牌', 'stone.arrange': '解读石刻',
+  'sameAbyss.choose': '同归深渊', 'hunt.selectTarget': '选择追捕目标', 'hunt.reveal': '选择亮出的手牌',
+  'hunt.attack': '选择匹配的弃牌', 'hunt.loot': '选择战利品', 'bewitch.chooseCard': '选择赠予的牌',
+  'bewitch.selectTarget': '选择蛊惑目标', 'nya.borrow': '借用已故角色的身份', 'shu.selectTarget': '选择黑暗子嗣目标',
+  'zoneSwap.selectTarget': '选择整手交换目标', 'damageLink.selectTarget': '选择两人一绳目标',
+  'roseThorn.selectTarget': '选择玫瑰倒刺目标', 'multiply.begin': '繁衍', 'multiply.selectTarget': '选择繁衍目标',
+  'slime.answer': '黏液平衡', 'etherealize.answer': '虚化', 'etherealize.redirect': '选择虚化转移目标',
+  'sphinx.guess': '回答狮身人面像', 'sphinx.dodge': '尝试规避', 'zhu.hide': '衔烛照幽', 'zhu.hideSphinx': '衔烛照幽',
+};

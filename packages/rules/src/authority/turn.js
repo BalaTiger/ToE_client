@@ -5,6 +5,7 @@ import { getRestActionBlockReason } from '../game/interactionAvailability.js';
 import { discardCardsFromHand, splitKeptDestroyedDiscarded, applyHandDiscardSideEffectsWithAnim } from '../game/handLimitDiscard.js';
 import { beginAuthorityEndTurn } from './automatic.js';
 import { queueSanInspections } from './loss.js';
+import { appendCommittedPublicEvent } from './incomeEvents.js';
 const owner = (state, seat) => state.currentTurn === seat;
 const limit = (state, seat) => Math.max(0, (state.players[seat]._nyaHandLimit ?? 4) - (state.players[seat].handLimitDecrease || 0));
 const needed = (state, seat) => Math.max(0, state.players[seat].hand.length - limit(state, seat));
@@ -23,7 +24,9 @@ export const turnActions = {
       const result = resolveRestTurnEnd(state, { actorIndex: seat, effectiveHandLimit: limit(state, seat),
         d1, d2, heal: Math.max(d1, d2), advanceTurn: endBoundary });
       const next = result.gs || result.pendingGs || result.nextGs || beginAuthorityEndTurn(result.afterRest);
-      return { ...next, _restRoll: { seat, d1, d2 } };
+      return { ...next, _restRoll: { seat, d1, d2 },
+        _pendingPublicEvents: [...(next._pendingPublicEvents || []),
+          { type: 'restRolled', seat, d1, d2, presentationOrder: 'beforeStats' }] };
     } },
   'turn.discard': { phases: ['DISCARD_PHASE'], payloadKeys: ['cardIndices'], authorize: owner,
     available: owner,
@@ -33,10 +36,15 @@ export const turnActions = {
       && payload.cardIndices.every(index => Number.isInteger(index) && index >= 0 && index < state.players[seat].hand.length),
     apply: (state, seat, payload) => {
       const { players, discarded } = discardCardsFromHand(state.players, seat, payload.cardIndices);
-      const { kept } = splitKeptDestroyedDiscarded(discarded);
-      const result = applyHandDiscardSideEffectsWithAnim({ baseGs: state, players, deck: [...state.deck],
-        discard: [...state.discard, ...kept], log: [...state.log], ownerIdx: seat, cards: kept, reason: '手牌上限弃牌' });
-      const next = { ...state, ...result.statePatch, players: result.players, deck: result.deck,
+      const { kept, destroyed } = splitKeptDestroyedDiscarded(discarded);
+      const discard = [...state.discard, ...kept];
+      const committed = appendCommittedPublicEvent({ ...state, players, discard }, {
+        type: 'cardsDiscarded', kind: 'handLimit', discards: discarded.map(card => ({ seat, card,
+          destination: destroyed.includes(card) ? 'destroyed' : 'discard' })),
+      });
+      const result = applyHandDiscardSideEffectsWithAnim({ baseGs: committed, players, deck: [...state.deck],
+        discard, log: [...state.log], ownerIdx: seat, cards: kept, reason: '手牌上限弃牌' });
+      const next = { ...committed, ...result.statePatch, players: result.players, deck: result.deck,
         discard: result.discard, log: result.log, phase: result.statePatch?.phase || 'ACTION',
         abilityData: result.statePatch?.abilityData || {}, _authorityPostDiscard: true };
       return queueSanInspections(state, next);
